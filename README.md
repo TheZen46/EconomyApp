@@ -214,6 +214,9 @@ The future of EconomyApp includes several planned improvements:
 - [ ] Data persistence with a database
 - [ ] Export functionality (CSV, JSON)
 - [ ] Predictive financial insights
+- [ ] **Cloud Fallback for AI:** Implement a graceful degradation layer to bounce inference requests to Groq/Google API when the device battery is low, preventing the `llama.cpp` strain.
+- [ ] **CSV/Bank Export Integration:** Build an automatic parser for generic banking CSV files to bypass manual entry endpoints entirely.
+- [ ] **Data Privacy Isolation Mode:** Introduce a strict local-only toggle that explicitly disables all Supabase network calls, isolating the Hive/Isar layer.
 
 The roadmap reflects a gradual transition from prototype to full application.
 
