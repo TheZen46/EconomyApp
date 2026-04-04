@@ -18,6 +18,8 @@ The project is also intended as a learning platform. It demonstrates how to stru
 For those looking to dive deeper into our mechanics, view our specific architectural breakdowns:
 - [🧭 tAIdy User Guide](docs/user_guide.md)
 - [🤖 Integrating AI into tAIdy](docs/integrating_ai.md)
+- [🛠️ Troubleshooting Guide (S.C.R.V)](docs/troubleshooting.md)
+- [📡 API Reference Contract](docs/api_reference.md)
 
 ---
 
