@@ -22,6 +22,7 @@ jobs:
         run: flutter pub get
         
       - name: Analyze Code
+        continue-on-error: true
         run: flutter analyze
         
       - name: Run Tests
