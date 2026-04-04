@@ -56,8 +56,13 @@ Unlike conventional cloud-based accounting tools, **tAIdy** runs powerful AI mod
 - **Cloud AI Integration:** Google Generative AI (`google_generative_ai`)
 - **On-Device AI:** Google ML Kit + Llama.cpp Dart
 
+## 📖 Documentation
+For more in-depth exploration, please read our dedicated documentation pages:
+- [🧭 tAIdy User Guide](docs/user_guide.md)
+- [🤖 Integrating AI into tAIdy](docs/integrating_ai.md)
+
 ## 🤝 Contributing
 Contributions, issues, and feature requests are welcome! Feel free to check the [issues page](https://github.com/TheZen46/EconomyApp/issues) if you want to contribute.
 
 ## 📝 License
-This project is for educational and personal use. Feel free to fork and adapt it for your needs!
+This project has been done in a big part with human code made by TheZen46. It is for educational and personal use. Feel free to fork and adapt it for your needs!
