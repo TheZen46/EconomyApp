@@ -146,7 +146,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                 Consumer(builder: (context, ref, child) {
                   final box = ref.watch(settingsBoxProvider);
                   // Default to the provided key if not set
-                  final apiKey = box.get('gemini_api_key', defaultValue: 'AIzaSyDtajqBbBHOptMsHIjAHuHsLC7acAz129Y') as String;
+                  final apiKey = box.get('gemini_api_key', defaultValue: '') as String;
                   final isEnabled = box.get('enable_gemini_ai', defaultValue: false) as bool;
 
                   return Column(
@@ -160,7 +160,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                           box.put('enable_gemini_ai', val);
                           // Ensure key is saved if it was using default
                           if (val && box.get('gemini_api_key') == null) {
-                             box.put('gemini_api_key', 'AIzaSyDtajqBbBHOptMsHIjAHuHsLC7acAz129Y');
+                             box.put('gemini_api_key', '');
                           }
                           setState((){});
                         },
