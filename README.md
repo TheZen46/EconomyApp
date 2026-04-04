@@ -1,68 +1,102 @@
-# tAIdy - Privacy-First AI Expense Tracker 🧾✨
+# 🧾 tAIdy (EconomyApp)
 
-![tAIdy Header](assets/logo.png)
+🚧 **Status:** Active Development (Beta) | 🚀 **Version:** 1.0.0
 
-Welcome to **tAIdy** (pronounced *tidy* / *t-AI-dy*), the next-generation, privacy-focused expense tracker that leverages on-device Artificial Intelligence to manage your receipts securely.
+A lightweight, privacy-first personal finance management and receipt tracking app. **tAIdy** allows users to track income, extract expenses from receipts using state-of-the-art On-Device AI, and analyze financial trends securely in real time.
 
-## 🌟 Philosophy: Privacy First
-Unlike conventional cloud-based accounting tools, **tAIdy** runs powerful AI models right on your device. We believe your financial data belongs strictly to you. With tAIdy, parsing receipts, organizing expenses, and tracking data happens locally, giving you absolute control over your financial privacy.
+## 🎯 Overview & Why this project exists
+
+Traditional expense trackers force you to upload your sensitive financial receipts to cloud servers, compromising your privacy. **tAIdy** solves this by running Large Language Models (LLMs) like Llama.cpp and Google ML Kit directly on your device hardware. Your financial history never leaves your pocket unless you explicitly choose to sync it. 
+
+**Who is it for?** Privacy-conscious individuals, freelancers, and small business owners who want intelligent, automated accounting without the spyware.
+
+---
 
 ## ✨ Features
 
-- 🤖 **On-Device AI Engine:** Uses **Llama.cpp** (via `llama_cpp_dart`) to parse and extract structured data from receipts without internet tracking.
-- ☁️ **Gemini Cloud AI Option:** Need more power? You can optionally configure your own Google Gemini API key to parse intricate receipts securely in the cloud.
-- 📸 **Smart Receipt Scanning:** Instantly capture receipts using on-device OCR (Google ML Kit Text Recognition) and auto-categorize line items.
-- 🔐 **Electronic Vault (eVault):** Securely manage your scanned assets and receipts in a digital vault.
-- 💾 **Local-First Storage:** Fast and reliable local storage handled by **Hive**.
-- ☁️ **Secure Sync & Backup:** Synchronize your encrypted receipt data using **Supabase** or back it up directly to your personal **Google Drive**.
-- 📊 **CSV Exports:** Need to run the numbers yourself? Export all your data seamlessly in CSV format for integration with Excel, accounting software, or your accountant.
+- **Automated Expense Tracking:** Auto-extract prices, dates, and line-items from receipts using On-Device OCR.
+- **Bifurcated AI Engine:** Choose between 100% offline smart parsing (Llama) or blazing-fast cloud inference (Gemini).
+- **Electronic Vault (eVault):** Secure, AES-256 encrypted local storage for all your scanned assets.
+- **Categorize & Analyze:** View monthly graphs, taxonomy breakdowns, and transaction dashboards.
+- **Export Capabilities:** Export your entire financial history instantly to CSV for accountants or tools like Excel.
+- **Cloud Sync (Optional):** Integration with Supabase and Google Drive for seamless backups.
 
-## 🚀 Getting Started
+---
 
-### Prerequisites
-- [Flutter SDK](https://docs.flutter.dev/get-started/install) (version `^3.10.4`)
-- Dart SDK
+## 📸 Screenshots
 
-### Installation
+*(Add UI screenshots of the dashboard, receipt scanner, and eVault below to improve product visibility)*
+> 🖼️ *Dashboard View Placeholder* | 🖼️ *Receipt Scanner Placeholder* | 🖼️ *Analytics Placeholder*
 
-1. **Clone the repository:**
-   ```bash
-   git clone https://github.com/TheZen46/EconomyApp.git
-   cd EconomyApp
-   ```
+---
 
-2. **Install Dependencies:**
-   ```bash
-   flutter pub get
-   ```
+## 🛠️ Installation
 
-3. **Configure API Keys (Optional but recommended):**
-   - Head over to `Settings` > `Integrations` in the app.
-   - Insert your **Gemini API Key** if you wish to use cloud-based receipt parsing.
-   - Configure **Supabase / Google Drive** credentials as needed. (Make sure you download your `credentials.json` directly from the Google Cloud Console and place it securely if running locally).
+```bash
+# 1. Clone the repository
+git clone https://github.com/TheZen46/EconomyApp.git
 
-4. **Run the App:**
-   ```bash
-   flutter run
-   ```
+# 2. Navigate into the project workspace
+cd EconomyApp
 
-## 🛠️ Technology Stack
+# 3. Install Flutter dependencies
+flutter pub get
 
-- **Framework:** Flutter & Dart
-- **State Management:** Riverpod (`flutter_riverpod`)
-- **Routing:** GoRouter
-- **Local Storage:** Hive
-- **Data Synchronization:** Supabase (`supabase_flutter`)
-- **Cloud AI Integration:** Google Generative AI (`google_generative_ai`)
-- **On-Device AI:** Google ML Kit + Llama.cpp Dart
+# 4. Run the application
+flutter run
+```
+> ⚠️ **Note on platform support:** The web version currently relies on an isolated AI stub to bypass native C++ FFI limitations. For full On-Device AI features, compile for iOS, Android, or macOS.
 
-## 📖 Documentation
-For more in-depth exploration, please read our dedicated documentation pages:
+---
+
+## 📖 Usage
+
+Using tAIdy takes less than 30 seconds:
+1. **Capture:** Tap the floating `+` button to scan a physical receipt.
+2. **AI Analysis:** Let the local Llama model parse the text and cleanly categorize the merchant and items.
+3. **Save:** Push the structured data securely into your encrypted eVault.
+4. **Analyze:** Check your dashboard for spending trends or generate a CSV report.
+
+For a deeper dive, read our dedicated documentation:
 - [🧭 tAIdy User Guide](docs/user_guide.md)
 - [🤖 Integrating AI into tAIdy](docs/integrating_ai.md)
 
+---
+
+## 🏗️ Architecture
+
+- **Frontend / Mobile UI:** Flutter & Dart
+- **State Management:** Riverpod (`flutter_riverpod`)
+- **Local Database:** Hive (Fast, NoSQL local encrypted storage)
+- **Backend Sync:** Supabase / Google Drive
+- **AI/ML Layer:** Google ML Kit (OCR), `llama_cpp_dart` (On-Device LLM), Google Generative AI (Cloud LLM)
+
+**Data Flow Diagram:**
+`User → Camera/OCR → Raw Text → On-Device LLM Parser → Structured JSON → Hive Database → Analytics UI`
+
+---
+
+## 🗺️ Roadmap
+
+- [x] Integrate OCR and basic Receipt Parsing
+- [x] Implement Llama.cpp local AI
+- [x] Develop secure Hive eVault architecture
+- [ ] Implement user authentication via Supabase
+- [ ] Add deep Interactive Charts and AI financial forecasting
+- [ ] Establish automated testing pipelines (Unit & Widget tests)
+- [ ] Expand CI/CD deployment logic via GitHub Actions
+
+---
+
 ## 🤝 Contributing
-Contributions, issues, and feature requests are welcome! Feel free to check the [issues page](https://github.com/TheZen46/EconomyApp/issues) if you want to contribute.
+
+Pull requests are actively welcome! For major changes or architectural shifts, please open an issue first to discuss what you would like to change. 
+
+Make sure to update backend settings following `.env.example` protocols before submitting test implementations.
+
+---
 
 ## 📝 License
-This project has been done in a big part with human code made by TheZen46. It is for educational and personal use. Feel free to fork and adapt it for your needs!
+
+**MIT License**  
+This project has been done in a big part with human code made by TheZen46. It is strictly for educational and personal use. Feel free to fork, build, and adapt it for your needs!
