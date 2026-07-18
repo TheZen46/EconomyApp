@@ -1,16 +1,13 @@
 import 'package:hive/hive.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:state_notifier/state_notifier.dart';
 
-import '../../data/models/app_config.dart';
 import '../../data/repositories/model_repository.dart';
 import 'model_update_provider.dart';
 
 import '../../../../core/services/ai_service.dart';
 import '../../../../core/services/export_service.dart';
 import '../../data/datasources/hive_receipt_data_source.dart';
-import '../../data/datasources/mock_ai_service.dart';
 import '../../data/datasources/mock_ai_service.dart';
 import '../../data/datasources/supabase_data_source.dart';
 import '../../data/datasources/gemini_ai_service.dart';
@@ -27,6 +24,9 @@ import '../../../../core/services/google_drive_service.dart'; // Ensure global a
 import '../../../settings/data/datasources/webhook_service.dart';
 import '../../../evault/presentation/providers/asset_provider.dart';
 import '../../../settings/presentation/providers/llm_provider.dart';
+import '../../data/datasources/csv_parser_service.dart';
+
+final csvParserServiceProvider = Provider<CsvParserService>((ref) => CsvParserService());
 
 final hiveBoxProvider = Provider<Box<ReceiptModel>>((ref) {
   throw UnimplementedError('Hive box must be overridden in main');
@@ -178,6 +178,23 @@ class ReceiptListNotifier extends StateNotifier<AsyncValue<List<Receipt>>> {
       (failure) { /* Handle error */ },
       (_) => loadReceipts(), // Refresh list
     );
+  }
+
+  Future<int> importCsvTransactions(String csvString, CsvParserService parser) async {
+    state = const AsyncValue.loading();
+    try {
+      final receipts = parser.parseBankCsv(csvString);
+      int addedCount = 0;
+      for (final r in receipts) {
+        await _repository.saveReceipt(r);
+        addedCount++;
+      }
+      await loadReceipts();
+      return addedCount;
+    } catch (e) {
+      await loadReceipts();
+      return 0;
+    }
   }
 
 }

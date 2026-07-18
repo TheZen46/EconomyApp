@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/theme/app_theme.dart';
-import '../../../../core/constants/taxonomy_constants.dart';
 import '../providers/taxonomy_provider.dart';
 import '../../../receipt_scanning/domain/entities/receipt.dart';
 

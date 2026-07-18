@@ -1,6 +1,5 @@
 import 'package:dio/dio.dart';
 import 'package:hive/hive.dart';
-import '../../../../core/error/failures.dart';
 import '../../../receipt_scanning/domain/entities/receipt.dart';
 import '../../../receipt_scanning/data/models/receipt_model.dart';
 

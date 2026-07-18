@@ -6,7 +6,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 // I'll build a simple "NeonLineChart" or just list stats first.
 // Actually, let's make a cool "NeonSparkline" widget.
 
-import 'package:intl/intl.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../providers/receipt_provider.dart';
 import '../../domain/entities/receipt.dart';

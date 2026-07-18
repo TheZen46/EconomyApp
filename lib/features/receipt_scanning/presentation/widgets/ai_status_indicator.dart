@@ -1,3 +1,4 @@
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_animate/flutter_animate.dart';
@@ -36,16 +37,26 @@ class AIStatusIndicator extends ConsumerWidget {
       statusText = 'AI Ready';
     }
 
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      decoration: BoxDecoration(
-        color: AppTheme.surface,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Colors.white.withOpacity(0.05)),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(30),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+          decoration: BoxDecoration(
+            color: AppTheme.surface.withOpacity(0.8),
+            borderRadius: BorderRadius.circular(30),
+            border: Border.all(color: Colors.white.withOpacity(0.1)),
+            boxShadow: [
+               BoxShadow(
+                 color: Colors.black.withOpacity(0.2),
+                 blurRadius: 10,
+               )
+            ],
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
           Container(
             width: 8,
             height: 8,
@@ -64,17 +75,18 @@ class AIStatusIndicator extends ConsumerWidget {
            .fade(duration: 500.ms)
            .then()
            .fade(delay: 200.ms, begin: 1, end: 0.5), // Pulse effect if animating
-          const SizedBox(width: 8),
+          const SizedBox(width: 12),
           Text(
             statusText,
             style: const TextStyle(
-              color: AppTheme.textDim,
+              color: Colors.white,
               fontSize: 12,
-              fontWeight: FontWeight.w500,
+              fontWeight: FontWeight.w600,
+              letterSpacing: 0.5,
             ),
           ),
         ],
       ),
-    );
+    )));
   }
 }

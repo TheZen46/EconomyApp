@@ -10,7 +10,6 @@ import 'features/receipt_scanning/presentation/providers/receipt_provider.dart';
 import 'features/receipt_scanning/data/models/dashboard_config.dart';
 import 'features/settings/data/models/taxonomy_model.dart';
 import 'features/receipt_scanning/data/models/sync_item_model.dart';
-import 'features/receipt_scanning/data/models/receipt_model.dart';
 import 'features/evault/data/models/asset_model.dart';
 import 'features/evault/presentation/providers/asset_provider.dart';
 import 'features/settings/presentation/providers/llm_provider.dart';

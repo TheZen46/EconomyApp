@@ -14,21 +14,13 @@ class MonthlySpendCard extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        // Glassmorphic Gradient
-        gradient: LinearGradient(
-          colors: [
-            AppTheme.surface, 
-            AppTheme.background, 
-          ],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: AppTheme.primary.withOpacity(0.2)),
+        color: AppTheme.surface,
+        borderRadius: BorderRadius.circular(32),
+        border: Border.all(color: AppTheme.primary.withOpacity(0.3)),
         boxShadow: [
           BoxShadow(
             color: AppTheme.primary.withOpacity(0.05),
-            blurRadius: 20,
+            blurRadius: 40,
             offset: const Offset(0, 10),
           ),
         ],

@@ -127,7 +127,7 @@ class _IntegrationsPageState extends ConsumerState<IntegrationsPage> {
               title: const Text('Enable Webhook', style: TextStyle(color: AppTheme.textMain)),
               subtitle: const Text('POST JSON payload on new receipt', style: TextStyle(color: AppTheme.textDim)),
               value: _isEnabled,
-              activeColor: AppTheme.primary,
+              activeThumbColor: AppTheme.primary,
               onChanged: (val) {
                 setState(() => _isEnabled = val);
                 _save();

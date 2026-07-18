@@ -1,8 +1,6 @@
-import 'package:dartz/dartz.dart';
 import 'package:hive/hive.dart';
 import '../../../../core/error/failures.dart';
 import '../models/receipt_model.dart';
-import '../../domain/entities/receipt.dart';
 
 abstract class LocalReceiptDataSource {
   Future<List<ReceiptModel>> getReceipts();

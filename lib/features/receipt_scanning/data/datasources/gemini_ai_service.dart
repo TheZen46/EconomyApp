@@ -3,7 +3,6 @@ import 'dart:io';
 
 import 'package:dartz/dartz.dart';
 import 'package:google_generative_ai/google_generative_ai.dart';
-import 'package:intl/intl.dart';
 
 import '../../../../core/error/failures.dart';
 import '../../../../core/services/ai_service.dart';

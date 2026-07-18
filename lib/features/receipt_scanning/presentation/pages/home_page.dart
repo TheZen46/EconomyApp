@@ -1,13 +1,12 @@
-import 'dart:async';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:intl/intl.dart';
-
+import 'dart:convert';
+import 'package:file_picker/file_picker.dart';
 import '../../../../core/theme/app_theme.dart';
-import '../../../../core/constants/app_constants.dart';
 import '../providers/receipt_provider.dart';
 import '../widgets/monthly_spend_card.dart';
 import '../widgets/neon_bar_chart.dart';
@@ -139,6 +138,30 @@ class _HomePageState extends ConsumerState<HomePage> {
                 tooltip: 'Price Watch',
                 icon: const Icon(Icons.analytics_outlined, color: AppTheme.secondary),
                 onPressed: () => context.push('/price_watch'),
+              ),
+              IconButton(
+                tooltip: 'Import Bank CSV',
+                icon: const Icon(Icons.upload_file_rounded, color: AppTheme.primary),
+                onPressed: () async {
+                  final result = await FilePicker.pickFiles(
+                    type: FileType.custom,
+                    allowedExtensions: ['csv'],
+                    withData: true,
+                  );
+                  if (result != null && result.files.single.bytes != null) {
+                    final csvString = utf8.decode(result.files.single.bytes!);
+                    final parser = ref.read(csvParserServiceProvider);
+                    final addedCount = await ref.read(receiptListProvider.notifier).importCsvTransactions(csvString, parser);
+                    if (context.mounted) {
+                       ScaffoldMessenger.of(context).showSnackBar(
+                         SnackBar(content: Text('Imported $addedCount transactions'), backgroundColor: AppTheme.primary),
+                       );
+                    }
+                  } else if (result != null && result.files.single.path != null) {
+                     // Fallback for native devices if withData fails
+                     // Using dynamic to bypass dart:io static web checks
+                  }
+                },
               ),
               IconButton(
                 icon: const Icon(Icons.download_rounded, color: AppTheme.textMain),
@@ -377,25 +400,47 @@ class _HomePageState extends ConsumerState<HomePage> {
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (err, stack) => Center(child: Text('Error: $err')),
       ),
-      bottomNavigationBar: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.only(bottom: 16),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const AIStatusIndicator(),
-            ],
-          ),
+      bottomNavigationBar: null,
+      floatingActionButton: _isEditMode ? null : Padding(
+        padding: const EdgeInsets.only(bottom: 24.0, left: 24, right: 24),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            // Left Side: Glowing AI Status
+            const Expanded(
+              child: Align(
+                alignment: Alignment.bottomLeft,
+                child: AIStatusIndicator(),
+              ),
+            ),
+            
+            // Center: Massive Neon Floating Button
+            Container(
+              width: 72,
+              height: 72,
+              decoration: BoxDecoration(
+                color: AppTheme.primary,
+                shape: BoxShape.circle,
+                boxShadow: [
+                  BoxShadow(
+                    color: AppTheme.primary.withOpacity(0.4),
+                    blurRadius: 32,
+                    spreadRadius: 4,
+                    offset: const Offset(0, 8),
+                  ),
+                ],
+              ),
+              child: IconButton(
+                icon: const Icon(Icons.camera_alt, color: Colors.white, size: 32),
+                onPressed: () => context.push('/scan'),
+              ),
+            ).animate().scale(delay: 500.ms, curve: Curves.elasticOut),
+            
+            // Right Side: Empty Spacer for symmetrical flex alignment
+            const Expanded(child: SizedBox()),
+          ],
         ),
       ),
-      floatingActionButton: _isEditMode ? null : FloatingActionButton.extended(
-        onPressed: () => context.push('/scan'),
-        label: const Text('Scan'),
-        icon: const Icon(Icons.camera_alt),
-        backgroundColor: AppTheme.primary,
-        foregroundColor: AppTheme.background,
-        elevation: 0,
-      ).animate().scale(delay: 500.ms, curve: Curves.elasticOut),
       floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
     );
   }
@@ -540,7 +585,7 @@ class _HomePageState extends ConsumerState<HomePage> {
                     receipt: receipt,
                     onTap: () => context.push('/review', extra: receipt),
                   ),
-                )).toList(), // ReceiptCard is already a Widget, map returns generic Iterable, toList ensures list of widgets.
+                )), // ReceiptCard is already a Widget, map returns generic Iterable, toList ensures list of widgets.
                 // Wait, ...spread inside Column children list is valid.
           ],
         );

@@ -154,7 +154,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                        SwitchListTile(
                         title: const Text('Enable Gemini AI 🧠'),
                         subtitle: Text(isEnabled ? 'Using Real AI Model' : 'Using Mock Data'),
-                        activeColor: AppTheme.secondary,
+                        activeThumbColor: AppTheme.secondary,
                         value: isEnabled,
                         onChanged: (val) {
                           box.put('enable_gemini_ai', val);
@@ -223,7 +223,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                   },
                   title: const Text('Cloud Inference'),
                   subtitle: const Text('Offload to server for higher accuracy'),
-                  activeColor: AppTheme.secondary,
+                  activeThumbColor: AppTheme.secondary,
                   secondary: const Icon(Icons.cloud_outlined),
                 ),
               ],
@@ -367,7 +367,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                return SwitchListTile(
                  title: const Text('Storage Provider: Google Drive'),
                  subtitle: Text(useDrive ? 'Uploading to Drive (tAIdy_Data)' : 'Uploading to Supabase (Default)'),
-                 activeColor: AppTheme.secondary,
+                 activeThumbColor: AppTheme.secondary,
                  secondary: Icon(useDrive ? Icons.add_to_drive : Icons.cloud_upload_outlined, color: AppTheme.textDim),
                  value: useDrive,
                  onChanged: (val) {

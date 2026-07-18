@@ -4,7 +4,6 @@ import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:hive/hive.dart';
 
 import '../../../../core/services/google_drive_service.dart';
-import '../models/receipt_model.dart';
 import '../models/sync_item_model.dart';
 import 'hive_receipt_data_source.dart';
 import 'supabase_data_source.dart';

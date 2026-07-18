@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
@@ -6,11 +6,8 @@ import 'package:uuid/uuid.dart';
 import 'dart:io';
 
 import '../../../../core/theme/app_theme.dart';
-import '../../../../core/constants/app_constants.dart';
-import '../../domain/entities/receipt.dart';
 import '../../domain/entities/receipt.dart';
 import '../providers/receipt_provider.dart';
-import '../providers/category_provider.dart';
 import '../widgets/receipt_item_row.dart';
 
 class ReviewPage extends ConsumerStatefulWidget {

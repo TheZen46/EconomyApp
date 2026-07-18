@@ -2,14 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 class AppTheme {
-  // Colors
-  static const Color background = Color(0xFF0F172A); // Level 0: Deep Slate
-  static const Color surface = Color(0xFF1E293B);    // Level 1: Slate 800
-  static const Color surfaceHighlight = Color(0xFF334155); // Level 2: Slate 700 (Modals)
-  static const Color primary = Color(0xFF38BDF8);    // Sky 400
-  static const Color secondary = Color(0xFF4ADE80);  // Green 400
-  static const Color textMain = Color(0xFFF8FAFC);   // Slate 50
-  static const Color textDim = Color(0xFF94A3B8);    // Slate 400
+  // Colors (Imported from Figma React Design)
+  static const Color background = Color(0xFF121212); // Deep Figma Dark
+  static const Color surface = Color(0xFF1A1A1A);    // Widget surface background
+  static const Color surfaceHighlight = Color(0xFF262626); // Modals / Dialogs
+  static const Color primary = Color(0xFF002FA7);    // Figma Neon Cobalt Blue
+  static const Color secondary = Color(0xFF4ADE80);  // Keeping Green for positive flow
+  static const Color textMain = Color(0xFFFFFFFF);   // Pure White
+  static const Color textDim = Color(0xFFA3A3A3);    // text-[#a3a3a3]
   static const Color error = Color(0xFFEF4444);      // Red 500
 
   static ThemeData get darkTheme {
@@ -21,10 +21,8 @@ class AppTheme {
         primary: primary,
         secondary: secondary,
         surface: surface,
-        background: background,
         error: error,
         onSurface: textMain,
-        onBackground: textMain,
       ),
       textTheme: GoogleFonts.outfitTextTheme().apply(
         bodyColor: textMain,
