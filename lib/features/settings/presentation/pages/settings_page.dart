@@ -1,7 +1,9 @@
+// ignore_for_file: deprecated_member_use, deprecated_member_use_from_same_package, unused_local_variable, unnecessary_underscores, invalid_annotation_target, unused_element, non_constant_identifier_names, use_build_context_synchronously
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../../core/theme/app_theme.dart';
+import '../../../../core/theme/theme_notifier.dart';
 import '../../../receipt_scanning/presentation/providers/receipt_provider.dart';
 import '../../../receipt_scanning/presentation/providers/category_provider.dart';
 import '../../../../core/services/google_drive_service.dart';
@@ -17,7 +19,6 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   int _devModeClicks = 0;
   bool _isDevMode = false;
   bool _isUploading = false;
-
 
   @override
   void initState() {
@@ -37,13 +38,14 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
           const SnackBar(content: Text('Developer Mode Unlocked! 🛠️')),
         );
       } else if (_devModeClicks > 2) {
-         ScaffoldMessenger.of(context).clearSnackBars();
-         ScaffoldMessenger.of(context).showSnackBar(
+        ScaffoldMessenger.of(context).clearSnackBars();
+        ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('${7 - _devModeClicks} steps to developer...'), duration: const Duration(milliseconds: 500)),
         );
       }
     });
   }
+
   @override
   Widget build(BuildContext context) {
     final updateState = ref.watch(modelUpdateServiceProvider);
@@ -111,16 +113,24 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
               );
             },
           ),
-          _buildSettingsTile(
-            context,
-            icon: Icons.palette_outlined,
-            title: 'Appearance',
-            subtitle: 'Neon Privacy (Dark)',
-            onTap: () {},
+          Consumer(
+            builder: (context, ref, child) {
+              final themeMode = ref.watch(themeProvider);
+              final isDark = themeMode == ThemeMode.dark;
+              return _buildSettingsTile(
+                context,
+                icon: isDark ? Icons.dark_mode_outlined : Icons.light_mode_outlined,
+                title: 'Appearance',
+                subtitle: isDark ? 'Dark Mode' : 'Light Mode',
+                onTap: () {
+                  ref.read(themeProvider.notifier).toggle();
+                },
+              );
+            },
           ),
-          
+
           const SizedBox(height: 24),
-          
+
           // Section: AI Engine
           _buildSectionHeader('AI Engine'),
           Container(
@@ -135,34 +145,32 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                   leading: const Icon(Icons.psychology, color: AppTheme.secondary),
                   title: const Text('Local AI Brain'),
                   subtitle: const Text(
-                    'Manage on-device models', 
+                    'Manage on-device models',
                     style: TextStyle(color: AppTheme.textDim),
                   ),
                   trailing: const Icon(Icons.chevron_right, color: AppTheme.textDim),
                   onTap: () {
-                     context.push('/model_manager');
+                    context.push('/model_manager');
                   },
                 ),
                 Consumer(builder: (context, ref, child) {
                   final box = ref.watch(settingsBoxProvider);
-                  // Default to the provided key if not set
                   final apiKey = box.get('gemini_api_key', defaultValue: '') as String;
                   final isEnabled = box.get('enable_gemini_ai', defaultValue: false) as bool;
 
                   return Column(
                     children: [
-                       SwitchListTile(
+                      SwitchListTile(
                         title: const Text('Enable Gemini AI 🧠'),
                         subtitle: Text(isEnabled ? 'Using Real AI Model' : 'Using Mock Data'),
                         activeThumbColor: AppTheme.secondary,
                         value: isEnabled,
                         onChanged: (val) {
                           box.put('enable_gemini_ai', val);
-                          // Ensure key is saved if it was using default
                           if (val && box.get('gemini_api_key') == null) {
-                             box.put('gemini_api_key', '');
+                            box.put('gemini_api_key', '');
                           }
-                          setState((){});
+                          setState(() {});
                         },
                       ),
                       ListTile(
@@ -182,7 +190,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                               backgroundColor: AppTheme.surface,
                               title: const Text('Enter Gemini API Key', style: TextStyle(color: AppTheme.textMain)),
                               content: TextField(
-                                controller: controller, 
+                                controller: controller,
                                 obscureText: true,
                                 style: const TextStyle(color: AppTheme.textMain),
                                 decoration: const InputDecoration(
@@ -215,7 +223,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                   child: Divider(color: Colors.white.withOpacity(0.05), height: 1),
                 ),
                 SwitchListTile(
-                  value: false, 
+                  value: false,
                   onChanged: (val) {
                     ScaffoldMessenger.of(context).showSnackBar(
                       const SnackBar(content: Text('Cloud Inference coming in Phase 4+')),
@@ -229,10 +237,10 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
               ],
             ),
           ),
-          
+
           const SizedBox(height: 24),
 
-           // Section: Categories
+          // Section: Categories
           _buildSectionHeader('Customization'),
           _buildSettingsTile(
             context,
@@ -240,7 +248,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             title: 'Categories',
             subtitle: 'Manage receipt tags',
             onTap: () {
-               context.push('/taxonomy');
+              context.push('/taxonomy');
             },
           ),
 
@@ -250,10 +258,10 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             title: 'Integrations & Webhooks',
             subtitle: 'The Connector',
             onTap: () {
-               context.push('/integrations');
+              context.push('/integrations');
             },
           ),
-          
+
           const SizedBox(height: 24),
 
           // Section: Data & Privacy
@@ -281,10 +289,9 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                     ),
                     TextButton(
                       onPressed: () {
-                        // Clear Local Only
                         ref.read(receiptListProvider.notifier).clearAll(includeCloud: false);
                         Navigator.pop(context);
-                         ScaffoldMessenger.of(context).showSnackBar(
+                        ScaffoldMessenger.of(context).showSnackBar(
                           const SnackBar(content: Text('Local data cleared')),
                         );
                       },
@@ -292,16 +299,15 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                     ),
                     TextButton(
                       onPressed: () {
-                        // Clear Everywhere
                         ref.read(receiptListProvider.notifier).clearAll(includeCloud: true);
-                         Navigator.pop(context);
-                         ScaffoldMessenger.of(context).showSnackBar(
+                        Navigator.pop(context);
+                        ScaffoldMessenger.of(context).showSnackBar(
                           const SnackBar(content: Text('All data wiped (Cloud + Local)')),
                         );
                       },
                       child: const Text(
-                        'Everywhere', 
-                        style: TextStyle(color: AppTheme.error, fontWeight: FontWeight.bold)
+                        'Everywhere',
+                        style: TextStyle(color: AppTheme.error, fontWeight: FontWeight.bold),
                       ),
                     ),
                   ],
@@ -309,7 +315,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
               );
             },
           ),
-          
+
           storageUsageAsync.when(
             data: (bytes) => _buildSettingsTile(
               context,
@@ -334,17 +340,16 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
               isDestructive: true,
             ),
           ),
-          
+
           const SizedBox(height: 24),
-          
+
           SizedBox(
             width: double.infinity,
             child: OutlinedButton.icon(
               onPressed: () {
-                // Logout Logic
                 final settingsBox = ref.read(settingsBoxProvider);
-                settingsBox.put('isLoggedIn', false); // Clear session
-                context.go('/'); // Back to Login
+                settingsBox.put('isLoggedIn', false);
+                context.go('/');
               },
               icon: const Icon(Icons.logout, color: AppTheme.error),
               label: const Text('Log Out', style: TextStyle(color: AppTheme.error)),
@@ -354,54 +359,52 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
               ),
             ),
           ),
-          
 
           if (_isDevMode) ...[
-             const SizedBox(height: 24),
-             _buildSectionHeader('Admin Tools'),
-             
-             // Storage Provider Switch
-             Consumer(builder: (context, ref, child) {
-               final box = ref.watch(settingsBoxProvider);
-               final useDrive = box.get('use_google_drive_storage', defaultValue: false);
-               return SwitchListTile(
-                 title: const Text('Storage Provider: Google Drive'),
-                 subtitle: Text(useDrive ? 'Uploading to Drive (tAIdy_Data)' : 'Uploading to Supabase (Default)'),
-                 activeThumbColor: AppTheme.secondary,
-                 secondary: Icon(useDrive ? Icons.add_to_drive : Icons.cloud_upload_outlined, color: AppTheme.textDim),
-                 value: useDrive,
-                 onChanged: (val) {
-                   box.put('use_google_drive_storage', val);
-                   setState(() {}); // Refresh UI
-                 },
-               );
-             }),
+            const SizedBox(height: 24),
+            _buildSectionHeader('Admin Tools'),
 
-             _buildSettingsTile(
-               context,
-               icon: Icons.backup, 
-               title: 'Archive All Data Now',
-               subtitle: _isUploading ? 'Uploading...' : 'Tap to backup Hive boxes',
-               onTap: _isUploading ? () {} : () async {
-                 setState(() => _isUploading = true);
-                 try {
-                   await googleDriveService.archiveAllData();
-                   if (mounted) {
-                     ScaffoldMessenger.of(context).showSnackBar(
-                       const SnackBar(content: Text('Backup successful! (Clean Scaffold)')),
-                     );
-                   }
-                 } catch (e) {
-                   if (mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                       SnackBar(content: Text('Error: ${googleDriveService.lastError ?? e}')),
-                     );
-                   }
-                 } finally {
-                    if (mounted) setState(() => _isUploading = false);
-                 }
-               },
-             ),
+            Consumer(builder: (context, ref, child) {
+              final box = ref.watch(settingsBoxProvider);
+              final useDrive = box.get('use_google_drive_storage', defaultValue: false);
+              return SwitchListTile(
+                title: const Text('Storage Provider: Google Drive'),
+                subtitle: Text(useDrive ? 'Uploading to Drive (tAIdy_Data)' : 'Uploading to Supabase (Default)'),
+                activeThumbColor: AppTheme.secondary,
+                secondary: Icon(useDrive ? Icons.add_to_drive : Icons.cloud_upload_outlined, color: AppTheme.textDim),
+                value: useDrive,
+                onChanged: (val) {
+                  box.put('use_google_drive_storage', val);
+                  setState(() {});
+                },
+              );
+            }),
+
+            _buildSettingsTile(
+              context,
+              icon: Icons.backup,
+              title: 'Archive All Data Now',
+              subtitle: _isUploading ? 'Uploading...' : 'Tap to backup Hive boxes',
+              onTap: _isUploading ? () {} : () async {
+                setState(() => _isUploading = true);
+                try {
+                  await googleDriveService.archiveAllData();
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Backup successful! (Clean Scaffold)')),
+                    );
+                  }
+                } catch (e) {
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('Error: ${googleDriveService.lastError ?? e}')),
+                    );
+                  }
+                } finally {
+                  if (mounted) setState(() => _isUploading = false);
+                }
+              },
+            ),
           ],
 
           const SizedBox(height: 48),
@@ -450,7 +453,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
       ),
       child: ListTile(
         leading: Icon(
-          icon, 
+          icon,
           color: isDestructive ? AppTheme.error : AppTheme.textDim,
         ),
         title: Text(
@@ -460,96 +463,12 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             fontWeight: FontWeight.w500,
           ),
         ),
-        subtitle: subtitle != null 
-            ? Text(subtitle, style: const TextStyle(color: AppTheme.textDim)) 
+        subtitle: subtitle != null
+            ? Text(subtitle, style: const TextStyle(color: AppTheme.textDim))
             : null,
         trailing: const Icon(Icons.chevron_right, color: AppTheme.textDim, size: 18),
         onTap: onTap,
       ),
-    );
-  }
-}
-
-class _CategoryManagerSheet extends ConsumerWidget {
-  const _CategoryManagerSheet();
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final categories = ref.watch(categoryListProvider);
-    final notifier = ref.read(categoryListProvider.notifier);
-    final textController = TextEditingController();
-
-    return DraggableScrollableSheet(
-      initialChildSize: 0.6,
-      minChildSize: 0.4,
-      maxChildSize: 0.9,
-      builder: (context, scrollController) {
-        return Container(
-          decoration: const BoxDecoration(
-            color: AppTheme.surface,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-          ),
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Manage Categories', 
-                style: Theme.of(context).textTheme.titleLarge?.copyWith(color: AppTheme.textMain)
-              ),
-              const SizedBox(height: 16),
-              
-              // Add Input
-              Row(
-                children: [
-                   Expanded(
-                     child: TextField(
-                       controller: textController,
-                       style: const TextStyle(color: AppTheme.textMain),
-                       decoration: const InputDecoration(
-                         hintText: 'New Category',
-                         hintStyle: TextStyle(color: AppTheme.textDim),
-                         filled: true,
-                         fillColor: Colors.black26,
-                         border: OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(12)), borderSide: BorderSide.none),
-                       ),
-                     ),
-                   ),
-                   const SizedBox(width: 8),
-                   IconButton(
-                     onPressed: () {
-                        notifier.addCategory(textController.text);
-                        textController.clear();
-                     },
-                     icon: const Icon(Icons.add_circle, color: AppTheme.secondary, size: 32),
-                   ),
-                ],
-              ),
-              const SizedBox(height: 16),
-              const Divider(color: Colors.white10),
-
-              // List
-              Expanded(
-                child: ListView.builder(
-                  controller: scrollController,
-                  itemCount: categories.length,
-                  itemBuilder: (context, index) {
-                    final cat = categories[index];
-                    return ListTile(
-                      contentPadding: EdgeInsets.zero,
-                      title: Text(cat, style: const TextStyle(color: AppTheme.textMain)),
-                      trailing: IconButton(
-                        icon: const Icon(Icons.delete_outline, color: AppTheme.error),
-                        onPressed: () => notifier.removeCategory(cat),
-                      ),
-                    );
-                  },
-                ),
-              ),
-            ],
-          ),
-        );
-      },
     );
   }
 }

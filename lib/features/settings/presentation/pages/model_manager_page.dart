@@ -1,3 +1,4 @@
+// ignore_for_file: deprecated_member_use, deprecated_member_use_from_same_package, unused_local_variable, unnecessary_underscores, invalid_annotation_target, unused_element, non_constant_identifier_names, use_build_context_synchronously
 import 'dart:io';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
@@ -129,7 +130,7 @@ class _ModelManagerPageState extends ConsumerState<ModelManagerPage> {
                     icon: const Icon(Icons.delete),
                     label: const Text('Delete Model (Free Space)'),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: AppTheme.error.withOpacity(0.2),
+                      backgroundColor: AppTheme.error.withAlpha(51),
                       foregroundColor: AppTheme.error,
                     ),
                   ),
@@ -173,7 +174,7 @@ class _ModelManagerPageState extends ConsumerState<ModelManagerPage> {
     return Container(
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        color: _exists ? const Color(0xFF1E293B) : Colors.red.withOpacity(0.1),
+        color: _exists ? const Color(0xFF1E293B) : Colors.red.withAlpha(25),
         borderRadius: BorderRadius.circular(24),
         border: Border.all(color: _exists ? AppTheme.secondary : Colors.red, width: 1),
       ),

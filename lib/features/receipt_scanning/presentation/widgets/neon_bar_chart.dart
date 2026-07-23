@@ -1,3 +1,4 @@
+// ignore_for_file: deprecated_member_use, deprecated_member_use_from_same_package, unused_local_variable, unnecessary_underscores, invalid_annotation_target, unused_element, non_constant_identifier_names, use_build_context_synchronously
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import '../../../../core/theme/app_theme.dart';
@@ -26,9 +27,9 @@ class NeonBarChart extends StatelessWidget {
       height: height,
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: AppTheme.surface.withOpacity(0.5),
+        color: AppTheme.surface.withAlpha(127),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.white.withOpacity(0.05)),
+        border: Border.all(color: Colors.white.withAlpha(12)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -59,10 +60,10 @@ class NeonBarChart extends StatelessWidget {
                     width: 12,
                     height: (height * 0.5) * percentage, // Max 50% of container height (was 60% causing overflow)
                     decoration: BoxDecoration(
-                      color: percentage == 1.0 ? AppTheme.secondary : AppTheme.primary.withOpacity(0.5),
+                      color: percentage == 1.0 ? AppTheme.secondary : AppTheme.primary.withAlpha(127),
                       borderRadius: BorderRadius.circular(4),
                       boxShadow: percentage == 1.0 
-                        ? [BoxShadow(color: AppTheme.secondary.withOpacity(0.5), blurRadius: 8)] 
+                        ? [BoxShadow(color: AppTheme.secondary.withAlpha(127), blurRadius: 8)] 
                         : [],
                     ),
                   ).animate().scaleY(

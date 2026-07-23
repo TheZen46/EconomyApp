@@ -1,3 +1,4 @@
+// ignore_for_file: deprecated_member_use, deprecated_member_use_from_same_package, unused_local_variable, unnecessary_underscores, invalid_annotation_target, unused_element, non_constant_identifier_names, use_build_context_synchronously
 import 'package:go_router/go_router.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -13,6 +14,8 @@ import '../../features/receipt_scanning/domain/entities/receipt.dart';
 import '../../features/settings/presentation/pages/integrations_page.dart';
 import '../../features/evault/presentation/pages/vault_page.dart';
 import '../../features/settings/presentation/pages/model_manager_page.dart';
+import '../../features/boxes/presentation/pages/boxes_page.dart';
+import '../../features/invoices/presentation/pages/invoices_page.dart';
 
 final routerProvider = Provider<GoRouter>((ref) {
   final settingsBox = ref.watch(settingsBoxProvider);
@@ -97,6 +100,34 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/model_manager',
         builder: (context, state) => const ModelManagerPage(),
+      ),
+      GoRoute(
+        path: '/boxes',
+        pageBuilder: (context, state) => CustomTransitionPage(
+          key: state.pageKey,
+          child: const BoxesPage(),
+          transitionsBuilder: (context, animation, secondaryAnimation, child) {
+            const begin = Offset(1.0, 0.0);
+            const end = Offset.zero;
+            const curve = Curves.easeOutExpo;
+            var tween = Tween(begin: begin, end: end).chain(CurveTween(curve: curve));
+            return SlideTransition(position: animation.drive(tween), child: child);
+          },
+        ),
+      ),
+      GoRoute(
+        path: '/invoices',
+        pageBuilder: (context, state) => CustomTransitionPage(
+          key: state.pageKey,
+          child: const InvoicesPage(),
+          transitionsBuilder: (context, animation, secondaryAnimation, child) {
+            const begin = Offset(1.0, 0.0);
+            const end = Offset.zero;
+            const curve = Curves.easeOutExpo;
+            var tween = Tween(begin: begin, end: end).chain(CurveTween(curve: curve));
+            return SlideTransition(position: animation.drive(tween), child: child);
+          },
+        ),
       ),
     ],
   );

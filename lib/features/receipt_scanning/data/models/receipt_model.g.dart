@@ -1,3 +1,4 @@
+// ignore_for_file: unused_element
 // GENERATED CODE - DO NOT MODIFY BY HAND
 
 part of 'receipt_model.dart';

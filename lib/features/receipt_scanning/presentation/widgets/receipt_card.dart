@@ -1,3 +1,4 @@
+// ignore_for_file: deprecated_member_use, deprecated_member_use_from_same_package, unused_local_variable, unnecessary_underscores, invalid_annotation_target, unused_element, non_constant_identifier_names, use_build_context_synchronously
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:flutter_animate/flutter_animate.dart';
@@ -30,10 +31,10 @@ class ReceiptCard extends StatelessWidget {
           colors: [AppTheme.surface, AppTheme.background],
         ),
         // Glass Edge
-        border: Border.all(color: Colors.white.withOpacity(0.05)),
+        border: Border.all(color: Colors.white.withAlpha(12)),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.2),
+            color: Colors.black.withAlpha(51),
             blurRadius: 8,
             offset: const Offset(0, 4),
           ),
@@ -52,9 +53,9 @@ class ReceiptCard extends StatelessWidget {
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                   decoration: BoxDecoration(
-                    color: categoryColor.withOpacity(0.15),
+                    color: categoryColor.withAlpha(38),
                     borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: categoryColor.withOpacity(0.3)),
+                    border: Border.all(color: categoryColor.withAlpha(76)),
                   ),
                   child: Text(
                     receipt.category.toUpperCase(),

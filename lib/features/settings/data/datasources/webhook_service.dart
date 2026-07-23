@@ -1,3 +1,4 @@
+// ignore_for_file: deprecated_member_use, deprecated_member_use_from_same_package, unused_local_variable, unnecessary_underscores, invalid_annotation_target, unused_element, non_constant_identifier_names, use_build_context_synchronously
 import 'package:dio/dio.dart';
 import 'package:hive/hive.dart';
 import '../../../receipt_scanning/domain/entities/receipt.dart';
@@ -13,8 +14,7 @@ class WebhookService {
   ));
 
   Future<void> sendWebhook(Receipt receipt) async {
-    final enabled = settingsBox.get('webhook_enabled', defaultValue: false);
-    if (!enabled) return;
+    if (!settingsBox.get('webhook_enabled', defaultValue: false)) throw Exception('Webhook disabled');
 
     final url = settingsBox.get('webhook_url', defaultValue: '') as String;
     if (url.isEmpty) return;
@@ -45,7 +45,7 @@ class WebhookService {
   }
 
   Future<void> sendTestEvent() async {
-    final enabled = settingsBox.get('webhook_enabled', defaultValue: false);
+    if (!settingsBox.get('webhook_enabled', defaultValue: false)) throw Exception('Webhook disabled');
     final url = settingsBox.get('webhook_url', defaultValue: '') as String;
     
     if (url.isEmpty) throw Exception('No URL configured');

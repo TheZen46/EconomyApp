@@ -1,3 +1,4 @@
+// ignore_for_file: deprecated_member_use, deprecated_member_use_from_same_package, unused_local_variable, unnecessary_underscores, invalid_annotation_target, unused_element, non_constant_identifier_names, use_build_context_synchronously
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/theme/app_theme.dart';
@@ -32,7 +33,7 @@ class TaxonomySettingsPage extends ConsumerWidget {
             padding: const EdgeInsets.only(bottom: 12.0),
             child: Container(
               decoration: BoxDecoration(
-                color: AppTheme.surface.withOpacity(0.5),
+                color: AppTheme.surface.withAlpha(127),
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(color: Colors.white10),
               ),
@@ -182,7 +183,7 @@ class _NecessityToggle extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
         decoration: BoxDecoration(
-           color: _getColor(current).withOpacity(0.2),
+           color: _getColor(current).withAlpha(51),
            borderRadius: BorderRadius.circular(12),
            border: Border.all(color: _getColor(current)),
         ),

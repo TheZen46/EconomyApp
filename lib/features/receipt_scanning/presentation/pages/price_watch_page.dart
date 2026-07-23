@@ -1,3 +1,4 @@
+// ignore_for_file: deprecated_member_use, deprecated_member_use_from_same_package, unused_local_variable, unnecessary_underscores, invalid_annotation_target, unused_element, non_constant_identifier_names, use_build_context_synchronously
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -50,7 +51,7 @@ class PriceWatchPage extends ConsumerWidget {
                 decoration: BoxDecoration(
                   color: AppTheme.surface,
                   borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: Colors.white.withOpacity(0.05)),
+                  border: Border.all(color: Colors.white.withAlpha(12)),
                 ),
                 child: Column(
                   children: [
@@ -72,8 +73,8 @@ class PriceWatchPage extends ConsumerWidget {
                           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                           decoration: BoxDecoration(
                             color: isNeutral 
-                                ? Colors.grey.withOpacity(0.1) 
-                                : (isUp ? AppTheme.error.withOpacity(0.1) : Colors.green.withOpacity(0.1)),
+                                ? Colors.grey.withAlpha(25) 
+                                : (isUp ? AppTheme.error.withAlpha(25) : Colors.green.withAlpha(25)),
                             borderRadius: BorderRadius.circular(8),
                           ),
                           child: Row(
