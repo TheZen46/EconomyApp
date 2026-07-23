@@ -218,7 +218,7 @@ class _BoxesPageState extends ConsumerState<BoxesPage> {
                   children: [
                     Text(
                       '${box.currency} ${box.spent.toStringAsFixed(2)}',
-                      style: GoogleFonts.jetbrainsMono(
+                      style: GoogleFonts.jetBrainsMono(
                         color: isDark ? Colors.white : Colors.black,
                         fontWeight: FontWeight.bold,
                         fontSize: 14,
@@ -226,7 +226,7 @@ class _BoxesPageState extends ConsumerState<BoxesPage> {
                     ),
                     Text(
                       box.budget > 0 ? '/ ${box.budget.toStringAsFixed(0)}' : '∞',
-                      style: GoogleFonts.jetbrainsMono(
+                      style: GoogleFonts.jetBrainsMono(
                         color: isDark ? Colors.white54 : Colors.black45,
                         fontSize: 14,
                       ),
@@ -439,7 +439,7 @@ class _BoxesPageState extends ConsumerState<BoxesPage> {
           const SizedBox(height: 4),
           Text(
             value,
-            style: GoogleFonts.jetbrainsMono(
+            style: GoogleFonts.jetBrainsMono(
               color: valueColor ?? (isDark ? Colors.white : Colors.black),
               fontWeight: FontWeight.bold,
               fontSize: 16,
@@ -471,7 +471,7 @@ class _BoxesPageState extends ConsumerState<BoxesPage> {
               getTitlesWidget: (value, meta) {
                 return Text(
                   value.toInt().toString(),
-                  style: GoogleFonts.jetbrainsMono(
+                  style: GoogleFonts.jetBrainsMono(
                     color: isDark ? Colors.white54 : Colors.black54,
                     fontSize: 10,
                   ),
@@ -556,7 +556,7 @@ class _BoxesPageState extends ConsumerState<BoxesPage> {
                 ),
                 Text(
                   '2026-07-2${index + 1}',
-                  style: GoogleFonts.jetbrainsMono(
+                  style: GoogleFonts.jetBrainsMono(
                     color: isDark ? Colors.white54 : Colors.black54,
                     fontSize: 12,
                   ),
@@ -566,7 +566,7 @@ class _BoxesPageState extends ConsumerState<BoxesPage> {
           ),
           Text(
             '\$${(index + 1) * 24.50}',
-            style: GoogleFonts.jetbrainsMono(
+            style: GoogleFonts.jetBrainsMono(
               color: isDark ? Colors.white : Colors.black,
               fontWeight: FontWeight.bold,
               fontSize: 16,

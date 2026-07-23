@@ -68,7 +68,7 @@ class _VaultPageState extends ConsumerState<VaultPage> {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = AppTheme.isDarkMode(context);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final bgColor = isDark ? const Color(0xFF0A0A0A) : const Color(0xFFFAFAFA);
     final cardColor = isDark ? const Color(0xFF141414) : Colors.white;
     final borderColor =

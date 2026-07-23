@@ -175,7 +175,7 @@ class _BoxCreatorSheetState extends ConsumerState<BoxCreatorSheet> {
                   height: 4,
                   margin: const EdgeInsets.only(bottom: 24),
                   decoration: BoxDecoration(
-                    color: isDark ? Colors.white24 : Colors.black24,
+                    color: isDark ? Colors.white24 : Colors.black26,
                     borderRadius: BorderRadius.circular(2),
                   ),
                 ),
@@ -216,7 +216,7 @@ class _BoxCreatorSheetState extends ConsumerState<BoxCreatorSheet> {
                     child: TextFormField(
                       controller: _budgetController,
                       keyboardType: TextInputType.number,
-                      style: GoogleFonts.jetbrainsMono(color: isDark ? Colors.white : Colors.black),
+                      style: GoogleFonts.jetBrainsMono(color: isDark ? Colors.white : Colors.black),
                       decoration: InputDecoration(
                         labelText: 'Budget (0 = Unlimited)',
                         labelStyle: GoogleFonts.spaceGrotesk(color: isDark ? Colors.white54 : Colors.black54),
@@ -236,7 +236,7 @@ class _BoxCreatorSheetState extends ConsumerState<BoxCreatorSheet> {
                     child: DropdownButtonFormField<String>(
                       value: _currency,
                       dropdownColor: isDark ? const Color(0xFF1A1A1A) : Colors.white,
-                      style: GoogleFonts.jetbrainsMono(color: isDark ? Colors.white : Colors.black),
+                      style: GoogleFonts.jetBrainsMono(color: isDark ? Colors.white : Colors.black),
                       decoration: InputDecoration(
                         labelText: 'Currency',
                         labelStyle: GoogleFonts.spaceGrotesk(color: isDark ? Colors.white54 : Colors.black54),
