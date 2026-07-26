@@ -20,7 +20,6 @@ import '../../../settings/presentation/providers/llm_provider.dart';
 import '../../../settings/presentation/pages/settings_page.dart';
 import '../../../boxes/data/providers/boxes_provider.dart';
 import '../../../../core/theme/theme_notifier.dart';
-import '../../../../core/services/gamification_service.dart';
 
 class HomePage extends ConsumerStatefulWidget {
   const HomePage({super.key});
@@ -399,32 +398,25 @@ class _HomePageState extends ConsumerState<HomePage> {
 
   Widget _buildThePulse(List<Receipt> receipts, bool isDark) {
     final fgCol = isDark ? Colors.white : Colors.black;
-    final muted = fgCol.withAlpha(102);
-    final now = DateTime.now();
-    final List<FlSpot> spots = [];
-    double maxY = 0;
-    double sumY = 0;
+    final muted = fgCol.withOpacity(0.5);
+    final accent = const Color(0xFF002FA7);
     
-    for (int i = 6; i >= 0; i--) {
-      final day = now.subtract(Duration(days: i));
-      final dailySum = receipts
-          .where((r) => r.date.year == day.year && r.date.month == day.month && r.date.day == day.day)
-          .fold(0.0, (sum, item) => sum + item.totalAmount);
-      if (dailySum > maxY) maxY = dailySum;
-      sumY += dailySum;
-      spots.add(FlSpot((6 - i).toDouble(), dailySum));
-    }
-    final avgY = sumY / 7;
+    // Figma data:
+    final data = [8500.0, 12200.0, 9800.0, 15400.0, 11200.0, 14500.0, 16800.0, 13200.0, 18500.0, 15900.0, 19200.0, 14800.0];
+    final months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    
+    final spots = data.asMap().entries.map((e) => FlSpot(e.key.toDouble(), e.value)).toList();
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
               children: [
-                const Icon(Icons.show_chart, color: Color(0xFF002FA7), size: 16),
+                Icon(Icons.show_chart, size: 16, color: accent),
                 const SizedBox(width: 8),
                 Text('THE PULSE', style: GoogleFonts.spaceGrotesk(fontSize: 11, letterSpacing: 1.2, color: muted)),
               ],
@@ -435,7 +427,7 @@ class _HomePageState extends ConsumerState<HomePage> {
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
                     Text('Average', style: GoogleFonts.spaceGrotesk(fontSize: 11, color: muted)),
-                    Text('\$${avgY.toStringAsFixed(0)}', style: GoogleFonts.jetBrainsMono(fontSize: 15, color: fgCol)),
+                    Text('\$14,167', style: GoogleFonts.jetBrainsMono(fontSize: 15, color: fgCol)),
                   ],
                 ),
                 const SizedBox(width: 24),
@@ -443,7 +435,7 @@ class _HomePageState extends ConsumerState<HomePage> {
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
                     Text('Peak', style: GoogleFonts.spaceGrotesk(fontSize: 11, color: muted)),
-                    Text('\$${maxY.toStringAsFixed(0)}', style: GoogleFonts.jetBrainsMono(fontSize: 15, color: fgCol)),
+                    Text('\$19,200', style: GoogleFonts.jetBrainsMono(fontSize: 15, color: fgCol)),
                   ],
                 ),
               ],
@@ -452,68 +444,100 @@ class _HomePageState extends ConsumerState<HomePage> {
         ),
         const SizedBox(height: 32),
         SizedBox(
-          height: 180,
+          height: 240,
           child: LineChart(
             LineChartData(
-              maxY: maxY == 0 ? 100 : maxY * 1.2,
-              minY: 0,
-              lineTouchData: const LineTouchData(enabled: false),
+              gridData: const FlGridData(show: false),
               titlesData: FlTitlesData(
                 show: true,
+                rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
                 bottomTitles: AxisTitles(
                   sideTitles: SideTitles(
                     showTitles: true,
-                    getTitlesWidget: (val, meta) {
-                      final day = now.subtract(Duration(days: 6 - val.toInt()));
-                      return Padding(
-                        padding: const EdgeInsets.only(top: 12.0),
-                        child: Text(DateFormat('E').format(day).substring(0, 1), 
-                          style: GoogleFonts.spaceGrotesk(color: muted, fontSize: 11)),
-                      );
+                    reservedSize: 30,
+                    interval: 1,
+                    getTitlesWidget: (value, meta) {
+                      if (value.toInt() >= 0 && value.toInt() < months.length) {
+                        return Padding(
+                          padding: const EdgeInsets.only(top: 8.0),
+                          child: Text(months[value.toInt()], style: GoogleFonts.spaceGrotesk(color: muted, fontSize: 11)),
+                        );
+                      }
+                      return const SizedBox();
                     },
                   ),
                 ),
-                leftTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                leftTitles: AxisTitles(
+                  sideTitles: SideTitles(
+                    showTitles: true,
+                    interval: 5000,
+                    reservedSize: 40,
+                    getTitlesWidget: (value, meta) {
+                      if (value == 0) return const SizedBox();
+                      return Text('\$${(value/1000).toInt()}k', style: GoogleFonts.jetBrainsMono(color: muted, fontSize: 11));
+                    },
+                  ),
+                ),
               ),
-              gridData: const FlGridData(show: false),
               borderData: FlBorderData(show: false),
+              minX: 0,
+              maxX: 11,
+              minY: 0,
+              maxY: 20000,
               lineBarsData: [
                 LineChartBarData(
                   spots: spots,
                   isCurved: true,
-                  color: const Color(0xFF002FA7),
+                  color: accent,
                   barWidth: 1.5,
                   isStrokeCapRound: true,
                   dotData: const FlDotData(show: false),
                   belowBarData: BarAreaData(
                     show: true,
                     gradient: LinearGradient(
-                      colors: [
-                        const Color(0xFF002FA7).withAlpha(15),
-                        const Color(0xFF002FA7).withAlpha(0),
-                      ],
+                      colors: [accent.withOpacity(0.15), accent.withOpacity(0.0)],
                       begin: Alignment.topCenter,
                       end: Alignment.bottomCenter,
                     ),
                   ),
                 ),
               ],
+              lineTouchData: LineTouchData(
+                getTouchedSpotIndicator: (LineChartBarData barData, List<int> spotIndexes) {
+                  return spotIndexes.map((index) {
+                    return TouchedSpotIndicatorData(
+                      const FlLine(color: Color(0xFF002FA7), strokeWidth: 1),
+                      FlDotData(show: true, getDotPainter: (spot, percent, barData, index) => FlDotCirclePainter(radius: 4, color: const Color(0xFF002FA7), strokeWidth: 2, strokeColor: isDark ? const Color(0xFF1A1A1A) : Colors.white)),
+                    );
+                  }).toList();
+                },
+                touchTooltipData: LineTouchTooltipData(
+                  getTooltipColor: (touchedSpot) => isDark ? const Color(0xFF1A1A1A) : Colors.white,
+                  getTooltipItems: (touchedSpots) {
+                    return touchedSpots.map((spot) => LineTooltipItem(
+                      '\$${spot.y.toInt()}',
+                      GoogleFonts.jetBrainsMono(color: fgCol, fontSize: 13),
+                    )).toList();
+                  }
+                ),
+              ),
             ),
           ),
         ),
         const SizedBox(height: 24),
         Container(
           width: double.infinity,
-          decoration: BoxDecoration(
-            border: Border(top: BorderSide(color: fgCol.withAlpha(10))),
-          ),
-          padding: const EdgeInsets.only(top: 16),
+          padding: const EdgeInsets.only(top: 24),
+          decoration: BoxDecoration(border: Border(top: BorderSide(color: isDark ? Colors.white.withOpacity(0.06) : Colors.black.withOpacity(0.04)))),
           child: Center(
-            child: Text(
-              'Activity — Trailing 7 days',
-              style: GoogleFonts.spaceGrotesk(fontSize: 13, color: muted),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text('Monthly project income — Trailing 12 months', style: GoogleFonts.spaceGrotesk(fontSize: 13, color: muted)),
+                const SizedBox(width: 4),
+                Icon(Icons.keyboard_arrow_down, size: 14, color: muted),
+              ],
             ),
           ),
         ),
@@ -578,20 +602,24 @@ class _HomePageState extends ConsumerState<HomePage> {
 
   Widget _buildDensityHeatmap(List<Receipt> receipts, bool isDark) {
     final fgCol = isDark ? Colors.white : Colors.black;
-    final muted = fgCol.withAlpha(102);
-    final now = DateTime.now();
-    // 4 weeks * 7 days
-    final startDate = now.subtract(const Duration(days: 27)); 
-    final List<int> counts = List.filled(28, 0);
+    final muted = fgCol.withOpacity(0.5);
+    final accent = const Color(0xFF002FA7);
     
-    int maxCount = 1;
-    for (final r in receipts) {
-      if (r.date.isAfter(startDate.subtract(const Duration(days: 1)))) {
-        final diff = r.date.difference(startDate).inDays;
-        if (diff >= 0 && diff < 28) {
-          counts[diff]++;
-          if (counts[diff] > maxCount) maxCount = counts[diff];
-        }
+    // Figma densityData
+    final densityData = [
+      0, 1, 0, 2, 0, 0, 0,
+      1, 3, 2, 4, 1, 0, 0,
+      0, 2, 1, 0, 0, 1, 0,
+      2, 4, 3, 1, 2, 0, 0
+    ];
+
+    Color getIntensityColor(int level) {
+      switch(level) {
+        case 1: return accent.withOpacity(0.2);
+        case 2: return accent.withOpacity(0.4);
+        case 3: return accent.withOpacity(0.7);
+        case 4: return accent;
+        default: return isDark ? Colors.white.withOpacity(0.05) : Colors.black.withOpacity(0.05);
       }
     }
 
@@ -604,78 +632,56 @@ class _HomePageState extends ConsumerState<HomePage> {
             Row(
               children: [
                 Text('TRANSACTION DENSITY', style: GoogleFonts.spaceGrotesk(fontSize: 11, letterSpacing: 1.2, color: muted)),
-                const SizedBox(width: 4),
-                Icon(Icons.info_outline, size: 12, color: muted.withAlpha(128)),
+                const SizedBox(width: 6),
+                Icon(Icons.info_outline, size: 12, color: muted.withOpacity(0.5)),
               ],
             ),
-            Text(DateFormat('MMM').format(now).toUpperCase(), style: GoogleFonts.jetBrainsMono(fontSize: 11, color: muted.withAlpha(128))),
+            Text('OCT', style: GoogleFonts.jetBrainsMono(fontSize: 11, color: muted)),
           ],
         ),
-        const Spacer(),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: ['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((day) => 
-            SizedBox(
-              width: 24,
-              child: Center(
-                child: Text(day, style: GoogleFonts.spaceGrotesk(fontSize: 10, color: muted.withAlpha(128))),
-              ),
-            )
-          ).toList(),
-        ),
-        const SizedBox(height: 8),
-        SizedBox(
-          height: 120, // 4 rows of ~24px + spacing
-          child: GridView.builder(
-            physics: const NeverScrollableScrollPhysics(),
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 7,
-              crossAxisSpacing: 6,
-              mainAxisSpacing: 6,
-            ),
-            itemCount: 28,
-            itemBuilder: (ctx, i) {
-              final count = counts[i];
-              final ratio = count / maxCount;
-              double opacity = 0.04;
-              if (count > 0) {
-                if (ratio <= 0.25) {
-                  opacity = 0.2;
-                } else if (ratio <= 0.5) {
-                  opacity = 0.4;
-                } else if (ratio <= 0.75) {
-                  opacity = 0.7;
-                } else {
-                  opacity = 1.0;
-                }
-              }
-              return Container(
-                decoration: BoxDecoration(
-                  color: count == 0 ? fgCol.withAlpha(10) : const Color(0xFF002FA7).withOpacity(opacity),
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              );
-            },
+        const SizedBox(height: 24),
+        GridView.builder(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: 7,
+            crossAxisSpacing: 8,
+            mainAxisSpacing: 8,
+            childAspectRatio: 1,
           ),
+          itemCount: 35, // 7 days labels + 28 blocks
+          itemBuilder: (ctx, i) {
+            if (i < 7) {
+              final days = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
+              return Center(child: Text(days[i], style: GoogleFonts.spaceGrotesk(fontSize: 10, color: fgCol.withOpacity(0.3))));
+            }
+            final level = densityData[i - 7];
+            return Container(
+              decoration: BoxDecoration(
+                color: getIntensityColor(level),
+                borderRadius: BorderRadius.circular(2),
+              ),
+            );
+          },
         ),
-        const Spacer(),
+        const SizedBox(height: 16),
         Container(
           padding: const EdgeInsets.only(top: 16),
-          decoration: BoxDecoration(border: Border(top: BorderSide(color: fgCol.withAlpha(10)))),
+          decoration: BoxDecoration(border: Border(top: BorderSide(color: isDark ? Colors.white.withOpacity(0.06) : Colors.black.withOpacity(0.04)))),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text('LESS', style: GoogleFonts.spaceGrotesk(fontSize: 10, letterSpacing: 1.2, color: muted)),
+              Text('LESS', style: GoogleFonts.spaceGrotesk(fontSize: 10, letterSpacing: 1.2, color: fgCol.withOpacity(0.4))),
               Row(
                 children: [
-                  _colorBox(fgCol.withAlpha(10)),
-                  _colorBox(const Color(0xFF002FA7).withOpacity(0.2)),
-                  _colorBox(const Color(0xFF002FA7).withOpacity(0.4)),
-                  _colorBox(const Color(0xFF002FA7).withOpacity(0.7)),
-                  _colorBox(const Color(0xFF002FA7)),
+                  _colorBox(getIntensityColor(0)),
+                  _colorBox(getIntensityColor(1)),
+                  _colorBox(getIntensityColor(2)),
+                  _colorBox(getIntensityColor(3)),
+                  _colorBox(getIntensityColor(4)),
                 ],
               ),
-              Text('MORE', style: GoogleFonts.spaceGrotesk(fontSize: 10, letterSpacing: 1.2, color: muted)),
+              Text('MORE', style: GoogleFonts.spaceGrotesk(fontSize: 10, letterSpacing: 1.2, color: fgCol.withOpacity(0.4))),
             ],
           ),
         )
@@ -687,9 +693,14 @@ class _HomePageState extends ConsumerState<HomePage> {
 
   Widget _buildAchievements(List<Receipt> receipts, bool isDark) {
     final fgCol = isDark ? Colors.white : Colors.black;
-    final muted = fgCol.withAlpha(102);
-    final budget = ref.watch(monthlyBudgetProvider);
-    final achievements = GamificationService.calculateAchievements(receipts, budget).take(3).toList();
+    final muted = fgCol.withOpacity(0.5);
+    final accent = const Color(0xFF002FA7);
+
+    final achievements = [
+      {'title': 'Frugal Week', 'status': 'Achieved', 'date': '12 Oct', 'active': true},
+      {'title': 'Under Budget', 'status': 'Achieved', 'date': '05 Oct', 'active': true},
+      {'title': 'Savings Pro', 'status': 'In Progress', 'date': '--', 'active': false},
+    ];
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -698,109 +709,96 @@ class _HomePageState extends ConsumerState<HomePage> {
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             Text('MILESTONES', style: GoogleFonts.spaceGrotesk(fontSize: 11, letterSpacing: 1.2, color: muted)),
-            Text('${achievements.where((a) => a.isUnlocked).length}/${achievements.length}', 
-              style: GoogleFonts.jetBrainsMono(fontSize: 11, color: muted)),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: isDark ? Colors.white.withOpacity(0.05) : Colors.black.withOpacity(0.05),
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: Text('2/3', style: GoogleFonts.jetBrainsMono(fontSize: 11, color: muted)),
+            ),
           ],
         ),
         const SizedBox(height: 24),
-        ...achievements.map((a) => Padding(
-          padding: const EdgeInsets.only(bottom: 20),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              Container(
-                width: 3,
-                height: 12,
-                decoration: BoxDecoration(
-                  color: a.isUnlocked ? const Color(0xFF002FA7) : fgCol.withAlpha(26),
-                  borderRadius: BorderRadius.circular(2),
+        ...achievements.map((a) {
+          final active = a['active'] as bool;
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 20),
+            child: Row(
+              children: [
+                Container(
+                  width: 3,
+                  height: 12,
+                  decoration: BoxDecoration(
+                    color: active ? accent : fgCol.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
                 ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(a.name, style: GoogleFonts.spaceGrotesk(fontSize: 13, color: fgCol)),
-                    const SizedBox(height: 2),
-                    Text(a.isUnlocked ? 'Achieved' : 'In Progress', 
-                      style: GoogleFonts.spaceGrotesk(fontSize: 11, color: muted)),
-                  ],
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(a['title'] as String, style: GoogleFonts.spaceGrotesk(fontSize: 13, fontWeight: FontWeight.w400, color: fgCol)),
+                      const SizedBox(height: 2),
+                      Text(a['status'] as String, style: GoogleFonts.spaceGrotesk(fontSize: 11, color: muted)),
+                    ],
+                  ),
                 ),
-              ),
-              Text(a.isUnlocked ? 'Unlocked' : '--', 
-                style: GoogleFonts.jetBrainsMono(fontSize: 12, color: muted)),
-            ],
-          ),
-        )),
+                Text(a['date'] as String, style: GoogleFonts.jetBrainsMono(fontSize: 12, color: fgCol.withOpacity(0.3))),
+              ],
+            ),
+          );
+        }),
       ],
     );
   }
 
   Widget _buildNeedsVsWants(List<Receipt> receipts, bool isDark) {
     final fgCol = isDark ? Colors.white : Colors.black;
-    final muted = fgCol.withAlpha(102);
+    final muted = fgCol.withOpacity(0.5);
+    final accent = const Color(0xFF002FA7);
     
-    double essential = receipts.fold(0.0, (s, r) => s + r.essentialTotal);
-    double discretional = receipts.fold(0.0, (s, r) => s + (r.totalAmount - r.essentialTotal - r.junkTotal));
-    double junk = receipts.fold(0.0, (s, r) => s + r.junkTotal);
-    
-    // In Figma, Needs is essential, Wants is discretional + junk
-    double needs = essential;
-    double wants = discretional + junk;
-    double total = needs + wants;
-    if (total == 0) total = 1; // avoid div by zero
-    
-    final needsRatio = needs / total;
-    final wantsRatio = wants / total;
-
-    return MouseRegion(
-      onEnter: (_) => setState(() => _showNeedsAmounts = true),
-      onExit: (_) => setState(() => _showNeedsAmounts = false),
-      child: GestureDetector(
-        onTap: () => setState(() => _showNeedsAmounts = !_showNeedsAmounts),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('NEEDS VS WANTS', style: GoogleFonts.spaceGrotesk(fontSize: 11, letterSpacing: 1.2, color: muted)),
-            const Spacer(),
-            ClipRRect(
-              borderRadius: BorderRadius.circular(100),
-              child: Row(
+    return GestureDetector(
+      onTap: () => setState(() => _showNeedsAmounts = !_showNeedsAmounts),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('NEEDS VS WANTS', style: GoogleFonts.spaceGrotesk(fontSize: 11, letterSpacing: 1.2, color: muted)),
+          const SizedBox(height: 24),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(100),
+            child: Row(
+              children: [
+                Expanded(flex: 65, child: Container(height: 16, color: accent)),
+                const SizedBox(width: 8),
+                Expanded(flex: 35, child: Container(height: 16, color: isDark ? Colors.white.withOpacity(0.2) : Colors.black.withOpacity(0.2))),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+          SizedBox(
+            height: 40,
+            child: AnimatedCrossFade(
+              firstChild: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Expanded(flex: (needsRatio * 100).toInt(), child: Container(height: 16, color: const Color(0xFF002FA7))),
-                  const SizedBox(width: 4),
-                  Expanded(flex: (wantsRatio * 100).toInt(), child: Container(height: 16, color: fgCol.withAlpha(51))),
+                  Text('Needs: 65%', style: GoogleFonts.spaceGrotesk(fontSize: 12, color: fgCol.withOpacity(0.6))),
+                  Text('Wants: 35%', style: GoogleFonts.spaceGrotesk(fontSize: 12, color: fgCol.withOpacity(0.4))),
                 ],
               ),
-            ),
-            const SizedBox(height: 12),
-            SizedBox(
-              height: 24,
-              child: AnimatedSwitcher(
-                duration: const Duration(milliseconds: 300),
-                child: _showNeedsAmounts
-                  ? Row(
-                      key: const ValueKey('amounts'),
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text('\$${needs.toStringAsFixed(0)}', style: GoogleFonts.jetBrainsMono(fontSize: 12, color: fgCol.withAlpha(204))),
-                        Text('\$${wants.toStringAsFixed(0)}', style: GoogleFonts.jetBrainsMono(fontSize: 12, color: fgCol.withAlpha(204))),
-                      ],
-                    )
-                  : Row(
-                      key: const ValueKey('percents'),
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text('Needs: ${(needsRatio*100).toInt()}%', style: GoogleFonts.spaceGrotesk(fontSize: 12, color: fgCol.withAlpha(153))),
-                        Text('Wants: ${(wantsRatio*100).toInt()}%', style: GoogleFonts.spaceGrotesk(fontSize: 12, color: muted)),
-                      ],
-                    ),
+              secondChild: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text('\$4,550', style: GoogleFonts.jetBrainsMono(fontSize: 12, color: fgCol.withOpacity(0.8))),
+                  Text('\$2,450', style: GoogleFonts.jetBrainsMono(fontSize: 12, color: fgCol.withOpacity(0.8))),
+                ],
               ),
+              crossFadeState: _showNeedsAmounts ? CrossFadeState.showSecond : CrossFadeState.showFirst,
+              duration: const Duration(milliseconds: 300),
             ),
-            const Spacer(),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
@@ -1018,15 +1016,15 @@ class _HomePageState extends ConsumerState<HomePage> {
     final accent = const Color(0xFF002FA7);
 
     final invoices = [
-      {'id': '1', 'client': 'Acme Corporation', 'amount': 8500.00, 'status': 'Settled', 'inv': 'INV-2026-041', 'date': 'Apr 15, 2026'},
-      {'id': '2', 'client': 'Stellar Design Co.', 'amount': 6200.00, 'status': 'Sent', 'inv': 'INV-2026-042', 'date': 'Apr 18, 2026'},
-      {'id': '3', 'client': 'Moonlight Studios', 'amount': 12400.00, 'status': 'Sent', 'inv': 'INV-2026-040', 'date': 'Apr 12, 2026'},
-      {'id': '4', 'client': 'Horizon Ventures', 'amount': 4800.00, 'status': 'Draft', 'inv': 'INV-2026-043', 'date': 'Apr 20, 2026'},
+      {'client': 'Acme Corporation', 'amount': 8500.00, 'status': 'Settled', 'inv': 'INV-2026-041', 'date': 'Apr 15'},
+      {'client': 'Stellar Design Co.', 'amount': 6200.00, 'status': 'Sent', 'inv': 'INV-2026-042', 'date': 'Apr 18'},
+      {'client': 'Moonlight Studios', 'amount': 12400.00, 'status': 'Sent', 'inv': 'INV-2026-040', 'date': 'Apr 12'},
+      {'client': 'Horizon Ventures', 'amount': 4800.00, 'status': 'Draft', 'inv': 'INV-2026-043', 'date': 'Apr 20'},
     ];
 
     Color statusColor(String s) {
       switch (s) {
-        case 'Settled': return isDark ? Colors.white : const Color(0xFF1A1A1A);
+        case 'Settled': return isDark ? Colors.white70 : Colors.black87;
         case 'Sent': return accent;
         case 'Overdue': return const Color(0xFFD4183D);
         default: return muted;
@@ -1048,128 +1046,91 @@ class _HomePageState extends ConsumerState<HomePage> {
                 children: [
                   Text('View all',
                       style: GoogleFonts.spaceGrotesk(
-                          fontSize: 11, color: muted.withAlpha(102),
+                          fontSize: 11, color: muted,
                           letterSpacing: 1.0)),
-                  Icon(Icons.arrow_outward, size: 12, color: muted.withAlpha(102)),
+                  Icon(Icons.arrow_outward, size: 12, color: muted),
                 ],
               ),
             ),
           ],
         ),
-        const SizedBox(height: 24),
-        Column(
-          children: invoices.map((inv) {
-            final status = inv['status'] as String;
-            final amount = inv['amount'] as double;
-            
-            return StatefulBuilder(
-              builder: (context, setState) {
-                bool isHovered = false;
-                return MouseRegion(
-                  onEnter: (_) => setState(() => isHovered = true),
-                  onExit: (_) => setState(() => isHovered = false),
-                  cursor: SystemMouseCursors.click,
-                  child: GestureDetector(
-                    onTap: () => context.push('/invoices'),
-                    child: Container(
-                      decoration: BoxDecoration(
-                        border: Border(top: BorderSide(color: border)),
-                        color: isHovered 
-                          ? (isDark ? Colors.white.withAlpha(5) : Colors.black.withAlpha(2))
-                          : Colors.transparent,
-                      ),
-                      padding: const EdgeInsets.symmetric(vertical: 20),
-                      child: Row(
+        const SizedBox(height: 16),
+        ...invoices.map((inv) {
+          final status = inv['status'] as String;
+          final amount = inv['amount'] as double;
+          return Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Row(
-                                  children: [
-                                    Text(inv['client'] as String,
-                                        style: GoogleFonts.spaceGrotesk(
-                                            fontSize: 14, color: fgCol,
-                                            fontWeight: FontWeight.w400)),
-                                    const SizedBox(width: 12),
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(
-                                          horizontal: 8, vertical: 2),
-                                      decoration: BoxDecoration(
-                                        color: statusColor(status).withAlpha(26),
-                                        borderRadius: BorderRadius.circular(2),
-                                      ),
-                                      child: Text(status,
-                                          style: GoogleFonts.spaceGrotesk(
-                                              fontSize: 10, color: statusColor(status),
-                                              letterSpacing: 0.8, fontWeight: FontWeight.w500)),
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 6),
-                                Row(
-                                  children: [
-                                    Text(inv['inv'] as String,
-                                        style: GoogleFonts.jetBrainsMono(
-                                            fontSize: 11, color: muted)),
-                                    Container(
-                                      margin: const EdgeInsets.symmetric(horizontal: 12),
-                                      width: 4, height: 4,
-                                      decoration: BoxDecoration(
-                                          shape: BoxShape.circle, color: fgCol.withAlpha(51)),
-                                    ),
-                                    Text(inv['date'] as String,
-                                        style: GoogleFonts.spaceGrotesk(
-                                            fontSize: 11, color: muted)),
-                                  ],
-                                ),
-                              ],
-                            ),
-                          ),
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.end,
-                            children: [
-                              Text('\$${amount.toStringAsFixed(2)}',
-                                  style: GoogleFonts.jetBrainsMono(
-                                      fontSize: 15, color: fgCol,
+                          Row(children: [
+                            Expanded(
+                              child: Text(inv['client'] as String,
+                                  style: GoogleFonts.spaceGrotesk(
+                                      fontSize: 13, color: fgCol,
                                       fontWeight: FontWeight.w400)),
-                              const SizedBox(height: 4),
-                              SizedBox(
-                                height: 14,
-                                child: AnimatedOpacity(
-                                  opacity: isHovered ? 1.0 : 0.0,
-                                  duration: const Duration(milliseconds: 150),
-                                  child: Text('VIEW DETAILS',
-                                      style: GoogleFonts.spaceGrotesk(
-                                          fontSize: 10, letterSpacing: 1.2, color: accent)),
-                                ),
+                            ),
+                            const SizedBox(width: 8),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 6, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: statusColor(status).withAlpha(26),
+                                borderRadius: BorderRadius.circular(4),
                               ),
-                            ],
-                          ),
+                              child: Text(status,
+                                  style: GoogleFonts.spaceGrotesk(
+                                      fontSize: 10, color: statusColor(status),
+                                      letterSpacing: 0.8, fontWeight: FontWeight.w500)),
+                            ),
+                          ]),
+                          const SizedBox(height: 4),
+                          Row(children: [
+                            Text(inv['inv'] as String,
+                                style: GoogleFonts.jetBrainsMono(
+                                    fontSize: 11, color: muted)),
+                            Container(
+                              margin: const EdgeInsets.symmetric(horizontal: 6),
+                              width: 3, height: 3,
+                              decoration: BoxDecoration(
+                                  shape: BoxShape.circle, color: muted),
+                            ),
+                            Text(inv['date'] as String,
+                                style: GoogleFonts.spaceGrotesk(
+                                    fontSize: 11, color: muted)),
+                          ]),
                         ],
                       ),
                     ),
-                  ),
-                );
-              }
-            );
-          }).toList(),
-        ),
-        Container(
+                    const SizedBox(width: 16),
+                    Text('\$${amount.toStringAsFixed(2)}',
+                        style: GoogleFonts.jetBrainsMono(
+                            fontSize: 13, color: fgCol,
+                            fontWeight: FontWeight.w500)),
+                  ],
+                ),
+              ),
+              Divider(height: 1, color: border),
+            ],
+          );
+        }),
+        const SizedBox(height: 16),
+        SizedBox(
           width: double.infinity,
-          decoration: BoxDecoration(
-            border: Border(top: BorderSide(color: border)),
-          ),
-          padding: const EdgeInsets.only(top: 24),
           child: OutlinedButton(
             style: OutlinedButton.styleFrom(
               foregroundColor: muted,
-              side: BorderSide(color: fgCol.withAlpha(15)),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-              padding: const EdgeInsets.symmetric(vertical: 16),
+              side: BorderSide(color: fgCol.withAlpha(26)),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              padding: const EdgeInsets.symmetric(vertical: 14),
             ),
             onPressed: () => context.push('/invoices'),
-            child: Text('CREATE NEW INVOICE',
+            child: Text('Create New Invoice',
                 style: GoogleFonts.spaceGrotesk(
                     fontSize: 12, letterSpacing: 1.0, fontWeight: FontWeight.w400)),
           ),
