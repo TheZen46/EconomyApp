@@ -266,98 +266,99 @@ class _HomePageState extends ConsumerState<HomePage> {
     return Container(
       key: ValueKey(item.id),
       margin: const EdgeInsets.only(bottom: 24),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
+      child: Stack(
+        clipBehavior: Clip.none,
         children: [
-          // Drag handle on the left
-          Padding(
-            padding: const EdgeInsets.only(right: 16),
-            child: Icon(Icons.drag_indicator, color: fgCol.withOpacity(0.3)),
+          // Render the actual widget but disable interactions
+          IgnorePointer(
+            child: Container(
+              margin: const EdgeInsets.only(left: 48),
+              foregroundDecoration: BoxDecoration(
+                color: Colors.transparent,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: isDark ? Colors.white.withOpacity(0.1) : Colors.black.withOpacity(0.1), width: 2),
+              ),
+              child: Opacity(
+                opacity: 0.8,
+                child: _buildCardWrapper(
+                  isDark: isDark,
+                  child: _buildWidgetContent(item, receipts, filteredReceipts, isDark),
+                ),
+              ),
+            ),
           ),
-          // Actual widget preview with overlay controls
-          Expanded(
-            child: Stack(
-              clipBehavior: Clip.none,
-              children: [
-                // Render the actual widget but disable interactions
-                IgnorePointer(
-                  child: Container(
-                    foregroundDecoration: BoxDecoration(
-                      color: isDark ? Colors.white.withOpacity(0.05) : Colors.black.withOpacity(0.02),
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    child: _buildCardWrapper(
-                      isDark: isDark,
-                      child: _buildWidgetContent(item, receipts, filteredReceipts, isDark),
-                    ),
-                  ),
-                ),
-                // Overlay controls (Size selector and Remove)
-                Positioned(
-                  top: 12,
-                  right: 12,
-                  child: Row(
-                    children: [
-                      // Size selector [1, 2, 3]
-                      Container(
-                        decoration: BoxDecoration(
-                          color: isDark ? const Color(0xFF1A1A1A) : Colors.white,
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: fgCol.withOpacity(0.1)),
-                          boxShadow: [
-                            BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 4, offset: const Offset(0, 2))
-                          ]
-                        ),
-                        child: Row(
-                          children: [1, 2, 3].map((size) {
-                            final currentSize = _widgetSpans[item.type] ?? 1;
-                            final isSelected = currentSize == size;
-                            return GestureDetector(
-                              onTap: () {
-                                setState(() => _widgetSpans[item.type] = size);
-                              },
-                              child: Container(
-                                width: 32,
-                                height: 32,
-                                decoration: BoxDecoration(
-                                  color: isSelected ? accent : Colors.transparent,
-                                  borderRadius: BorderRadius.circular(6),
-                                ),
-                                alignment: Alignment.center,
-                                child: Text('$size', style: GoogleFonts.spaceGrotesk(
-                                  color: isSelected ? Colors.white : fgCol.withOpacity(0.5),
-                                  fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                                )),
-                              ),
-                            );
-                          }).toList(),
-                        ),
+          // Drag handle on the left
+          Positioned(
+            left: 0,
+            top: 0,
+            bottom: 0,
+            child: Center(
+              child: Padding(
+                padding: const EdgeInsets.all(8.0),
+                child: Icon(Icons.drag_indicator, color: fgCol.withOpacity(0.2)),
+              ),
+            ),
+          ),
+          // Overlay controls (Size selector and Remove)
+          Positioned(
+            top: 8,
+            right: 56,
+            child: Container(
+              decoration: BoxDecoration(
+                color: isDark ? const Color(0xFF1A1A1A) : Colors.white,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: isDark ? Colors.white.withOpacity(0.1) : Colors.black.withOpacity(0.1)),
+                boxShadow: [
+                  BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 10, offset: const Offset(0, 4))
+                ]
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [1, 2, 3].map((size) {
+                  final currentSize = _widgetSpans[item.type] ?? 1;
+                  final isSelected = currentSize == size;
+                  return GestureDetector(
+                    onTap: () {
+                      setState(() => _widgetSpans[item.type] = size);
+                    },
+                    child: Container(
+                      width: 32,
+                      height: 32,
+                      decoration: BoxDecoration(
+                        color: isSelected ? accent : Colors.transparent,
                       ),
-                      const SizedBox(width: 8),
-                      // Remove button
-                      GestureDetector(
-                        onTap: () {
-                          final idx = ref.read(dashboardProvider).indexOf(item);
-                          ref.read(dashboardProvider.notifier).toggleVisibility(idx);
-                        },
-                        child: Container(
-                          width: 32,
-                          height: 32,
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFD4183D),
-                            borderRadius: BorderRadius.circular(8),
-                            boxShadow: [
-                              BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 4, offset: const Offset(0, 2))
-                            ]
-                          ),
-                          alignment: Alignment.center,
-                          child: const Icon(Icons.remove, color: Colors.white, size: 16),
-                        ),
-                      ),
-                    ],
-                  ),
+                      alignment: Alignment.center,
+                      child: Text('$size', style: GoogleFonts.jetBrainsMono(
+                        color: isSelected ? Colors.white : fgCol.withOpacity(0.5),
+                        fontSize: 12,
+                      )),
+                    ),
+                  );
+                }).toList(),
+              ),
+            ),
+          ),
+          Positioned(
+            top: 8,
+            right: 8,
+            child: GestureDetector(
+              onTap: () {
+                final idx = ref.read(dashboardProvider).indexOf(item);
+                ref.read(dashboardProvider.notifier).toggleVisibility(idx);
+              },
+              child: Container(
+                width: 32,
+                height: 32,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFEF4444),
+                  borderRadius: BorderRadius.circular(12),
+                  boxShadow: [
+                    BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 10, offset: const Offset(0, 4))
+                  ]
                 ),
-              ],
+                alignment: Alignment.center,
+                child: const Icon(Icons.remove, color: Colors.white, size: 16),
+              ),
             ),
           ),
         ],
