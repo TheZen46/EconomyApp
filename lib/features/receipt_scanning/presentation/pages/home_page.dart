@@ -75,7 +75,7 @@ class _HomePageState extends ConsumerState<HomePage> {
                   border: InputBorder.none,
                 ),
                 onChanged: (_) => setState(() {}),
-              )
+              ).animate().fadeIn().slideX(begin: 0.05)
             : Text(
                 _isEditMode ? 'Edit Layout' : 'tAIdy',
                 style: GoogleFonts.spaceGrotesk(
@@ -144,7 +144,7 @@ class _HomePageState extends ConsumerState<HomePage> {
               onPressed: () => FocusManager.instance.primaryFocus?.unfocus(),
             ),
           ],
-        ],
+        ].animate(interval: 30.ms).fadeIn(duration: 200.ms).slideY(begin: 0.1, duration: 200.ms),
       ),
       body: receiptListAsync.when(
         data: (receipts) => _buildBody(context, receipts, dashboardItems, isDark),
@@ -367,15 +367,7 @@ class _HomePageState extends ConsumerState<HomePage> {
   }
 
   Widget _buildCardWrapper({required Widget child, required bool isDark}) {
-    return Container(
-      padding: const EdgeInsets.all(24),
-      decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF0F0F0F) : Colors.white,
-        border: Border.all(color: isDark ? Colors.white.withOpacity(0.06) : Colors.black.withOpacity(0.04)),
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: child,
-    );
+    return HoverCardWrapper(isDark: isDark, child: child);
   }
 
   Widget _buildWidgetContent(DashboardItem item, List<Receipt> receipts, List<Receipt> filteredReceipts, bool isDark) {
@@ -422,28 +414,37 @@ class _HomePageState extends ConsumerState<HomePage> {
           style: GoogleFonts.spaceGrotesk(fontSize: 11, letterSpacing: 1.2, color: fgCol.withOpacity(0.5)),
         ),
         const SizedBox(height: 16),
-        Text(
-          runwayMonths > 99 ? '∞' : runwayMonths.toStringAsFixed(1),
-          style: GoogleFonts.jetBrainsMono(fontSize: 48, fontWeight: FontWeight.bold, color: fgCol),
+        TweenAnimationBuilder<double>(
+          tween: Tween<double>(begin: 0, end: runwayMonths),
+          duration: 1.seconds,
+          curve: Curves.easeOut,
+          builder: (context, val, child) {
+            return Text(
+              val > 99 ? '∞' : val.toStringAsFixed(1),
+              style: GoogleFonts.jetBrainsMono(fontSize: 48, fontWeight: FontWeight.bold, color: fgCol),
+            );
+          },
         ),
         const SizedBox(height: 24),
         _hoverRow('Calculated Monthly Burn', '\$${monthlyBurn.toStringAsFixed(2)}', fgCol),
         const SizedBox(height: 8),
         _hoverRow('Avg Spend / Day', '\$${(monthlyBurn / now.day).toStringAsFixed(2)}', fgCol),
         const SizedBox(height: 24),
-        SizedBox(
-          width: double.infinity,
-          child: OutlinedButton(
-            style: OutlinedButton.styleFrom(
-              foregroundColor: fgCol,
-              side: BorderSide(color: fgCol.withOpacity(0.2)),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-              padding: const EdgeInsets.symmetric(vertical: 16),
+        InteractiveHover(
+          child: SizedBox(
+            width: double.infinity,
+            child: OutlinedButton(
+              style: OutlinedButton.styleFrom(
+                foregroundColor: fgCol,
+                side: BorderSide(color: fgCol.withOpacity(0.2)),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                padding: const EdgeInsets.symmetric(vertical: 16),
+              ),
+              onPressed: () {
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Generating forecast...')));
+              },
+              child: Text('Generate Forecast', style: GoogleFonts.spaceGrotesk(fontWeight: FontWeight.w600)),
             ),
-            onPressed: () {
-              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Generating forecast...')));
-            },
-            child: Text('Generate Forecast', style: GoogleFonts.spaceGrotesk(fontWeight: FontWeight.w600)),
           ),
         )
       ],
@@ -502,7 +503,7 @@ class _HomePageState extends ConsumerState<HomePage> {
                     Text('\$19,200', style: GoogleFonts.jetBrainsMono(fontSize: 15, color: fgCol)),
                   ],
                 ),
-              ],
+              ].animate(interval: 100.ms).fadeIn().slideY(begin: 0.1),
             ),
           ],
         ),
@@ -720,10 +721,19 @@ class _HomePageState extends ConsumerState<HomePage> {
               return Center(child: Text(days[i], style: GoogleFonts.spaceGrotesk(fontSize: 10, color: fgCol.withOpacity(0.3))));
             }
             final level = densityData[i - 7];
-            return Container(
-              decoration: BoxDecoration(
-                color: getIntensityColor(level),
-                borderRadius: BorderRadius.circular(2),
+            return Tooltip(
+              message: 'Oct ${i - 6}: ${['0', '2', '5', '12', '24'][level]}',
+              textStyle: GoogleFonts.spaceGrotesk(fontSize: 10, color: isDark ? Colors.black : Colors.white, fontWeight: FontWeight.bold),
+              decoration: BoxDecoration(color: isDark ? Colors.white : Colors.black, borderRadius: BorderRadius.circular(8)),
+              verticalOffset: 16,
+              preferBelow: false,
+              child: InteractiveHover(
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: getIntensityColor(level),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
               ),
             );
           },
@@ -823,7 +833,7 @@ class _HomePageState extends ConsumerState<HomePage> {
     final muted = fgCol.withOpacity(0.5);
     final accent = const Color(0xFF002FA7);
     
-    return GestureDetector(
+    return InteractiveHover(
       onTap: () => setState(() => _showNeedsAmounts = !_showNeedsAmounts),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -978,13 +988,23 @@ class _HomePageState extends ConsumerState<HomePage> {
                 ],
               ),
             ),
-            FloatingActionButton(
-              onPressed: () => context.push('/scan'),
-              backgroundColor: accent,
-              elevation: 0,
-              shape: const CircleBorder(),
-              child: const Icon(Icons.camera_alt, color: Colors.white, size: 28),
-            ).animate().scale(delay: 500.ms, curve: Curves.elasticOut),
+            InteractiveHover(
+              onTap: () => context.push('/scan'),
+              child: Container(
+                width: 80,
+                height: 80,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: accent,
+                  boxShadow: [
+                    BoxShadow(color: accent.withOpacity(0.3), blurRadius: 20, offset: const Offset(0, 8)),
+                  ],
+                ),
+                child: const Center(
+                  child: Icon(Icons.camera_alt, color: Colors.white, size: 32),
+                ),
+              ).animate().scale(delay: 500.ms, curve: Curves.elasticOut),
+            ),
             const SizedBox(width: 120), // Spacer for balance
           ],
         ),
@@ -1271,5 +1291,82 @@ class _HomePageState extends ConsumerState<HomePage> {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No receipts to export')));
       }
     });
+  }
+}
+
+class HoverCardWrapper extends StatefulWidget {
+  final Widget child;
+  final bool isDark;
+  const HoverCardWrapper({super.key, required this.child, required this.isDark});
+
+  @override
+  State<HoverCardWrapper> createState() => _HoverCardWrapperState();
+}
+
+class _HoverCardWrapperState extends State<HoverCardWrapper> {
+  bool _isHovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      onEnter: (_) => setState(() => _isHovered = true),
+      onExit: (_) => setState(() => _isHovered = false),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.all(24),
+        decoration: BoxDecoration(
+          color: widget.isDark ? const Color(0xFF0F0F0F) : Colors.white,
+          border: Border.all(
+            color: _isHovered 
+              ? (widget.isDark ? Colors.white.withOpacity(0.15) : Colors.black.withOpacity(0.15))
+              : (widget.isDark ? Colors.white.withOpacity(0.06) : Colors.black.withOpacity(0.04)),
+            width: _isHovered ? 2 : 1,
+          ),
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: _isHovered ? [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.1),
+              blurRadius: 20,
+              offset: const Offset(0, 10),
+            )
+          ] : [],
+        ),
+        child: widget.child,
+      ),
+    );
+  }
+}
+
+class InteractiveHover extends StatefulWidget {
+  final Widget child;
+  final VoidCallback? onTap;
+  const InteractiveHover({super.key, required this.child, this.onTap});
+  
+  @override
+  State<InteractiveHover> createState() => _InteractiveHoverState();
+}
+
+class _InteractiveHoverState extends State<InteractiveHover> {
+  bool _isHovered = false;
+  bool _isPressed = false;
+  
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      onEnter: (_) => setState(() => _isHovered = true),
+      onExit: (_) => setState(() => _isHovered = false),
+      child: GestureDetector(
+        onTapDown: (_) => setState(() => _isPressed = true),
+        onTapUp: (_) => setState(() => _isPressed = false),
+        onTapCancel: () => setState(() => _isPressed = false),
+        onTap: widget.onTap,
+        child: AnimatedScale(
+          scale: _isPressed ? 0.95 : (_isHovered ? 1.05 : 1.0),
+          duration: const Duration(milliseconds: 150),
+          curve: Curves.easeOut,
+          child: widget.child,
+        ),
+      ),
+    );
   }
 }
