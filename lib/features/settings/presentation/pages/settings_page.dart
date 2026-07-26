@@ -5,7 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../core/theme/theme_notifier.dart';
 import '../../../receipt_scanning/presentation/providers/receipt_provider.dart';
-import '../../../receipt_scanning/presentation/providers/category_provider.dart';
+
 import '../../../../core/services/google_drive_service.dart';
 
 class SettingsPage extends ConsumerStatefulWidget {

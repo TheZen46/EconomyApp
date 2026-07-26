@@ -8,7 +8,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'dart:io';
 
-import '../../../../core/theme/app_theme.dart';
+
 import '../../domain/entities/receipt.dart';
 import '../providers/receipt_provider.dart';
 import '../widgets/receipt_item_row.dart';
