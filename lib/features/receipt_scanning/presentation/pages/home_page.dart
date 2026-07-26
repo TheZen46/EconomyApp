@@ -19,6 +19,8 @@ import '../../data/models/dashboard_config.dart';
 import '../../../settings/presentation/providers/llm_provider.dart';
 import '../../../settings/presentation/pages/settings_page.dart';
 import '../../../boxes/data/providers/boxes_provider.dart';
+import '../../../boxes/data/models/box_model.dart';
+import '../../../invoices/data/providers/invoices_provider.dart';
 import '../../../../core/theme/theme_notifier.dart';
 
 class HomePage extends ConsumerStatefulWidget {
@@ -164,10 +166,15 @@ class _HomePageState extends ConsumerState<HomePage> {
       return matchCat && matchSearch;
     }).toList();
 
-    // In Edit mode, show ReorderableListView with Hidden items section
+    // Inject Boxes widget if it's completely missing from config (as fallback)
+    final allItems = List<DashboardItem>.from(dashboardItems);
+    if (!allItems.any((i) => i.type == DashboardWidgetType.monthlyBudget)) {
+      allItems.insert(0, DashboardItem(id: 'boxes', type: DashboardWidgetType.monthlyBudget, title: 'Boxes', isVisible: true));
+    }
+
     if (_isEditMode) {
-      final visibleItems = dashboardItems.where((i) => i.isVisible).toList();
-      final hiddenItems = dashboardItems.where((i) => !i.isVisible).toList();
+      final visibleItems = allItems.where((i) => i.isVisible).toList();
+      final hiddenItems = allItems.where((i) => !i.isVisible).toList();
 
       return Column(
         children: [
@@ -219,12 +226,7 @@ class _HomePageState extends ConsumerState<HomePage> {
     }
 
     // Normal mode: Grid via Wrap
-    final visibleItems = dashboardItems.where((i) => i.isVisible).toList();
-    
-    // Inject Boxes widget if it's completely missing from config (as fallback)
-    if (!dashboardItems.any((i) => i.type == DashboardWidgetType.monthlyBudget)) {
-      visibleItems.insert(0, DashboardItem(id: 'boxes', type: DashboardWidgetType.monthlyBudget, title: 'Boxes', isVisible: true));
-    }
+    final visibleItems = allItems.where((i) => i.isVisible).toList();
 
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -401,7 +403,6 @@ class _HomePageState extends ConsumerState<HomePage> {
         
     final boxes = ref.watch(boxesProvider);
     double totalBalance = boxes.fold(0.0, (sum, b) => sum + (b.budget - b.spent));
-    if (totalBalance <= 0) totalBalance = 15000.0; // Mock fallback
     
     final runwayMonths = monthlyBurn > 0 ? (totalBalance / monthlyBurn) : 0.0;
     final fgCol = isDark ? Colors.white : Colors.black;
@@ -420,7 +421,7 @@ class _HomePageState extends ConsumerState<HomePage> {
           curve: Curves.easeOut,
           builder: (context, val, child) {
             return Text(
-              val > 99 ? '∞' : val.toStringAsFixed(1),
+              monthlyBurn <= 0 ? '--' : val.toStringAsFixed(1),
               style: GoogleFonts.jetBrainsMono(fontSize: 48, fontWeight: FontWeight.bold, color: fgCol),
             );
           },
@@ -466,11 +467,23 @@ class _HomePageState extends ConsumerState<HomePage> {
     final muted = fgCol.withOpacity(0.5);
     final accent = const Color(0xFF002FA7);
     
-    // Figma data:
-    final data = [8500.0, 12200.0, 9800.0, 15400.0, 11200.0, 14500.0, 16800.0, 13200.0, 18500.0, 15900.0, 19200.0, 14800.0];
-    final months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    // Real data: trailing 12 months
+    final now = DateTime.now();
+    final List<double> data = List.filled(12, 0.0);
+    final List<String> months = List.filled(12, '');
+    
+    for (int i = 0; i < 12; i++) {
+      final targetDate = DateTime(now.year, now.month - 11 + i);
+      final monthReceipts = receipts.where((r) => r.date.year == targetDate.year && r.date.month == targetDate.month);
+      data[i] = monthReceipts.fold(0.0, (sum, r) => sum + r.totalAmount);
+      months[i] = DateFormat('MMM').format(targetDate);
+    }
     
     final spots = data.asMap().entries.map((e) => FlSpot(e.key.toDouble(), e.value)).toList();
+    final average = data.isNotEmpty ? (data.reduce((a, b) => a + b) / 12) : 0.0;
+    final peak = data.isNotEmpty ? data.reduce((a, b) => a > b ? a : b) : 0.0;
+    final maxY = peak == 0 ? 1000.0 : peak * 1.2;
+    final yInterval = maxY / 5 > 0 ? maxY / 5 : 1000.0;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -492,7 +505,7 @@ class _HomePageState extends ConsumerState<HomePage> {
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
                     Text('Average', style: GoogleFonts.spaceGrotesk(fontSize: 11, color: muted)),
-                    Text('\$14,167', style: GoogleFonts.jetBrainsMono(fontSize: 15, color: fgCol)),
+                    Text('\$${average.toStringAsFixed(0)}', style: GoogleFonts.jetBrainsMono(fontSize: 15, color: fgCol)),
                   ],
                 ),
                 const SizedBox(width: 24),
@@ -500,7 +513,7 @@ class _HomePageState extends ConsumerState<HomePage> {
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
                     Text('Peak', style: GoogleFonts.spaceGrotesk(fontSize: 11, color: muted)),
-                    Text('\$19,200', style: GoogleFonts.jetBrainsMono(fontSize: 15, color: fgCol)),
+                    Text('\$${peak.toStringAsFixed(0)}', style: GoogleFonts.jetBrainsMono(fontSize: 15, color: fgCol)),
                   ],
                 ),
               ].animate(interval: 100.ms).fadeIn().slideY(begin: 0.1),
@@ -536,11 +549,12 @@ class _HomePageState extends ConsumerState<HomePage> {
                 leftTitles: AxisTitles(
                   sideTitles: SideTitles(
                     showTitles: true,
-                    interval: 5000,
+                    interval: yInterval,
                     reservedSize: 40,
                     getTitlesWidget: (value, meta) {
                       if (value == 0) return const SizedBox();
-                      return Text('\$${(value/1000).toInt()}k', style: GoogleFonts.jetBrainsMono(color: muted, fontSize: 11));
+                      if (value >= 1000) return Text('\$${(value/1000).toStringAsFixed(0)}k', style: GoogleFonts.jetBrainsMono(color: muted, fontSize: 11));
+                      return Text('\$${value.toStringAsFixed(0)}', style: GoogleFonts.jetBrainsMono(color: muted, fontSize: 11));
                     },
                   ),
                 ),
@@ -549,7 +563,7 @@ class _HomePageState extends ConsumerState<HomePage> {
               minX: 0,
               maxX: 11,
               minY: 0,
-              maxY: 20000,
+              maxY: maxY,
               lineBarsData: [
                 LineChartBarData(
                   spots: spots,
@@ -622,7 +636,7 @@ class _HomePageState extends ConsumerState<HomePage> {
     if (activeId == 'main') {
       spent = receipts.fold(0.0, (sum, r) => sum + r.totalAmount);
     } else {
-      final box = boxes.firstWhere((b) => b.id == activeId, orElse: () => boxes.first);
+      final box = boxes.firstWhere((b) => b.id == activeId, orElse: () => boxes.isNotEmpty ? boxes.first : BoxModel(id: 'main', name: 'Main', budget: 0, spent: 0, currency: 'USD', color: 0));
       boxName = box.name;
       spent = box.spent;
       budget = box.budget;
@@ -670,13 +684,18 @@ class _HomePageState extends ConsumerState<HomePage> {
     final muted = fgCol.withOpacity(0.5);
     final accent = const Color(0xFF002FA7);
     
-    // Figma densityData
-    final densityData = [
-      0, 1, 0, 2, 0, 0, 0,
-      1, 3, 2, 4, 1, 0, 0,
-      0, 2, 1, 0, 0, 1, 0,
-      2, 4, 3, 1, 2, 0, 0
-    ];
+    // Calculate trailing 28 days
+    final now = DateTime.now();
+    final densityData = List.filled(28, 0);
+    for (int i = 0; i < 28; i++) {
+      final targetDate = now.subtract(Duration(days: 27 - i));
+      final count = receipts.where((r) => r.date.year == targetDate.year && r.date.month == targetDate.month && r.date.day == targetDate.day).length;
+      if (count == 0) densityData[i] = 0;
+      else if (count <= 1) densityData[i] = 1;
+      else if (count <= 3) densityData[i] = 2;
+      else if (count <= 5) densityData[i] = 3;
+      else densityData[i] = 4;
+    }
 
     Color getIntensityColor(int level) {
       switch(level) {
@@ -701,7 +720,7 @@ class _HomePageState extends ConsumerState<HomePage> {
                 Icon(Icons.info_outline, size: 12, color: muted.withOpacity(0.5)),
               ],
             ),
-            Text('OCT', style: GoogleFonts.jetBrainsMono(fontSize: 11, color: muted)),
+            Text('28 DAYS', style: GoogleFonts.jetBrainsMono(fontSize: 11, color: muted)),
           ],
         ),
         const SizedBox(height: 24),
@@ -722,7 +741,7 @@ class _HomePageState extends ConsumerState<HomePage> {
             }
             final level = densityData[i - 7];
             return Tooltip(
-              message: 'Oct ${i - 6}: ${['0', '2', '5', '12', '24'][level]}',
+              message: 'Day ${i - 6}: ${['0', '2', '5', '12', '24'][level]}',
               textStyle: GoogleFonts.spaceGrotesk(fontSize: 10, color: isDark ? Colors.black : Colors.white, fontWeight: FontWeight.bold),
               decoration: BoxDecoration(color: isDark ? Colors.white : Colors.black, borderRadius: BorderRadius.circular(8)),
               verticalOffset: 16,
@@ -770,11 +789,25 @@ class _HomePageState extends ConsumerState<HomePage> {
     final muted = fgCol.withOpacity(0.5);
     final accent = const Color(0xFF002FA7);
 
+    final now = DateTime.now();
+    final monthlyBurn = receipts.where((r) => r.date.year == now.year && r.date.month == now.month).fold(0.0, (sum, r) => sum + r.totalAmount);
+    final boxes = ref.watch(boxesProvider);
+    final activeId = ref.watch(activeBoxIdProvider);
+    final activeBox = activeId == 'main' || boxes.isEmpty ? (boxes.isNotEmpty ? boxes.first : BoxModel(id: 'main', name: 'Main', budget: 0, spent: 0, currency: 'USD', color: 0)) : boxes.firstWhere((b) => b.id == activeId, orElse: () => boxes.isNotEmpty ? boxes.first : BoxModel(id: 'main', name: 'Main', budget: 0, spent: 0, currency: 'USD', color: 0));
+    
+    final ytdTotal = receipts.fold(0.0, (sum, r) => sum + r.totalAmount);
+    final stashed = ytdTotal * 0.22;
+
+    final hasReceipts = receipts.isNotEmpty;
+    final isUnderBudget = (monthlyBurn < activeBox.budget) && (activeBox.budget > 0);
+    final hasStash = stashed > 0;
+
     final achievements = [
-      {'title': 'Frugal Week', 'status': 'Achieved', 'date': '12 Oct', 'active': true},
-      {'title': 'Under Budget', 'status': 'Achieved', 'date': '05 Oct', 'active': true},
-      {'title': 'Savings Pro', 'status': 'In Progress', 'date': '--', 'active': false},
+      {'title': 'First Scan', 'status': hasReceipts ? 'Achieved' : 'Pending', 'date': hasReceipts ? DateFormat('dd MMM').format(receipts.last.date) : '--', 'active': hasReceipts},
+      {'title': 'Under Budget', 'status': isUnderBudget ? 'Achieved' : 'In Progress', 'date': isUnderBudget ? DateFormat('MMM yyyy').format(now) : '--', 'active': isUnderBudget},
+      {'title': 'Tax Prep Started', 'status': hasStash ? 'Achieved' : 'Pending', 'date': hasStash ? DateFormat('dd MMM').format(now) : '--', 'active': hasStash},
     ];
+    final achievedCount = achievements.where((a) => a['active'] == true).length;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -789,7 +822,7 @@ class _HomePageState extends ConsumerState<HomePage> {
                 color: isDark ? Colors.white.withOpacity(0.05) : Colors.black.withOpacity(0.05),
                 borderRadius: BorderRadius.circular(4),
               ),
-              child: Text('2/3', style: GoogleFonts.jetBrainsMono(fontSize: 11, color: muted)),
+              child: Text('$achievedCount/3', style: GoogleFonts.jetBrainsMono(fontSize: 11, color: muted)),
             ),
           ],
         ),
@@ -833,6 +866,20 @@ class _HomePageState extends ConsumerState<HomePage> {
     final muted = fgCol.withOpacity(0.5);
     final accent = const Color(0xFF002FA7);
     
+    // Calculate Needs vs Wants
+    final needsTotal = receipts.fold(0.0, (sum, r) => sum + r.essentialTotal);
+    final wantsTotal = receipts.fold(0.0, (sum, r) => sum + (r.totalAmount - r.essentialTotal));
+    final total = needsTotal + wantsTotal;
+    
+    final needsPercent = total > 0 ? (needsTotal / total * 100).round() : 0;
+    final wantsPercent = total > 0 ? (wantsTotal / total * 100).round() : 0;
+    
+    final needsFlex = total > 0 ? (needsTotal / total * 100).round() : 50;
+    final wantsFlex = total > 0 ? (wantsTotal / total * 100).round() : 50;
+    
+    final int safeNeedsFlex = needsFlex > 0 ? needsFlex : 1;
+    final int safeWantsFlex = wantsFlex > 0 ? wantsFlex : 1;
+    
     return InteractiveHover(
       onTap: () => setState(() => _showNeedsAmounts = !_showNeedsAmounts),
       child: Column(
@@ -844,9 +891,9 @@ class _HomePageState extends ConsumerState<HomePage> {
             borderRadius: BorderRadius.circular(100),
             child: Row(
               children: [
-                Expanded(flex: 65, child: Container(height: 16, color: accent)),
-                const SizedBox(width: 8),
-                Expanded(flex: 35, child: Container(height: 16, color: isDark ? Colors.white.withOpacity(0.2) : Colors.black.withOpacity(0.2))),
+                if (needsFlex > 0) Expanded(flex: safeNeedsFlex, child: Container(height: 16, color: accent)),
+                if (needsFlex > 0 && wantsFlex > 0) const SizedBox(width: 8),
+                if (wantsFlex > 0) Expanded(flex: safeWantsFlex, child: Container(height: 16, color: isDark ? Colors.white.withOpacity(0.2) : Colors.black.withOpacity(0.2))),
               ],
             ),
           ),
@@ -857,15 +904,15 @@ class _HomePageState extends ConsumerState<HomePage> {
               firstChild: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text('Needs: 65%', style: GoogleFonts.spaceGrotesk(fontSize: 12, color: fgCol.withOpacity(0.6))),
-                  Text('Wants: 35%', style: GoogleFonts.spaceGrotesk(fontSize: 12, color: fgCol.withOpacity(0.4))),
+                  Text('Needs: $needsPercent%', style: GoogleFonts.spaceGrotesk(fontSize: 12, color: fgCol.withOpacity(0.6))),
+                  Text('Wants: $wantsPercent%', style: GoogleFonts.spaceGrotesk(fontSize: 12, color: fgCol.withOpacity(0.4))),
                 ],
               ),
               secondChild: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text('\$4,550', style: GoogleFonts.jetBrainsMono(fontSize: 12, color: fgCol.withOpacity(0.8))),
-                  Text('\$2,450', style: GoogleFonts.jetBrainsMono(fontSize: 12, color: fgCol.withOpacity(0.8))),
+                  Text('\$${needsTotal.toStringAsFixed(0)}', style: GoogleFonts.jetBrainsMono(fontSize: 12, color: fgCol.withOpacity(0.8))),
+                  Text('\$${wantsTotal.toStringAsFixed(0)}', style: GoogleFonts.jetBrainsMono(fontSize: 12, color: fgCol.withOpacity(0.8))),
                 ],
               ),
               crossFadeState: _showNeedsAmounts ? CrossFadeState.showSecond : CrossFadeState.showFirst,
@@ -1099,18 +1146,13 @@ class _HomePageState extends ConsumerState<HomePage> {
     final border = isDark ? Colors.white.withAlpha(15) : Colors.black.withAlpha(10);
     final accent = const Color(0xFF002FA7);
 
-    final invoices = [
-      {'client': 'Acme Corporation', 'amount': 8500.00, 'status': 'Settled', 'inv': 'INV-2026-041', 'date': 'Apr 15'},
-      {'client': 'Stellar Design Co.', 'amount': 6200.00, 'status': 'Sent', 'inv': 'INV-2026-042', 'date': 'Apr 18'},
-      {'client': 'Moonlight Studios', 'amount': 12400.00, 'status': 'Sent', 'inv': 'INV-2026-040', 'date': 'Apr 12'},
-      {'client': 'Horizon Ventures', 'amount': 4800.00, 'status': 'Draft', 'inv': 'INV-2026-043', 'date': 'Apr 20'},
-    ];
+    final invoices = ref.watch(invoicesProvider).take(4).toList();
 
     Color statusColor(String s) {
-      switch (s) {
-        case 'Settled': return isDark ? Colors.white70 : Colors.black87;
-        case 'Sent': return accent;
-        case 'Overdue': return const Color(0xFFD4183D);
+      switch (s.toLowerCase()) {
+        case 'settled': return isDark ? Colors.white70 : Colors.black87;
+        case 'sent': return accent;
+        case 'overdue': return const Color(0xFFD4183D);
         default: return muted;
       }
     }
@@ -1139,70 +1181,84 @@ class _HomePageState extends ConsumerState<HomePage> {
           ],
         ),
         const SizedBox(height: 16),
-        ...invoices.map((inv) {
-          final status = inv['status'] as String;
-          final amount = inv['amount'] as double;
-          return Column(
-            children: [
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 12),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(children: [
-                            Expanded(
-                              child: Text(inv['client'] as String,
-                                  style: GoogleFonts.spaceGrotesk(
-                                      fontSize: 13, color: fgCol,
-                                      fontWeight: FontWeight.w400)),
-                            ),
-                            const SizedBox(width: 8),
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 6, vertical: 2),
-                              decoration: BoxDecoration(
-                                color: statusColor(status).withAlpha(26),
-                                borderRadius: BorderRadius.circular(4),
-                              ),
-                              child: Text(status,
-                                  style: GoogleFonts.spaceGrotesk(
-                                      fontSize: 10, color: statusColor(status),
-                                      letterSpacing: 0.8, fontWeight: FontWeight.w500)),
-                            ),
-                          ]),
-                          const SizedBox(height: 4),
-                          Row(children: [
-                            Text(inv['inv'] as String,
-                                style: GoogleFonts.jetBrainsMono(
-                                    fontSize: 11, color: muted)),
-                            Container(
-                              margin: const EdgeInsets.symmetric(horizontal: 6),
-                              width: 3, height: 3,
-                              decoration: BoxDecoration(
-                                  shape: BoxShape.circle, color: muted),
-                            ),
-                            Text(inv['date'] as String,
-                                style: GoogleFonts.spaceGrotesk(
-                                    fontSize: 11, color: muted)),
-                          ]),
-                        ],
+        if (invoices.isEmpty)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 24),
+            child: Center(
+              child: Text('No active invoices', style: GoogleFonts.spaceGrotesk(color: muted)),
+            ),
+          )
+        else
+          ...invoices.map((inv) {
+            final statusStr = inv.status;
+            final status = statusStr.substring(0, 1).toUpperCase() + statusStr.substring(1);
+            final amount = inv.amount;
+            return Column(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 3, height: 16,
+                        decoration: BoxDecoration(color: statusColor(status), borderRadius: BorderRadius.circular(2)),
                       ),
-                    ),
-                    const SizedBox(width: 16),
-                    Text('\$${amount.toStringAsFixed(2)}',
-                        style: GoogleFonts.jetBrainsMono(
-                            fontSize: 13, color: fgCol,
-                            fontWeight: FontWeight.w500)),
-                  ],
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(children: [
+                              Expanded(
+                                child: Text(inv.clientName,
+                                    style: GoogleFonts.spaceGrotesk(
+                                        fontSize: 13, color: fgCol,
+                                        fontWeight: FontWeight.w400)),
+                              ),
+                              const SizedBox(width: 8),
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 6, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: statusColor(status).withAlpha(26),
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                                child: Text(status,
+                                    style: GoogleFonts.spaceGrotesk(
+                                        fontSize: 10, color: statusColor(status),
+                                        letterSpacing: 0.8, fontWeight: FontWeight.w500)),
+                              ),
+                            ]),
+                            const SizedBox(height: 4),
+                            Row(children: [
+                              Text(inv.invoiceNumber,
+                                  style: GoogleFonts.jetBrainsMono(
+                                      fontSize: 11, color: muted)),
+                              Container(
+                                margin: const EdgeInsets.symmetric(horizontal: 6),
+                                width: 3, height: 3,
+                                decoration: BoxDecoration(
+                                    shape: BoxShape.circle, color: muted),
+                              ),
+                              Text(DateFormat('MMM dd').format(inv.issuedDate),
+                                  style: GoogleFonts.spaceGrotesk(
+                                      fontSize: 11, color: muted)),
+                            ]),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      Text('\$${amount.toStringAsFixed(2)}',
+                          style: GoogleFonts.jetBrainsMono(
+                              fontSize: 13, color: fgCol,
+                              fontWeight: FontWeight.w500)),
+                    ],
+                  ),
                 ),
-              ),
-              Divider(height: 1, color: border),
-            ],
-          );
-        }),
+                Divider(height: 1, color: border),
+              ],
+            );
+          }),
         const SizedBox(height: 16),
         SizedBox(
           width: double.infinity,

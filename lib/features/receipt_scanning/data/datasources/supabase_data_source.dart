@@ -1,6 +1,8 @@
 // ignore_for_file: deprecated_member_use, deprecated_member_use_from_same_package, unused_local_variable, unnecessary_underscores, invalid_annotation_target, unused_element, non_constant_identifier_names, use_build_context_synchronously
 import 'dart:convert';
+import 'dart:typed_data';
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../domain/entities/receipt.dart';
 
@@ -19,21 +21,25 @@ class SupabaseDataSourceImpl implements SupabaseDataSource {
   Future<void> uploadTrainingData(Receipt receipt, String imagePath) async {
     try {
       // 1. Upload Image -> training_data/images/{uuid}.jpg
-      final file = File(imagePath);
-      final fileExt = imagePath.split('.').last;
-      final fileName = '${receipt.id}.$fileExt';
-      final imageStoragePath = 'training_images/$fileName';
-      // To match user request: "training_data/images/{uuid}.jpg"
-      // Note: User said bucket is 'training_data'.
-      // Path inside bucket: 'images/{uuid}.jpg'
+      final fileExt = imagePath.split('.').last.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '');
+      final ext = fileExt.isNotEmpty && fileExt.length <= 4 ? fileExt : 'jpg';
+      final fileName = '${receipt.id}.$ext';
+      final storagePathImage = 'images/$fileName';
       
-      final storagePathImage = 'images/${receipt.id}.$fileExt';
-      
-      await client.storage.from('training_data').upload(
-        storagePathImage,
-        file,
-        fileOptions: const FileOptions(cacheControl: '3600', upsert: true),
-      );
+      if (!kIsWeb) {
+        final file = File(imagePath);
+        if (file.existsSync()) {
+          await client.storage.from('training_data').upload(
+            storagePathImage,
+            file,
+            fileOptions: const FileOptions(cacheControl: '3600', upsert: true),
+          );
+        } else {
+          print('Supabase upload: Image file missing, skipping image upload but proceeding with JSON.');
+        }
+      } else {
+        print('Supabase upload: Running on Web, skipping direct File upload. Proceeding with JSON.');
+      }
 
       // 2. Create and Upload Label JSON -> training_data/labels/{uuid}.json
       final labelJson = {
@@ -64,13 +70,14 @@ class SupabaseDataSourceImpl implements SupabaseDataSource {
 
       await client.storage.from('training_data').uploadBinary(
         storagePathLabel,
-        utf8.encode(jsonString),
+        Uint8List.fromList(utf8.encode(jsonString)),
         fileOptions: const FileOptions(cacheControl: '3600', upsert: true),
       );
       
     } catch (e) {
       // Log error silently, don't crash the app for background sync
       print('Supabase upload failed: $e');
+      rethrow;
     }
   }
 

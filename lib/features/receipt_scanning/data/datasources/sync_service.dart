@@ -47,6 +47,7 @@ class SyncService {
   Future<void> scheduleUpload(String receiptId, String imagePath) async {
     // Avoid duplicates
     if (queueBox.values.any((item) => item.receiptId == receiptId)) {
+      processQueue();
       return;
     }
 
@@ -101,10 +102,7 @@ class SyncService {
       final receiptModel = receiptModels.firstWhere((r) => r.id == item.receiptId);
       final receipt = receiptModel.toEntity();
 
-      // 2. Check Image
-      if (!File(item.imagePath).existsSync()) {
-        throw Exception('Image file not found: ${item.imagePath}');
-      }
+      // 2. Check Image (handled gracefully by providers now)
 
       // 3. Upload to Configured Provider
       final useDrive = settingsBox.get('use_google_drive_storage', defaultValue: false);

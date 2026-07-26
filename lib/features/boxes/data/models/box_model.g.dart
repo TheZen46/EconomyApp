@@ -1,5 +1,5 @@
 // GENERATED CODE - DO NOT MODIFY BY HAND
-// ignore_for_file: type=lint
+
 part of 'box_model.dart';
 
 // **************************************************************************
@@ -57,12 +57,12 @@ class BoxModelAdapter extends TypeAdapter<BoxModel> {
   }
 
   @override
+  int get hashCode => typeId.hashCode;
+
+  @override
   bool operator ==(Object other) =>
       identical(this, other) ||
       other is BoxModelAdapter &&
           runtimeType == other.runtimeType &&
           typeId == other.typeId;
-
-  @override
-  int get hashCode => typeId.hashCode;
 }

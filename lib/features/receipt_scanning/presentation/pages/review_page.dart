@@ -53,6 +53,13 @@ class _ReviewPageState extends ConsumerState<ReviewPage> {
     if (_selectedCurrency.isEmpty) _selectedCurrency = 'USD';
     
     _totalController = TextEditingController(text: widget.receipt.totalAmount.toStringAsFixed(2));
+    
+    // Check if the saved total matches the sum of items. If it doesn't, it was manually overridden.
+    final sum = _items.fold(0.0, (prev, wrapper) => prev + wrapper.item.totalPrice);
+    if ((sum - widget.receipt.totalAmount).abs() > 0.01) {
+      _isTotalLocked = false;
+    }
+    
     _calculateTotal();
   }
 
@@ -174,6 +181,11 @@ class _ReviewPageState extends ConsumerState<ReviewPage> {
                         alignment: Alignment.topCenter,
                         color: Colors.black.withOpacity(0.5),
                         colorBlendMode: BlendMode.darken,
+                        errorBuilder: (context, error, stackTrace) => Container(
+                          color: _getBgColor(context),
+                          alignment: Alignment.center,
+                          child: Icon(Icons.broken_image, size: 48, color: _getMutedColor(context).withOpacity(0.3)),
+                        ),
                       )
                     : Image.file(
                         File(widget.receipt.imagePath!),
@@ -181,6 +193,11 @@ class _ReviewPageState extends ConsumerState<ReviewPage> {
                         alignment: Alignment.topCenter,
                         color: Colors.black.withOpacity(0.5),
                         colorBlendMode: BlendMode.darken,
+                        errorBuilder: (context, error, stackTrace) => Container(
+                          color: _getBgColor(context),
+                          alignment: Alignment.center,
+                          child: Icon(Icons.broken_image, size: 48, color: _getMutedColor(context).withOpacity(0.3)),
+                        ),
                       )
                 : Container(color: _getBgColor(context)),
           ),
@@ -373,8 +390,11 @@ class _ReviewPageState extends ConsumerState<ReviewPage> {
                                       item: item,
                                       onDelete: () => _deleteItem(index),
                                       onQuantityChanged: (val) {
-                                        final q = int.tryParse(val) ?? 1;
-                                        _updateItem(index, item.copyWith(quantity: q, totalPrice: q * item.unitPrice));
+                                        final newQty = int.tryParse(val) ?? 1;
+                                        _updateItem(index, item.copyWith(
+                                          quantity: newQty,
+                                          totalPrice: item.unitPrice * newQty,
+                                        ));
                                       },
                                       onDescriptionChanged: (val) {
                                         _updateItem(index, item.copyWith(description: val));
@@ -388,8 +408,11 @@ class _ReviewPageState extends ConsumerState<ReviewPage> {
                                         ));
                                       },
                                       onPriceChanged: (val) {
-                                        final p = double.tryParse(val) ?? 0.0;
-                                        _updateItem(index, item.copyWith(unitPrice: p, totalPrice: item.quantity * p));
+                                        final newPrice = double.tryParse(val) ?? 0.0;
+                                        _updateItem(index, item.copyWith(
+                                          unitPrice: newPrice,
+                                          totalPrice: newPrice * item.quantity,
+                                        ));
                                       },
                                       onAssetChanged: (val) {
                                         _updateItem(index, item.copyWith(isAsset: val));
