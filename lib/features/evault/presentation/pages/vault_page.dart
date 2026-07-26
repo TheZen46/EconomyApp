@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import 'package:flutter/foundation.dart';
 
 import '../../../../core/theme/app_theme.dart';
 import '../providers/asset_provider.dart';
@@ -524,11 +525,17 @@ class _AssetCardWidgetState extends State<_AssetCardWidget> {
                     fit: StackFit.expand,
                     children: [
                       if (widget.asset.receiptImagePath.isNotEmpty)
-                        Image.file(
-                          File(widget.asset.receiptImagePath),
-                          fit: BoxFit.cover,
-                          errorBuilder: (_, __, ___) => _buildFallbackImage(),
-                        )
+                        kIsWeb
+                          ? Image.network(
+                              widget.asset.receiptImagePath,
+                              fit: BoxFit.cover,
+                              errorBuilder: (_, __, ___) => _buildFallbackImage(),
+                            )
+                          : Image.file(
+                              File(widget.asset.receiptImagePath),
+                              fit: BoxFit.cover,
+                              errorBuilder: (_, __, ___) => _buildFallbackImage(),
+                            )
                       else
                         _buildFallbackImage(),
                       

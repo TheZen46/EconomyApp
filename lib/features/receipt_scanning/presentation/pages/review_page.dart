@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:uuid/uuid.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'dart:io';
 
@@ -166,13 +167,21 @@ class _ReviewPageState extends ConsumerState<ReviewPage> {
         children: [
           Positioned.fill(
             child: widget.receipt.imagePath != null
-                ? Image.file(
-                    File(widget.receipt.imagePath!),
-                    fit: BoxFit.cover,
-                    alignment: Alignment.topCenter,
-                    color: Colors.black.withOpacity(0.5),
-                    colorBlendMode: BlendMode.darken,
-                  )
+                ? kIsWeb
+                    ? Image.network(
+                        widget.receipt.imagePath!,
+                        fit: BoxFit.cover,
+                        alignment: Alignment.topCenter,
+                        color: Colors.black.withOpacity(0.5),
+                        colorBlendMode: BlendMode.darken,
+                      )
+                    : Image.file(
+                        File(widget.receipt.imagePath!),
+                        fit: BoxFit.cover,
+                        alignment: Alignment.topCenter,
+                        color: Colors.black.withOpacity(0.5),
+                        colorBlendMode: BlendMode.darken,
+                      )
                 : Container(color: _getBgColor(context)),
           ),
 
