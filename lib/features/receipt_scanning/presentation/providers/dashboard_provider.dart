@@ -37,11 +37,13 @@ class DashboardNotifier extends StateNotifier<List<DashboardItem>> {
   void _resetToDefault() {
      state = [
        DashboardItem(id: 'summary', type: DashboardWidgetType.summary, title: 'Monthly Summary'),
+       DashboardItem(id: 'taxNest', type: DashboardWidgetType.taxNest, title: 'The Tax Nest'),
        DashboardItem(id: 'chart', type: DashboardWidgetType.chart, title: 'Activity Chart'),
        DashboardItem(id: 'breakdown', type: DashboardWidgetType.necessityBreakdown, title: 'Financial Health'),
        DashboardItem(id: 'heatmap', type: DashboardWidgetType.heatmap, title: 'Spending Heatmap'),
        DashboardItem(id: 'achievements', type: DashboardWidgetType.achievements, title: 'Achievements'),
        DashboardItem(id: 'recent', type: DashboardWidgetType.recentTransactions, title: 'Recent Transactions'),
+       DashboardItem(id: 'projects', type: DashboardWidgetType.projects, title: 'Active Invoices'),
      ];
      _save();
   }

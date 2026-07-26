@@ -18,7 +18,11 @@ enum DashboardWidgetType {
   @HiveField(5)
   monthlyBudget,
   @HiveField(6)
-  necessityBreakdown
+  necessityBreakdown,
+  @HiveField(7)
+  taxNest,
+  @HiveField(8)
+  projects
 }
 
 @HiveType(typeId: 3)

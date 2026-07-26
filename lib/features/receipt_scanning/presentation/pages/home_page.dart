@@ -42,6 +42,8 @@ class _HomePageState extends ConsumerState<HomePage> {
     DashboardWidgetType.achievements: 1,
     DashboardWidgetType.necessityBreakdown: 1,
     DashboardWidgetType.recentTransactions: 3,
+    DashboardWidgetType.taxNest: 1,
+    DashboardWidgetType.projects: 3,
   };
 
   @override
@@ -331,6 +333,10 @@ class _HomePageState extends ConsumerState<HomePage> {
         return _buildNeedsVsWants(receipts, isDark);
       case DashboardWidgetType.recentTransactions:
         return _buildRecentTransactions(filteredReceipts, isDark);
+      case DashboardWidgetType.taxNest:
+        return _buildTaxNest(receipts, isDark);
+      case DashboardWidgetType.projects:
+        return _buildProjectCards(isDark);
     }
   }
 
@@ -808,6 +814,216 @@ class _HomePageState extends ConsumerState<HomePage> {
           ],
         ),
       ),
+    );
+  }
+
+  // ── Tax Nest widget ──────────────────────────────────────────────────────────
+  Widget _buildTaxNest(List<Receipt> receipts, bool isDark) {
+    final fgCol = isDark ? Colors.white : Colors.black;
+    final muted = fgCol.withAlpha(102); // ~40%
+    final accent = const Color(0xFF002FA7);
+
+    // Accumulate YTD total from all receipts as a rough tax stash simulation
+    final ytdTotal = receipts.fold(0.0, (sum, r) => sum + r.totalAmount);
+    final stashed = ytdTotal * 0.22; // ~22% simulated tax set-aside
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(Icons.shield_outlined, color: accent, size: 16),
+            const SizedBox(width: 8),
+            Text('THE TAX NEST',
+                style: GoogleFonts.spaceGrotesk(
+                    fontSize: 11, letterSpacing: 1.2, color: muted)),
+          ],
+        ),
+        const SizedBox(height: 24),
+        GestureDetector(
+          onTap: () => ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Tax Nest Goal: \$12,000 (${(stashed / 12000 * 100).clamp(0, 100).toStringAsFixed(0)}% achieved)'))),
+          child: Text(
+            '\$${stashed.toStringAsFixed(2)}',
+            style: GoogleFonts.jetBrainsMono(
+                fontSize: 40, fontWeight: FontWeight.w300, color: fgCol),
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text('Stashed for Q2 ${DateTime.now().year}',
+            style: GoogleFonts.spaceGrotesk(fontSize: 13, color: muted, fontWeight: FontWeight.w300)),
+        const SizedBox(height: 24),
+        // Mini sparkline area chart (simplified as a bar row)
+        SizedBox(
+          height: 60,
+          child: BarChart(
+            BarChartData(
+              alignment: BarChartAlignment.spaceAround,
+              barTouchData: BarTouchData(enabled: false),
+              titlesData: const FlTitlesData(show: false),
+              gridData: const FlGridData(show: false),
+              borderData: FlBorderData(show: false),
+              maxY: 10000,
+              barGroups: List.generate(6, (i) {
+                final values = [2400.0, 3200.0, 4100.0, 5800.0, 7200.0, 8950.0];
+                return BarChartGroupData(x: i, barRods: [
+                  BarChartRodData(
+                    toY: values[i],
+                    color: accent.withAlpha(51 + i * 30),
+                    width: 8,
+                    borderRadius: BorderRadius.circular(2),
+                  )
+                ]);
+              }),
+            ),
+          ),
+        ),
+        const SizedBox(height: 16),
+        SizedBox(
+          width: double.infinity,
+          child: OutlinedButton(
+            style: OutlinedButton.styleFrom(
+              foregroundColor: muted,
+              side: BorderSide(color: fgCol.withAlpha(26)),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              padding: const EdgeInsets.symmetric(vertical: 14),
+            ),
+            onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Auto-stash configuration opened.'))),
+            child: Text('Auto-stash settings', style: GoogleFonts.spaceGrotesk(fontWeight: FontWeight.w400)),
+          ),
+        ),
+      ],
+    );
+  }
+
+  // ── Project Cards (Active Invoices preview) ──────────────────────────────────
+  Widget _buildProjectCards(bool isDark) {
+    final fgCol = isDark ? Colors.white : Colors.black;
+    final muted = fgCol.withAlpha(102);
+    final border = isDark ? Colors.white.withAlpha(15) : Colors.black.withAlpha(10);
+    final accent = const Color(0xFF002FA7);
+
+    final invoices = [
+      {'client': 'Acme Corporation', 'amount': 8500.00, 'status': 'Settled', 'inv': 'INV-2026-041', 'date': 'Apr 15'},
+      {'client': 'Stellar Design Co.', 'amount': 6200.00, 'status': 'Sent', 'inv': 'INV-2026-042', 'date': 'Apr 18'},
+      {'client': 'Moonlight Studios', 'amount': 12400.00, 'status': 'Sent', 'inv': 'INV-2026-040', 'date': 'Apr 12'},
+      {'client': 'Horizon Ventures', 'amount': 4800.00, 'status': 'Draft', 'inv': 'INV-2026-043', 'date': 'Apr 20'},
+    ];
+
+    Color statusColor(String s) {
+      switch (s) {
+        case 'Settled': return isDark ? Colors.white70 : Colors.black87;
+        case 'Sent': return accent;
+        case 'Overdue': return const Color(0xFFD4183D);
+        default: return muted;
+      }
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text('ACTIVE INVOICES',
+                style: GoogleFonts.spaceGrotesk(
+                    fontSize: 11, letterSpacing: 1.2, color: muted)),
+            GestureDetector(
+              onTap: () => context.push('/invoices'),
+              child: Row(
+                children: [
+                  Text('View all',
+                      style: GoogleFonts.spaceGrotesk(
+                          fontSize: 11, color: muted,
+                          letterSpacing: 1.0)),
+                  Icon(Icons.arrow_outward, size: 12, color: muted),
+                ],
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+        ...invoices.map((inv) {
+          final status = inv['status'] as String;
+          final amount = inv['amount'] as double;
+          return Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(children: [
+                            Expanded(
+                              child: Text(inv['client'] as String,
+                                  style: GoogleFonts.spaceGrotesk(
+                                      fontSize: 14, color: fgCol,
+                                      fontWeight: FontWeight.w400)),
+                            ),
+                            const SizedBox(width: 8),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 6, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: statusColor(status).withAlpha(26),
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: Text(status,
+                                  style: GoogleFonts.spaceGrotesk(
+                                      fontSize: 10, color: statusColor(status),
+                                      letterSpacing: 0.8, fontWeight: FontWeight.w500)),
+                            ),
+                          ]),
+                          const SizedBox(height: 4),
+                          Row(children: [
+                            Text(inv['inv'] as String,
+                                style: GoogleFonts.jetBrainsMono(
+                                    fontSize: 11, color: muted)),
+                            Container(
+                              margin: const EdgeInsets.symmetric(horizontal: 8),
+                              width: 4, height: 4,
+                              decoration: BoxDecoration(
+                                  shape: BoxShape.circle, color: muted),
+                            ),
+                            Text(inv['date'] as String,
+                                style: GoogleFonts.spaceGrotesk(
+                                    fontSize: 11, color: muted)),
+                          ]),
+                        ],
+                      ),
+                    ),
+                    Text('\$${amount.toStringAsFixed(2)}',
+                        style: GoogleFonts.jetBrainsMono(
+                            fontSize: 15, color: fgCol,
+                            fontWeight: FontWeight.w400)),
+                  ],
+                ),
+              ),
+              Divider(color: border, height: 1),
+            ],
+          );
+        }),
+        const SizedBox(height: 16),
+        SizedBox(
+          width: double.infinity,
+          child: OutlinedButton(
+            style: OutlinedButton.styleFrom(
+              foregroundColor: muted,
+              side: BorderSide(color: fgCol.withAlpha(26)),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              padding: const EdgeInsets.symmetric(vertical: 14),
+            ),
+            onPressed: () => context.push('/invoices'),
+            child: Text('Create New Invoice',
+                style: GoogleFonts.spaceGrotesk(
+                    fontSize: 12, letterSpacing: 1.0, fontWeight: FontWeight.w400)),
+          ),
+        ),
+      ],
     );
   }
 

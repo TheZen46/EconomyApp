@@ -70,6 +70,10 @@ class DashboardWidgetTypeAdapter extends TypeAdapter<DashboardWidgetType> {
         return DashboardWidgetType.monthlyBudget;
       case 6:
         return DashboardWidgetType.necessityBreakdown;
+      case 7:
+        return DashboardWidgetType.taxNest;
+      case 8:
+        return DashboardWidgetType.projects;
       default:
         return DashboardWidgetType.summary;
     }
@@ -98,6 +102,12 @@ class DashboardWidgetTypeAdapter extends TypeAdapter<DashboardWidgetType> {
         break;
       case DashboardWidgetType.necessityBreakdown:
         writer.writeByte(6);
+        break;
+      case DashboardWidgetType.taxNest:
+        writer.writeByte(7);
+        break;
+      case DashboardWidgetType.projects:
+        writer.writeByte(8);
         break;
     }
   }
