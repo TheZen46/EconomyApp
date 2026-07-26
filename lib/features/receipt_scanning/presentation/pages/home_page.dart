@@ -1,5 +1,6 @@
 // ignore_for_file: deprecated_member_use
 import 'dart:io';
+import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -16,6 +17,7 @@ import '../../domain/entities/receipt.dart';
 import '../../data/models/dashboard_config.dart';
 
 import '../../../settings/presentation/providers/llm_provider.dart';
+import '../../../settings/presentation/pages/settings_page.dart';
 import '../../../boxes/data/providers/boxes_provider.dart';
 import '../../../../core/theme/theme_notifier.dart';
 import '../../../../core/services/gamification_service.dart';
@@ -108,10 +110,6 @@ class _HomePageState extends ConsumerState<HomePage> {
                 });
               },
             ),
-            IconButton(
-              icon: Icon(isDark ? Icons.light_mode : Icons.dark_mode, color: fgCol),
-              onPressed: () => ref.read(themeProvider.notifier).toggle(),
-            ),
           ] else ...[
             TextButton.icon(
               onPressed: () {
@@ -135,7 +133,7 @@ class _HomePageState extends ConsumerState<HomePage> {
             if (!_isEditMode) ...[
               IconButton(
                 icon: Icon(Icons.settings, color: fgCol),
-                onPressed: () => context.push('/settings'),
+                onPressed: () => _showSettingsPanel(context),
               ),
               IconButton(
                 icon: Icon(Icons.upload_file, color: fgCol),
@@ -1024,6 +1022,53 @@ class _HomePageState extends ConsumerState<HomePage> {
           ),
         ),
       ],
+    );
+  }
+
+  // ── Settings overlay (slide from right + blur backdrop) ───────────────────
+  void _showSettingsPanel(BuildContext context) {
+    showGeneralDialog(
+      context: context,
+      barrierDismissible: true,
+      barrierLabel: 'Settings',
+      barrierColor: Colors.transparent,
+      transitionDuration: const Duration(milliseconds: 380),
+      pageBuilder: (ctx, _, __) => const SettingsPanelWidget(),
+      transitionBuilder: (ctx, animation, _, child) {
+        final curved = CurvedAnimation(
+          parent: animation,
+          curve: Curves.easeOutCubic,
+          reverseCurve: Curves.easeInCubic,
+        );
+        return Stack(
+          children: [
+            // ── Blurred + darkened backdrop ──────────────────────────────
+            AnimatedBuilder(
+              animation: curved,
+              builder: (_, __) => BackdropFilter(
+                filter: ui.ImageFilter.blur(
+                  sigmaX: 12 * curved.value,
+                  sigmaY: 12 * curved.value,
+                ),
+                child: GestureDetector(
+                  onTap: () => Navigator.of(ctx).pop(),
+                  child: Container(
+                    color: Colors.black.withAlpha((120 * curved.value).round()),
+                  ),
+                ),
+              ),
+            ),
+            // ── Panel sliding in from right ──────────────────────────────
+            SlideTransition(
+              position: Tween<Offset>(
+                begin: const Offset(1.0, 0.0),
+                end: Offset.zero,
+              ).animate(curved),
+              child: child,
+            ),
+          ],
+        );
+      },
     );
   }
 
