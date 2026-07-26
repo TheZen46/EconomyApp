@@ -96,20 +96,7 @@ class _HomePageState extends ConsumerState<HomePage> {
               )
             : null,
         actions: [
-          if (!_isEditMode) ...[
-            IconButton(
-              icon: Icon(_isSearching ? Icons.check : Icons.search, color: fgCol),
-              onPressed: () {
-                setState(() {
-                  if (!_isSearching) {
-                    _isSearching = true;
-                  } else {
-                    FocusManager.instance.primaryFocus?.unfocus();
-                  }
-                });
-              },
-            ),
-          ] else ...[
+          if (_isEditMode) ...[
             TextButton.icon(
               onPressed: () {
                 ref.read(dashboardProvider.notifier).reset();
@@ -120,29 +107,42 @@ class _HomePageState extends ConsumerState<HomePage> {
               icon: Icon(Icons.restore, color: fgCol),
               label: Text('Reset', style: GoogleFonts.spaceGrotesk(color: fgCol)),
             ),
-          ],
-          if (!_isSearching) ...[
             IconButton(
-              icon: Icon(
-                _isEditMode ? Icons.check_circle : Icons.dashboard_customize,
-                color: _isEditMode ? accent : fgCol,
-              ),
-              onPressed: () => setState(() => _isEditMode = !_isEditMode),
+              icon: Icon(Icons.check_circle, color: accent),
+              onPressed: () => setState(() => _isEditMode = false),
             ),
-            if (!_isEditMode) ...[
-              IconButton(
-                icon: Icon(Icons.settings, color: fgCol),
-                onPressed: () => _showSettingsPanel(context),
-              ),
-              IconButton(
-                icon: Icon(Icons.upload_file, color: fgCol),
-                onPressed: _importCsv,
-              ),
-              IconButton(
-                icon: Icon(Icons.download, color: fgCol),
-                onPressed: _exportCsv,
-              ),
-            ],
+          ] else if (!_isSearching) ...[
+            IconButton(
+              icon: Icon(Icons.search, color: fgCol),
+              onPressed: () => setState(() => _isSearching = true),
+            ),
+            IconButton(
+              icon: Icon(Icons.shield_outlined, color: fgCol),
+              onPressed: () => context.push('/vault'),
+            ),
+            IconButton(
+              icon: Icon(Icons.dashboard_customize, color: fgCol),
+              onPressed: () => setState(() => _isEditMode = true),
+            ),
+            IconButton(
+              icon: Icon(Icons.visibility_off_outlined, color: fgCol),
+              onPressed: () {
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Privacy mode toggled.')));
+              },
+            ),
+            IconButton(
+              icon: Icon(Icons.download, color: fgCol),
+              onPressed: _exportCsv,
+            ),
+            IconButton(
+              icon: Icon(Icons.settings, color: fgCol),
+              onPressed: () => _showSettingsPanel(context),
+            ),
+          ] else ...[
+            IconButton(
+              icon: Icon(Icons.check, color: fgCol),
+              onPressed: () => FocusManager.instance.primaryFocus?.unfocus(),
+            ),
           ],
         ],
       ),
@@ -184,7 +184,7 @@ class _HomePageState extends ConsumerState<HomePage> {
               },
               itemBuilder: (ctx, i) {
                 final item = visibleItems[i];
-                return _buildEditModeCard(item, isDark);
+                return _buildEditModeCard(item, receipts, filteredReceipts, isDark);
               },
             ),
           ),
@@ -259,45 +259,108 @@ class _HomePageState extends ConsumerState<HomePage> {
     );
   }
 
-  Widget _buildEditModeCard(DashboardItem item, bool isDark) {
+  Widget _buildEditModeCard(DashboardItem item, List<Receipt> receipts, List<Receipt> filteredReceipts, bool isDark) {
+    final fgCol = isDark ? Colors.white : Colors.black;
+    final accent = const Color(0xFF002FA7);
+    
     return Container(
       key: ValueKey(item.id),
-      margin: const EdgeInsets.only(bottom: 12),
-      decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF0F0F0F) : Colors.white,
-        border: Border.all(color: isDark ? Colors.white.withOpacity(0.06) : Colors.black.withOpacity(0.04)),
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: ListTile(
-        leading: Icon(Icons.drag_indicator, color: isDark ? Colors.white54 : Colors.black54),
-        title: Text(item.title, style: GoogleFonts.spaceGrotesk(color: isDark ? Colors.white : Colors.black)),
-        trailing: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // Size selector
-            DropdownButton<int>(
-              value: _widgetSpans[item.type] ?? 1,
-              underline: const SizedBox(),
-              items: [1, 2, 3].map((val) => DropdownMenuItem(
-                value: val,
-                child: Text('$val Col', style: GoogleFonts.spaceGrotesk(color: isDark ? Colors.white : Colors.black, fontSize: 12)),
-              )).toList(),
-              onChanged: (val) {
-                if (val != null) {
-                  setState(() => _widgetSpans[item.type] = val);
-                }
-              },
+      margin: const EdgeInsets.only(bottom: 24),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          // Drag handle on the left
+          Padding(
+            padding: const EdgeInsets.only(right: 16),
+            child: Icon(Icons.drag_indicator, color: fgCol.withOpacity(0.3)),
+          ),
+          // Actual widget preview with overlay controls
+          Expanded(
+            child: Stack(
+              clipBehavior: Clip.none,
+              children: [
+                // Render the actual widget but disable interactions
+                IgnorePointer(
+                  child: Container(
+                    foregroundDecoration: BoxDecoration(
+                      color: isDark ? Colors.white.withOpacity(0.05) : Colors.black.withOpacity(0.02),
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: _buildCardWrapper(
+                      isDark: isDark,
+                      child: _buildWidgetContent(item, receipts, filteredReceipts, isDark),
+                    ),
+                  ),
+                ),
+                // Overlay controls (Size selector and Remove)
+                Positioned(
+                  top: 12,
+                  right: 12,
+                  child: Row(
+                    children: [
+                      // Size selector [1, 2, 3]
+                      Container(
+                        decoration: BoxDecoration(
+                          color: isDark ? const Color(0xFF1A1A1A) : Colors.white,
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: fgCol.withOpacity(0.1)),
+                          boxShadow: [
+                            BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 4, offset: const Offset(0, 2))
+                          ]
+                        ),
+                        child: Row(
+                          children: [1, 2, 3].map((size) {
+                            final currentSize = _widgetSpans[item.type] ?? 1;
+                            final isSelected = currentSize == size;
+                            return GestureDetector(
+                              onTap: () {
+                                setState(() => _widgetSpans[item.type] = size);
+                              },
+                              child: Container(
+                                width: 32,
+                                height: 32,
+                                decoration: BoxDecoration(
+                                  color: isSelected ? accent : Colors.transparent,
+                                  borderRadius: BorderRadius.circular(6),
+                                ),
+                                alignment: Alignment.center,
+                                child: Text('$size', style: GoogleFonts.spaceGrotesk(
+                                  color: isSelected ? Colors.white : fgCol.withOpacity(0.5),
+                                  fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                                )),
+                              ),
+                            );
+                          }).toList(),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      // Remove button
+                      GestureDetector(
+                        onTap: () {
+                          final idx = ref.read(dashboardProvider).indexOf(item);
+                          ref.read(dashboardProvider.notifier).toggleVisibility(idx);
+                        },
+                        child: Container(
+                          width: 32,
+                          height: 32,
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFD4183D),
+                            borderRadius: BorderRadius.circular(8),
+                            boxShadow: [
+                              BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 4, offset: const Offset(0, 2))
+                            ]
+                          ),
+                          alignment: Alignment.center,
+                          child: const Icon(Icons.remove, color: Colors.white, size: 16),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ),
-            const SizedBox(width: 8),
-            IconButton(
-              icon: const Icon(Icons.remove_circle, color: Colors.redAccent),
-              onPressed: () {
-                final idx = ref.read(dashboardProvider).indexOf(item);
-                ref.read(dashboardProvider.notifier).toggleVisibility(idx);
-              },
-            ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
