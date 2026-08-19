@@ -3,6 +3,7 @@ import 'package:dio/dio.dart';
 import 'package:hive/hive.dart';
 import '../../../receipt_scanning/domain/entities/receipt.dart';
 import '../../../receipt_scanning/data/models/receipt_model.dart';
+import '../../../../core/services/secure_storage_service.dart';
 
 class WebhookService {
   final Box settingsBox;
@@ -19,8 +20,9 @@ class WebhookService {
     final url = settingsBox.get('webhook_url', defaultValue: '') as String;
     if (url.isEmpty) return;
 
-    final secret = settingsBox.get('webhook_secret', defaultValue: '') as String;
-    
+    // Read secret from secure storage, not Hive
+    final secret = await SecureStorageService.readSecret(SecretKeys.webhookSecret) ?? '';
+
     final options = Options(
       headers: {
         'Content-Type': 'application/json',
@@ -37,9 +39,6 @@ class WebhookService {
       print('Webhook: Success');
     } catch (e) {
       print('Webhook: Failed - $e');
-      // We assume the caller handles retry/queueing logic if needed, 
-      // or we just log and ignore for "fire and forget" if it's not critical sync.
-      // For now, mirroring "The Connector" philosophy: it's a best-effort push.
       rethrow;
     }
   }
@@ -47,10 +46,11 @@ class WebhookService {
   Future<void> sendTestEvent() async {
     if (!settingsBox.get('webhook_enabled', defaultValue: false)) throw Exception('Webhook disabled');
     final url = settingsBox.get('webhook_url', defaultValue: '') as String;
-    
+
     if (url.isEmpty) throw Exception('No URL configured');
 
-    final secret = settingsBox.get('webhook_secret', defaultValue: '') as String;
+    // Read secret from secure storage, not Hive
+    final secret = await SecureStorageService.readSecret(SecretKeys.webhookSecret) ?? '';
 
     final options = Options(
       headers: {

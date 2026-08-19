@@ -53,14 +53,6 @@ class _ReviewPageState extends ConsumerState<ReviewPage> {
     if (_selectedCurrency.isEmpty) _selectedCurrency = 'USD';
     
     _totalController = TextEditingController(text: widget.receipt.totalAmount.toStringAsFixed(2));
-    
-    // Check if the saved total matches the sum of items. If it doesn't, it was manually overridden.
-    final sum = _items.fold(0.0, (prev, wrapper) => prev + wrapper.item.totalPrice);
-    if ((sum - widget.receipt.totalAmount).abs() > 0.01) {
-      _isTotalLocked = false;
-    }
-    
-    _calculateTotal();
   }
 
   void _calculateTotal() {

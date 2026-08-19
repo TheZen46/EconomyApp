@@ -2,7 +2,7 @@
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
-import 'package:flutter/services.dart' show rootBundle;
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:extension_google_sign_in_as_googleapis_auth/extension_google_sign_in_as_googleapis_auth.dart';
 import 'package:googleapis/drive/v3.dart' as drive;
@@ -73,17 +73,13 @@ class GoogleDriveService {
   /// Windows Authentication using googleapis_auth (Loopback/Manual)
   Future<bool> _authenticateWindows() async {
     try {
-      debugPrint('Google Drive (Windows): Loading credentials...');
-      final jsonString = await rootBundle.loadString('assets/credentials.json');
-      final json = jsonDecode(jsonString);
-      
-      // Support 'installed' or 'web' structure
-      final data = json['installed'] ?? json['web'];
-      final clientId = data?['client_id'];
-      final clientSecret = data?['client_secret']; // client_secret is needed for 'installed' apps
+      debugPrint('Google Drive (Windows): Loading credentials from .env...');
+      final clientId = dotenv.env['GOOGLE_CLIENT_ID'];
+      final clientSecret = dotenv.env['GOOGLE_CLIENT_SECRET'];
 
-      if (clientId == null) {
-        lastError = 'No client_id in assets/credentials.json';
+      if (clientId == null || clientId.isEmpty) {
+        lastError = 'No GOOGLE_CLIENT_ID found in .env';
+        debugPrint(lastError);
         return false;
       }
 
@@ -95,17 +91,16 @@ class GoogleDriveService {
       final client = await clientViaUserConsent(id, scopes, (url) {
         debugPrint('Google Drive (Windows): Opening User Consent URL: $url');
         // Force account selection so it doesn't auto-use the developer's account
-        final newUrl = "$url&prompt=select_account"; 
+        final newUrl = "$url&prompt=select_account";
         launchUrl(Uri.parse(newUrl));
       });
 
-      
       _cachedDriveApi = drive.DriveApi(client);
       debugPrint('Google Drive (Windows): Authenticated Successfully!');
       return true;
 
     } catch (e) {
-      lastError = 'Windows Auth Error: $e\nEnsure credentials.json is valid and type is Desktop.';
+      lastError = 'Windows Auth Error: $e\nEnsure GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET are set in .env';
       debugPrint(lastError);
       return false;
     }

@@ -64,18 +64,23 @@ class SyncService {
 
   /// Attempt to upload pending items
   Future<void> processQueue() async {
+    // ── Acquire lock synchronously ──────────────────────────────────────────
+    // MUST happen before any await. If two callers reach this line at the same
+    // time, the second one sees _isSyncing == true and exits immediately,
+    // with no window for a race condition.
     if (_isSyncing || queueBox.isEmpty) return;
-
-    final connectivity = await Connectivity().checkConnectivity();
-    if (connectivity.contains(ConnectivityResult.none)) return;
-
     _isSyncing = true;
-    print('SyncService: Starting sync of ${queueBox.length} items...');
 
     try {
+      // Check connectivity only after the lock is held
+      final connectivity = await Connectivity().checkConnectivity();
+      if (connectivity.contains(ConnectivityResult.none)) return;
+
+      print('SyncService: Starting sync of ${queueBox.length} items...');
+
       // Iterate keys so we can delete by key
       final keys = queueBox.keys.toList();
-      
+
       for (var key in keys) {
         final item = queueBox.get(key);
         if (item == null) continue;
@@ -91,6 +96,7 @@ class SyncService {
         }
       }
     } finally {
+      // Always release the lock — success, offline abort, or any thrown error.
       _isSyncing = false;
     }
   }

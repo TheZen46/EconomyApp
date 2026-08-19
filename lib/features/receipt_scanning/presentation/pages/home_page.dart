@@ -395,6 +395,74 @@ class _HomePageState extends ConsumerState<HomePage> {
     }
   }
 
+  void _showRunwaySettingsSheet(BuildContext context, bool isDark) {
+    final fgCol = isDark ? Colors.white : Colors.black;
+    final bgCol = isDark ? const Color(0xFF151515) : Colors.white;
+    
+    double currentBalance = ref.read(currentBalanceProvider);
+    double projectedIncome = ref.read(projectedIncomeProvider);
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: bgCol,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      builder: (ctx) {
+        return Padding(
+          padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom, left: 24, right: 24, top: 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Monthly Runway Settings', style: GoogleFonts.spaceGrotesk(fontSize: 20, fontWeight: FontWeight.bold, color: fgCol)),
+              const SizedBox(height: 24),
+              TextFormField(
+                initialValue: currentBalance == 0 ? '' : currentBalance.toStringAsFixed(2),
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                style: TextStyle(color: fgCol),
+                decoration: InputDecoration(
+                  labelText: 'Current Liquid Balance (\$)',
+                  labelStyle: TextStyle(color: fgCol.withOpacity(0.5)),
+                  enabledBorder: OutlineInputBorder(borderSide: BorderSide(color: fgCol.withOpacity(0.2))),
+                  focusedBorder: const OutlineInputBorder(borderSide: BorderSide(color: Color(0xFF002FA7))),
+                ),
+                onChanged: (v) => currentBalance = double.tryParse(v) ?? 0.0,
+              ),
+              const SizedBox(height: 16),
+              TextFormField(
+                initialValue: projectedIncome == 0 ? '' : projectedIncome.toStringAsFixed(2),
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                style: TextStyle(color: fgCol),
+                decoration: InputDecoration(
+                  labelText: 'Projected Monthly Income (\$)',
+                  labelStyle: TextStyle(color: fgCol.withOpacity(0.5)),
+                  enabledBorder: OutlineInputBorder(borderSide: BorderSide(color: fgCol.withOpacity(0.2))),
+                  focusedBorder: const OutlineInputBorder(borderSide: BorderSide(color: Color(0xFF002FA7))),
+                ),
+                onChanged: (v) => projectedIncome = double.tryParse(v) ?? 0.0,
+              ),
+              const SizedBox(height: 24),
+              SizedBox(
+                width: double.infinity,
+                height: 50,
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF002FA7), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+                  onPressed: () {
+                    ref.read(currentBalanceProvider.notifier).setBalance(currentBalance);
+                    ref.read(projectedIncomeProvider.notifier).setIncome(projectedIncome);
+                    Navigator.pop(ctx);
+                  },
+                  child: Text('Save Settings', style: GoogleFonts.spaceGrotesk(color: Colors.white, fontWeight: FontWeight.bold)),
+                ),
+              ),
+              const SizedBox(height: 24),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
   Widget _buildMonthlyRunway(List<Receipt> receipts, bool isDark) {
     final now = DateTime.now();
     final monthlyBurn = receipts
@@ -402,26 +470,48 @@ class _HomePageState extends ConsumerState<HomePage> {
         .fold(0.0, (sum, r) => sum + r.totalAmount);
         
     final boxes = ref.watch(boxesProvider);
-    double totalBalance = boxes.fold(0.0, (sum, b) => sum + (b.budget - b.spent));
+    final currentBalance = ref.watch(currentBalanceProvider);
+    final projectedIncome = ref.watch(projectedIncomeProvider);
     
-    final runwayMonths = monthlyBurn > 0 ? (totalBalance / monthlyBurn) : 0.0;
+    // Use user-provided balance if available, otherwise sum remaining box budgets
+    double effectiveBalance = currentBalance > 0 
+        ? currentBalance 
+        : boxes.fold(0.0, (sum, b) => sum + (b.budget - b.spent));
+    
+    // Add projected income to runway calculation if monthly burn > income
+    double netBurn = monthlyBurn - projectedIncome;
+    final runwayMonths = netBurn > 0 ? (effectiveBalance / netBurn) : 99.9; // If income > burn, runway is infinite
+    
     final fgCol = isDark ? Colors.white : Colors.black;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          'MONTHLY RUNWAY',
-          style: GoogleFonts.spaceGrotesk(fontSize: 11, letterSpacing: 1.2, color: fgCol.withOpacity(0.5)),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(
+              'MONTHLY RUNWAY',
+              style: GoogleFonts.spaceGrotesk(fontSize: 11, letterSpacing: 1.2, color: fgCol.withOpacity(0.5)),
+            ),
+            IconButton(
+              icon: Icon(Icons.edit, size: 14, color: fgCol.withOpacity(0.5)),
+              onPressed: () => _showRunwaySettingsSheet(context, isDark),
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(),
+            ),
+          ],
         ),
         const SizedBox(height: 16),
         TweenAnimationBuilder<double>(
-          tween: Tween<double>(begin: 0, end: runwayMonths),
+          tween: Tween<double>(begin: 0, end: runwayMonths > 99 ? 99.9 : runwayMonths),
           duration: 1.seconds,
           curve: Curves.easeOut,
           builder: (context, val, child) {
+            String display = monthlyBurn <= 0 ? '--' : val.toStringAsFixed(1);
+            if (val >= 99.9) display = '99+';
             return Text(
-              monthlyBurn <= 0 ? '--' : val.toStringAsFixed(1),
+              display,
               style: GoogleFonts.jetBrainsMono(fontSize: 48, fontWeight: FontWeight.bold, color: fgCol),
             );
           },
@@ -429,7 +519,9 @@ class _HomePageState extends ConsumerState<HomePage> {
         const SizedBox(height: 24),
         _hoverRow('Calculated Monthly Burn', '\$${monthlyBurn.toStringAsFixed(2)}', fgCol),
         const SizedBox(height: 8),
-        _hoverRow('Avg Spend / Day', '\$${(monthlyBurn / now.day).toStringAsFixed(2)}', fgCol),
+        _hoverRow('Projected Income', '\$${projectedIncome.toStringAsFixed(2)}', fgCol),
+        const SizedBox(height: 8),
+        _hoverRow('Current Balance', '\$${effectiveBalance.toStringAsFixed(2)}', fgCol),
         const SizedBox(height: 24),
         InteractiveHover(
           child: SizedBox(
@@ -499,24 +591,28 @@ class _HomePageState extends ConsumerState<HomePage> {
                 Text('THE PULSE', style: GoogleFonts.spaceGrotesk(fontSize: 11, letterSpacing: 1.2, color: muted)),
               ],
             ),
-            Row(
-              children: [
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    Text('Average', style: GoogleFonts.spaceGrotesk(fontSize: 11, color: muted)),
-                    Text('\$${average.toStringAsFixed(0)}', style: GoogleFonts.jetBrainsMono(fontSize: 15, color: fgCol)),
-                  ],
-                ),
-                const SizedBox(width: 24),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    Text('Peak', style: GoogleFonts.spaceGrotesk(fontSize: 11, color: muted)),
-                    Text('\$${peak.toStringAsFixed(0)}', style: GoogleFonts.jetBrainsMono(fontSize: 15, color: fgCol)),
-                  ],
-                ),
-              ].animate(interval: 100.ms).fadeIn().slideY(begin: 0.1),
+            Expanded(
+              child: Wrap(
+                alignment: WrapAlignment.end,
+                spacing: 16,
+                runSpacing: 8,
+                children: [
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Text('Average', style: GoogleFonts.spaceGrotesk(fontSize: 11, color: muted)),
+                      Text('\$${average.toStringAsFixed(0)}', style: GoogleFonts.jetBrainsMono(fontSize: 15, color: fgCol)),
+                    ],
+                  ),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Text('Peak', style: GoogleFonts.spaceGrotesk(fontSize: 11, color: muted)),
+                      Text('\$${peak.toStringAsFixed(0)}', style: GoogleFonts.jetBrainsMono(fontSize: 15, color: fgCol)),
+                    ],
+                  ),
+                ].animate(interval: 100.ms).fadeIn().slideY(begin: 0.1),
+              ),
             ),
           ],
         ),
@@ -536,6 +632,7 @@ class _HomePageState extends ConsumerState<HomePage> {
                     reservedSize: 30,
                     interval: 1,
                     getTitlesWidget: (value, meta) {
+                      if (value.toInt() % 2 != 0) return const SizedBox(); // Prevent overcrowding and right overflow
                       if (value.toInt() >= 0 && value.toInt() < months.length) {
                         return Padding(
                           padding: const EdgeInsets.only(top: 8.0),
@@ -611,9 +708,15 @@ class _HomePageState extends ConsumerState<HomePage> {
           decoration: BoxDecoration(border: Border(top: BorderSide(color: isDark ? Colors.white.withOpacity(0.06) : Colors.black.withOpacity(0.04)))),
           child: Center(
             child: Row(
-              mainAxisSize: MainAxisSize.min,
+              mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Text('Monthly project income — Trailing 12 months', style: GoogleFonts.spaceGrotesk(fontSize: 13, color: muted)),
+                Flexible(
+                  child: Text(
+                    'Monthly project income — Trailing 12 months', 
+                    style: GoogleFonts.spaceGrotesk(fontSize: 13, color: muted),
+                    textAlign: TextAlign.center,
+                  ),
+                ),
                 const SizedBox(width: 4),
                 Icon(Icons.keyboard_arrow_down, size: 14, color: muted),
               ],
@@ -933,7 +1036,10 @@ class _HomePageState extends ConsumerState<HomePage> {
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text('Recent Transactions', style: GoogleFonts.spaceGrotesk(fontSize: 18, fontWeight: FontWeight.bold, color: fgCol)),
+            Expanded(
+              child: Text('Recent Transactions', style: GoogleFonts.spaceGrotesk(fontSize: 18, fontWeight: FontWeight.bold, color: fgCol), overflow: TextOverflow.ellipsis),
+            ),
+            const SizedBox(width: 8),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 12),
               decoration: BoxDecoration(

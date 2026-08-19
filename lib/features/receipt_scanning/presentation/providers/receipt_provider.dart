@@ -1,5 +1,6 @@
 // ignore_for_file: deprecated_member_use, deprecated_member_use_from_same_package, unused_local_variable, unnecessary_underscores, invalid_annotation_target, unused_element, non_constant_identifier_names, use_build_context_synchronously
 import 'package:hive/hive.dart';
+import '../../../../core/services/secure_storage_service.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -64,6 +65,11 @@ final webhookServiceProvider = Provider<WebhookService>((ref) {
   return WebhookService(settingsBox);
 });
 
+/// Async provider that reads the Gemini API key from secure storage.
+final geminiApiKeyProvider = FutureProvider<String>((ref) async {
+  return await SecureStorageService.readSecret(SecretKeys.geminiApiKey) ?? '';
+});
+
 final aiServiceProvider = Provider<AIService>((ref) {
   // 1. Check Local LLM
   final isLlmReady = ref.watch(isLlmLoadedProvider);
@@ -71,15 +77,16 @@ final aiServiceProvider = Provider<AIService>((ref) {
     return ref.watch(llmServiceProvider);
   }
 
-  // 2. Check Cloud Gemini
+  // 2. Check Cloud Gemini — read key from async provider (empty string while loading)
   final box = ref.watch(settingsBoxProvider);
-  final apiKey = box.get('gemini_api_key', defaultValue: '') as String;
   final isEnabled = box.get('enable_gemini_ai', defaultValue: false) as bool;
-  
+  final apiKeyAsync = ref.watch(geminiApiKeyProvider);
+  final apiKey = apiKeyAsync.valueOrNull ?? '';
+
   if (isEnabled && apiKey.isNotEmpty) {
     return GeminiAIService(apiKey);
   }
-  
+
   // 3. Fallback
   return MockAIService();
 });
@@ -216,5 +223,39 @@ class BudgetNotifier extends StateNotifier<double> {
   Future<void> setBudget(double newLimit) async {
     await _box.put(_key, newLimit);
     state = newLimit;
+  }
+}
+
+final currentBalanceProvider = StateNotifierProvider<CurrentBalanceNotifier, double>((ref) {
+  final box = ref.watch(settingsBoxProvider);
+  return CurrentBalanceNotifier(box);
+});
+
+class CurrentBalanceNotifier extends StateNotifier<double> {
+  final Box _box;
+  static const _key = 'current_balance';
+
+  CurrentBalanceNotifier(this._box) : super(_box.get(_key, defaultValue: 0.0) as double);
+
+  Future<void> setBalance(double newBalance) async {
+    await _box.put(_key, newBalance);
+    state = newBalance;
+  }
+}
+
+final projectedIncomeProvider = StateNotifierProvider<ProjectedIncomeNotifier, double>((ref) {
+  final box = ref.watch(settingsBoxProvider);
+  return ProjectedIncomeNotifier(box);
+});
+
+class ProjectedIncomeNotifier extends StateNotifier<double> {
+  final Box _box;
+  static const _key = 'projected_income';
+
+  ProjectedIncomeNotifier(this._box) : super(_box.get(_key, defaultValue: 0.0) as double);
+
+  Future<void> setIncome(double newIncome) async {
+    await _box.put(_key, newIncome);
+    state = newIncome;
   }
 }

@@ -6,7 +6,9 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 
 import '../../../../core/theme/theme_notifier.dart';
+import '../../../../core/services/secure_storage_service.dart';
 import '../../../receipt_scanning/presentation/providers/receipt_provider.dart';
+import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../../../core/services/google_drive_service.dart';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -296,8 +298,10 @@ class _SettingsPanelWidgetState extends ConsumerState<SettingsPanelWidget> {
 
                       Consumer(builder: (context, ref, _) {
                         final box = ref.watch(settingsBoxProvider);
-                        final apiKey = box.get('gemini_api_key', defaultValue: '') as String;
                         final isEnabled = box.get('enable_gemini_ai', defaultValue: false) as bool;
+                        // Read API key from secure storage asynchronously
+                        final apiKeyAsync = ref.watch(geminiApiKeyProvider);
+                        final apiKey = apiKeyAsync.valueOrNull ?? '';
                         return _cardWrapper(
                           tileBg: tileBg,
                           divider: divider,
@@ -311,7 +315,6 @@ class _SettingsPanelWidgetState extends ConsumerState<SettingsPanelWidget> {
                                   value: isEnabled,
                                   onChanged: (val) {
                                     box.put('enable_gemini_ai', val);
-                                    if (val && box.get('gemini_api_key') == null) box.put('gemini_api_key', '');
                                     setState(() {});
                                   },
                                 )),
@@ -320,7 +323,7 @@ class _SettingsPanelWidgetState extends ConsumerState<SettingsPanelWidget> {
                                 label: 'Set API Key…',
                                 fgCol: isEnabled ? fgCol : muted,
                                 muted: muted,
-                                onTap: isEnabled ? () => _showApiKeyDialog(box, apiKey) : null,
+                                onTap: isEnabled ? () => _showApiKeyDialog(apiKey) : null,
                                 trailing: isEnabled
                                     ? Icon(Icons.edit_outlined, size: 16, color: muted)
                                     : null),
@@ -395,10 +398,11 @@ class _SettingsPanelWidgetState extends ConsumerState<SettingsPanelWidget> {
                           label: 'Log Out',
                           color: muted,
                           borderColor: divider,
-                          onTap: () {
-                            ref.read(settingsBoxProvider).put('isLoggedIn', false);
+                          onTap: () async {
                             Navigator.of(context).pop();
-                            context.go('/');
+                            // Sign out via Supabase — the auth stream triggers
+                            // RouterNotifier which redirects to '/' automatically.
+                            await ref.read(authProvider.notifier).signOut();
                           }),
 
                       // ── Dev Mode ─────────────────────────────────────────
@@ -541,7 +545,7 @@ class _SettingsPanelWidgetState extends ConsumerState<SettingsPanelWidget> {
 
   // ─── Dialogs ──────────────────────────────────────────────────────────────
 
-  void _showApiKeyDialog(dynamic box, String currentKey) {
+  void _showApiKeyDialog(String currentKey) {
     final ctrl = TextEditingController(text: currentKey);
     final isDark = ref.read(themeProvider) == ThemeMode.dark;
     final dialogBg = isDark ? const Color(0xFF1A1A1A) : Colors.white;
@@ -577,11 +581,17 @@ class _SettingsPanelWidgetState extends ConsumerState<SettingsPanelWidget> {
                 style: GoogleFonts.spaceGrotesk(color: textCol.withAlpha(100))),
           ),
           TextButton(
-            onPressed: () {
-              box.put('gemini_api_key', ctrl.text.trim());
+            onPressed: () async {
+              // Write to secure storage (keychain), NOT Hive
+              await SecureStorageService.writeSecret(
+                SecretKeys.geminiApiKey, ctrl.text.trim());
+              // Invalidate the provider so aiServiceProvider picks up the new key
+              ref.invalidate(geminiApiKeyProvider);
               Navigator.pop(ctx);
-              ScaffoldMessenger.of(context)
-                  .showSnackBar(const SnackBar(content: Text('API Key saved')));
+              if (mounted) {
+                ScaffoldMessenger.of(context)
+                    .showSnackBar(const SnackBar(content: Text('API Key saved securely')));
+              }
             },
             child: Text('Save',
                 style: GoogleFonts.spaceGrotesk(color: _accent)),

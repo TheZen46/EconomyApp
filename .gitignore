@@ -47,3 +47,11 @@ app.*.map.json
 assets/credentials.json
 
 *.gguf
+
+# Environment secrets
+.env
+.env.*
+!.env.example
+
+# Scratch test files with secrets
+test_supabase.dart

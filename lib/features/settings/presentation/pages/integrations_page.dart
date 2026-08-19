@@ -1,9 +1,9 @@
 // ignore_for_file: deprecated_member_use, deprecated_member_use_from_same_package, unused_local_variable, unnecessary_underscores, invalid_annotation_target, unused_element, non_constant_identifier_names, use_build_context_synchronously
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:hive/hive.dart';
 
 import '../../../../core/theme/app_theme.dart';
+import '../../../../core/services/secure_storage_service.dart';
 import '../../../receipt_scanning/presentation/providers/receipt_provider.dart';
 
 class IntegrationsPage extends ConsumerStatefulWidget {
@@ -19,8 +19,6 @@ class _IntegrationsPageState extends ConsumerState<IntegrationsPage> {
   bool _isEnabled = false;
   bool _isLoading = false;
 
-  late Box _settingsBox;
-
   @override
   void initState() {
     super.initState();
@@ -30,22 +28,34 @@ class _IntegrationsPageState extends ConsumerState<IntegrationsPage> {
     });
   }
 
-  void _loadSettings() {
-    _settingsBox = ref.read(settingsBoxProvider);
-    setState(() {
-      _urlController.text = _settingsBox.get('webhook_url', defaultValue: '');
-      _secretController.text = _settingsBox.get('webhook_secret', defaultValue: '');
-      _isEnabled = _settingsBox.get('webhook_enabled', defaultValue: false);
-    });
+  Future<void> _loadSettings() async {
+    final settingsBox = ref.read(settingsBoxProvider);
+    // webhook_url and webhook_enabled are non-sensitive: keep in Hive
+    final url = settingsBox.get('webhook_url', defaultValue: '') as String;
+    final enabled = settingsBox.get('webhook_enabled', defaultValue: false) as bool;
+    // webhook_secret is sensitive: read from secure storage
+    final secret = await SecureStorageService.readSecret(SecretKeys.webhookSecret) ?? '';
+
+    if (mounted) {
+      setState(() {
+        _urlController.text = url;
+        _secretController.text = secret;
+        _isEnabled = enabled;
+      });
+    }
   }
 
   Future<void> _save() async {
-    await _settingsBox.put('webhook_url', _urlController.text.trim());
-    await _settingsBox.put('webhook_secret', _secretController.text.trim());
-    await _settingsBox.put('webhook_enabled', _isEnabled);
-    
+    final settingsBox = ref.read(settingsBoxProvider);
+    // Non-sensitive values stay in Hive
+    await settingsBox.put('webhook_url', _urlController.text.trim());
+    await settingsBox.put('webhook_enabled', _isEnabled);
+    // Sensitive secret goes to secure storage
+    await SecureStorageService.writeSecret(
+        SecretKeys.webhookSecret, _secretController.text.trim());
+
     if (mounted) {
-       ScaffoldMessenger.of(context).showSnackBar(
+      ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Integration settings saved')),
       );
     }
@@ -54,16 +64,14 @@ class _IntegrationsPageState extends ConsumerState<IntegrationsPage> {
   Future<void> _testConnection() async {
     setState(() => _isLoading = true);
     try {
-      // Temporarily save to ensure service uses latest values
-      await _settingsBox.put('webhook_url', _urlController.text.trim());
-      await _settingsBox.put('webhook_secret', _secretController.text.trim());
-      await _settingsBox.put('webhook_enabled', _isEnabled); // Must be enabled usually? Service check logic depends on this.
+      // Save latest values before testing
+      await _save();
 
       final service = ref.read(webhookServiceProvider);
-      // Force enabled for test? Service checks 'webhook_enabled'. Let's enforce enable for test or warn.
-      if (!_isEnabled) { 
-         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please enable integration to test')));
-         return;
+      if (!_isEnabled) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Please enable integration to test')));
+        return;
       }
 
       await service.sendTestEvent();
@@ -90,7 +98,7 @@ class _IntegrationsPageState extends ConsumerState<IntegrationsPage> {
             actions: [
               TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Close')),
             ],
-             backgroundColor: AppTheme.surface,
+            backgroundColor: AppTheme.surface,
           ),
         );
       }
@@ -178,8 +186,8 @@ class _IntegrationsPageState extends ConsumerState<IntegrationsPage> {
               width: double.infinity,
               child: ElevatedButton.icon(
                 onPressed: _isLoading ? null : _testConnection,
-                icon: _isLoading 
-                    ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)) 
+                icon: _isLoading
+                    ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
                     : const Icon(Icons.bolt),
                 label: const Text('Send Test Event'),
                 style: ElevatedButton.styleFrom(
@@ -190,17 +198,17 @@ class _IntegrationsPageState extends ConsumerState<IntegrationsPage> {
                 ),
               ),
             ),
-            
+
             if (_isEnabled)
-             Padding(
-               padding: const EdgeInsets.only(top: 16),
-               child: Center(
-                 child: Text(
-                   'Status: Active', 
-                   style: TextStyle(color: Colors.greenAccent.withAlpha(204), fontSize: 12)
-                 ),
-               ),
-             )
+              Padding(
+                padding: const EdgeInsets.only(top: 16),
+                child: Center(
+                  child: Text(
+                    'Status: Active',
+                    style: TextStyle(color: Colors.greenAccent.withAlpha(204), fontSize: 12),
+                  ),
+                ),
+              )
           ],
         ),
       ),

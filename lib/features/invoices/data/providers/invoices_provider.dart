@@ -1,27 +1,31 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hive/hive.dart';
 import 'package:uuid/uuid.dart';
-import 'package:intl/intl.dart';
 import '../models/invoice_model.dart';
+import '../../../../features/receipt_scanning/presentation/providers/receipt_provider.dart';
 
 final invoicesHiveBoxProvider = Provider<Box<InvoiceModel>>((ref) {
   throw UnimplementedError('invoicesHiveBoxProvider must be overridden in main.dart');
 });
 
+// ── Persistent counter key ───────────────────────────────────────────────────
+// Stored in the unencrypted settingsBox. It is increment-only and never
+// derived from the list length, so deleting invoices cannot cause reuse.
+const _counterKey = 'global_invoice_counter';
+
 class InvoicesNotifier extends StateNotifier<List<InvoiceModel>> {
   final Box<InvoiceModel> _box;
+  final Box _settingsBox;
   static const _uuid = Uuid();
-  int _invoiceCounter = 0;
 
-  InvoicesNotifier(this._box) : super([]) {
+  InvoicesNotifier(this._box, this._settingsBox) : super([]) {
     _load();
   }
 
   void _load() {
     final items = _box.values.toList()
       ..sort((a, b) => b.issuedDate.compareTo(a.issuedDate));
-    _invoiceCounter = items.length;
-    // Auto-mark overdue
+    // Auto-mark overdue — do NOT set _invoiceCounter from items.length
     for (final inv in items) {
       if (inv.isOverdue && inv.status == InvoiceStatus.sent) {
         inv.status = InvoiceStatus.overdue;
@@ -31,10 +35,14 @@ class InvoicesNotifier extends StateNotifier<List<InvoiceModel>> {
     state = items;
   }
 
-  String _generateNumber() {
-    _invoiceCounter++;
+  /// Returns the next invoice number using a monotonically increasing counter
+  /// persisted in Hive. Safe against deletions — the counter only ever goes up.
+  Future<String> _generateNumber() async {
+    final current = _settingsBox.get(_counterKey, defaultValue: 0) as int;
+    final next = current + 1;
+    await _settingsBox.put(_counterKey, next);
     final year = DateTime.now().year;
-    return 'INV-$year-${_invoiceCounter.toString().padLeft(3, '0')}';
+    return 'INV-$year-${next.toString().padLeft(3, '0')}';
   }
 
   Future<InvoiceModel> create({
@@ -48,7 +56,7 @@ class InvoicesNotifier extends StateNotifier<List<InvoiceModel>> {
   }) async {
     final inv = InvoiceModel(
       id: _uuid.v4(),
-      invoiceNumber: _generateNumber(),
+      invoiceNumber: await _generateNumber(),
       clientName: clientName,
       amount: amount,
       status: status,
@@ -72,6 +80,7 @@ class InvoicesNotifier extends StateNotifier<List<InvoiceModel>> {
   Future<void> delete(String id) async {
     await _box.delete(id);
     state = state.where((i) => i.id != id).toList();
+    // Counter is NOT decremented — it must only ever increase.
   }
 
   // Stats
@@ -90,5 +99,6 @@ class InvoicesNotifier extends StateNotifier<List<InvoiceModel>> {
 
 final invoicesProvider = StateNotifierProvider<InvoicesNotifier, List<InvoiceModel>>((ref) {
   final box = ref.watch(invoicesHiveBoxProvider);
-  return InvoicesNotifier(box);
+  final settingsBox = ref.watch(settingsBoxProvider);
+  return InvoicesNotifier(box, settingsBox);
 });
