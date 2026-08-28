@@ -27,11 +27,14 @@ jobs:
         with:
           channel: 'stable'
 
+      - name: Create environment configuration
+        run: cp .env.example .env
+
       - name: Install dependencies
         run: flutter pub get
 
       - name: Build Web
-        run: flutter build web --base-href /${{ github.event.repository.name }}/
+        run: flutter build web --base-href /${{ github.event.repository.name }}/ --no-wasm-dry-run
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
