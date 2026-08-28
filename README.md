@@ -21,6 +21,8 @@ Il flusso dell'applicazione si articola su tre layer principali:
 
 Il flusso dei dati standard segue questa pipeline: `Input dell'utente -> Logica di Elaborazione -> Archiviazione Dati -> Aggregazione e Statistiche -> Output sulla UI`.
 
+Per un'analisi approfondita dei singoli componenti, della gestione crittografica, del recupero da corruzione schema e dei record delle decisioni architetturali (ADR), consulta la [Documentazione Architetturale Dettagliata](docs/architecture.md).
+
 ## Prerequisiti e Installazione
 Per compilare ed eseguire tAIdy, è necessario disporre di un ambiente di sviluppo Flutter configurato correttamente. Di seguito i requisiti software fondamentali:
 

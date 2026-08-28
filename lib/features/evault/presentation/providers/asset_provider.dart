@@ -1,4 +1,3 @@
-// ignore_for_file: deprecated_member_use, deprecated_member_use_from_same_package, unused_local_variable, unnecessary_underscores, invalid_annotation_target, unused_element, non_constant_identifier_names, use_build_context_synchronously
 import 'package:hive/hive.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../data/models/asset_model.dart';
@@ -10,14 +9,18 @@ final assetsBoxProvider = Provider<Box<AssetModel>>((ref) {
 });
 
 final assetListProvider = StateNotifierProvider<AssetNotifier, List<AssetModel>>((ref) {
-  final box = ref.watch(assetsBoxProvider);
-  return AssetNotifier(box);
+  try {
+    final box = ref.watch(assetsBoxProvider);
+    return AssetNotifier(box);
+  } catch (_) {
+    return AssetNotifier(null);
+  }
 });
 
 class AssetNotifier extends StateNotifier<List<AssetModel>> {
-  final Box<AssetModel> _box;
+  final Box<AssetModel>? _box;
 
-  AssetNotifier(this._box) : super(_box.values.toList());
+  AssetNotifier([this._box]) : super(_box?.values.toList() ?? []);
 
   Future<void> addAssetFromReceiptItem(ReceiptItem item, Receipt receipt, {int warrantyMonths = 24}) async {
     final asset = AssetModel(
@@ -31,18 +34,12 @@ class AssetNotifier extends StateNotifier<List<AssetModel>> {
       receiptId: receipt.id,
     );
     
-    await _box.add(asset);
-    state = _box.values.toList();
+    await _box?.put(asset.id, asset);
+    state = _box?.values.toList() ?? [asset, ...state];
   }
 
-  Future<void> deleteAsset(String key) async {
-    // Hive keys can be int or string. We should handle the key properly.
-    // If using auto-increment int keys (default for box.add), we need the index or key.
-    // AssetModel has an 'id' field, but Hive stores by 'key'.
-    // Faster way: find key by ID.
-    final map = _box.toMap();
-    final entry = map.entries.firstWhere((e) => e.value.id == key, orElse: () => throw Exception('Asset not found'));
-    await _box.delete(entry.key);
-    state = _box.values.toList();
+  Future<void> deleteAsset(String id) async {
+    await _box?.delete(id);
+    state = state.where((a) => a.id != id).toList();
   }
 }

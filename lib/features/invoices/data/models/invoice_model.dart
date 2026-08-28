@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:hive/hive.dart';
 
 part 'invoice_model.g.dart';
@@ -12,36 +13,37 @@ class InvoiceStatus {
   static const List<String> all = [draft, sent, settled, overdue];
 }
 
+@immutable
 @HiveType(typeId: 11)
-class InvoiceModel extends HiveObject {
+class InvoiceModel {
   @HiveField(0)
-  String id;
+  final String id;
 
   @HiveField(1)
-  String invoiceNumber;
+  final String invoiceNumber;
 
   @HiveField(2)
-  String clientName;
+  final String clientName;
 
   @HiveField(3)
-  double amount;
+  final double amount;
 
   @HiveField(4)
-  String status; // 'Draft' | 'Sent' | 'Settled' | 'Overdue'
+  final String status; // 'Draft' | 'Sent' | 'Settled' | 'Overdue'
 
   @HiveField(5)
-  DateTime issuedDate;
+  final DateTime issuedDate;
 
   @HiveField(6)
-  DateTime? dueDate;
+  final DateTime? dueDate;
 
   @HiveField(7)
-  String notes;
+  final String notes;
 
   @HiveField(8)
-  String currency;
+  final String currency;
 
-  InvoiceModel({
+  const InvoiceModel({
     required this.id,
     required this.invoiceNumber,
     required this.clientName,
@@ -54,6 +56,8 @@ class InvoiceModel extends HiveObject {
   });
 
   InvoiceModel copyWith({
+    String? id,
+    String? invoiceNumber,
     String? clientName,
     double? amount,
     String? status,
@@ -63,8 +67,8 @@ class InvoiceModel extends HiveObject {
     String? currency,
   }) {
     return InvoiceModel(
-      id: id,
-      invoiceNumber: invoiceNumber,
+      id: id ?? this.id,
+      invoiceNumber: invoiceNumber ?? this.invoiceNumber,
       clientName: clientName ?? this.clientName,
       amount: amount ?? this.amount,
       status: status ?? this.status,
@@ -80,4 +84,31 @@ class InvoiceModel extends HiveObject {
     if (dueDate == null) return false;
     return DateTime.now().isAfter(dueDate!);
   }
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is InvoiceModel &&
+          runtimeType == other.runtimeType &&
+          id == other.id &&
+          invoiceNumber == other.invoiceNumber &&
+          clientName == other.clientName &&
+          amount == other.amount &&
+          status == other.status &&
+          issuedDate == other.issuedDate &&
+          dueDate == other.dueDate &&
+          notes == other.notes &&
+          currency == other.currency;
+
+  @override
+  int get hashCode =>
+      id.hashCode ^
+      invoiceNumber.hashCode ^
+      clientName.hashCode ^
+      amount.hashCode ^
+      status.hashCode ^
+      issuedDate.hashCode ^
+      dueDate.hashCode ^
+      notes.hashCode ^
+      currency.hashCode;
 }

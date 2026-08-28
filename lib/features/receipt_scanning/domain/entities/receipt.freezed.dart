@@ -27,6 +27,7 @@ mixin _$Receipt {
       throw _privateConstructorUsedError; // required String category, // Removed as per user request
   List<ReceiptItem> get items => throw _privateConstructorUsedError;
   String? get imagePath => throw _privateConstructorUsedError;
+  String? get boxId => throw _privateConstructorUsedError;
 
   @JsonKey(ignore: true)
   $ReceiptCopyWith<Receipt> get copyWith => throw _privateConstructorUsedError;
@@ -47,7 +48,8 @@ abstract class $ReceiptCopyWith<$Res> {
       double totalAmount,
       String currency,
       List<ReceiptItem> items,
-      String? imagePath});
+      String? imagePath,
+      String? boxId});
 }
 
 /// @nodoc
@@ -73,6 +75,7 @@ class _$ReceiptCopyWithImpl<$Res, $Val extends Receipt>
     Object? currency = null,
     Object? items = null,
     Object? imagePath = freezed,
+    Object? boxId = freezed,
   }) {
     return _then(_value.copyWith(
       id: null == id
@@ -115,6 +118,10 @@ class _$ReceiptCopyWithImpl<$Res, $Val extends Receipt>
           ? _value.imagePath
           : imagePath // ignore: cast_nullable_to_non_nullable
               as String?,
+      boxId: freezed == boxId
+          ? _value.boxId
+          : boxId // ignore: cast_nullable_to_non_nullable
+              as String?,
     ) as $Val);
   }
 }
@@ -136,7 +143,8 @@ abstract class _$$ReceiptImplCopyWith<$Res> implements $ReceiptCopyWith<$Res> {
       double totalAmount,
       String currency,
       List<ReceiptItem> items,
-      String? imagePath});
+      String? imagePath,
+      String? boxId});
 }
 
 /// @nodoc
@@ -160,6 +168,7 @@ class __$$ReceiptImplCopyWithImpl<$Res>
     Object? currency = null,
     Object? items = null,
     Object? imagePath = freezed,
+    Object? boxId = freezed,
   }) {
     return _then(_$ReceiptImpl(
       id: null == id
@@ -202,6 +211,10 @@ class __$$ReceiptImplCopyWithImpl<$Res>
           ? _value.imagePath
           : imagePath // ignore: cast_nullable_to_non_nullable
               as String?,
+      boxId: freezed == boxId
+          ? _value.boxId
+          : boxId // ignore: cast_nullable_to_non_nullable
+              as String?,
     ));
   }
 }
@@ -219,7 +232,8 @@ class _$ReceiptImpl extends _Receipt {
       required this.totalAmount,
       required this.currency,
       final List<ReceiptItem> items = const [],
-      this.imagePath})
+      this.imagePath,
+      this.boxId = 'main'})
       : _items = items,
         super._();
 
@@ -255,10 +269,13 @@ class _$ReceiptImpl extends _Receipt {
 
   @override
   final String? imagePath;
+  @override
+  @JsonKey()
+  final String? boxId;
 
   @override
   String toString() {
-    return 'Receipt(id: $id, merchantName: $merchantName, vatNumber: $vatNumber, merchantAddress: $merchantAddress, date: $date, time: $time, totalAmount: $totalAmount, currency: $currency, items: $items, imagePath: $imagePath)';
+    return 'Receipt(id: $id, merchantName: $merchantName, vatNumber: $vatNumber, merchantAddress: $merchantAddress, date: $date, time: $time, totalAmount: $totalAmount, currency: $currency, items: $items, imagePath: $imagePath, boxId: $boxId)';
   }
 
   @override
@@ -281,7 +298,8 @@ class _$ReceiptImpl extends _Receipt {
                 other.currency == currency) &&
             const DeepCollectionEquality().equals(other._items, _items) &&
             (identical(other.imagePath, imagePath) ||
-                other.imagePath == imagePath));
+                other.imagePath == imagePath) &&
+            (identical(other.boxId, boxId) || other.boxId == boxId));
   }
 
   @override
@@ -296,7 +314,8 @@ class _$ReceiptImpl extends _Receipt {
       totalAmount,
       currency,
       const DeepCollectionEquality().hash(_items),
-      imagePath);
+      imagePath,
+      boxId);
 
   @JsonKey(ignore: true)
   @override
@@ -316,7 +335,8 @@ abstract class _Receipt extends Receipt {
       required final double totalAmount,
       required final String currency,
       final List<ReceiptItem> items,
-      final String? imagePath}) = _$ReceiptImpl;
+      final String? imagePath,
+      final String? boxId}) = _$ReceiptImpl;
   const _Receipt._() : super._();
 
   @override
@@ -340,6 +360,8 @@ abstract class _Receipt extends Receipt {
   @override
   String? get imagePath;
   @override
+  String? get boxId;
+  @override
   @JsonKey(ignore: true)
   _$$ReceiptImplCopyWith<_$ReceiptImpl> get copyWith =>
       throw _privateConstructorUsedError;
@@ -358,6 +380,7 @@ mixin _$ReceiptItem {
   String? get subCategory =>
       throw _privateConstructorUsedError; // e.g. "Beverages (Sugary)"
   bool get isAsset => throw _privateConstructorUsedError;
+  String? get boxId => throw _privateConstructorUsedError;
   @Deprecated('Use subCategory or mainCategory instead')
   String? get category => throw _privateConstructorUsedError;
 
@@ -381,6 +404,7 @@ abstract class $ReceiptItemCopyWith<$Res> {
       String? mainCategory,
       String? subCategory,
       bool isAsset,
+      String? boxId,
       @Deprecated('Use subCategory or mainCategory instead') String? category});
 }
 
@@ -405,6 +429,7 @@ class _$ReceiptItemCopyWithImpl<$Res, $Val extends ReceiptItem>
     Object? mainCategory = freezed,
     Object? subCategory = freezed,
     Object? isAsset = null,
+    Object? boxId = freezed,
     Object? category = freezed,
   }) {
     return _then(_value.copyWith(
@@ -440,6 +465,10 @@ class _$ReceiptItemCopyWithImpl<$Res, $Val extends ReceiptItem>
           ? _value.isAsset
           : isAsset // ignore: cast_nullable_to_non_nullable
               as bool,
+      boxId: freezed == boxId
+          ? _value.boxId
+          : boxId // ignore: cast_nullable_to_non_nullable
+              as String?,
       category: freezed == category
           ? _value.category
           : category // ignore: cast_nullable_to_non_nullable
@@ -465,6 +494,7 @@ abstract class _$$ReceiptItemImplCopyWith<$Res>
       String? mainCategory,
       String? subCategory,
       bool isAsset,
+      String? boxId,
       @Deprecated('Use subCategory or mainCategory instead') String? category});
 }
 
@@ -487,6 +517,7 @@ class __$$ReceiptItemImplCopyWithImpl<$Res>
     Object? mainCategory = freezed,
     Object? subCategory = freezed,
     Object? isAsset = null,
+    Object? boxId = freezed,
     Object? category = freezed,
   }) {
     return _then(_$ReceiptItemImpl(
@@ -522,6 +553,10 @@ class __$$ReceiptItemImplCopyWithImpl<$Res>
           ? _value.isAsset
           : isAsset // ignore: cast_nullable_to_non_nullable
               as bool,
+      boxId: freezed == boxId
+          ? _value.boxId
+          : boxId // ignore: cast_nullable_to_non_nullable
+              as String?,
       category: freezed == category
           ? _value.category
           : category // ignore: cast_nullable_to_non_nullable
@@ -542,6 +577,7 @@ class _$ReceiptItemImpl implements _ReceiptItem {
       this.mainCategory,
       this.subCategory,
       this.isAsset = false,
+      this.boxId = 'main',
       @Deprecated('Use subCategory or mainCategory instead') this.category});
 
   @override
@@ -567,12 +603,15 @@ class _$ReceiptItemImpl implements _ReceiptItem {
   @JsonKey()
   final bool isAsset;
   @override
+  @JsonKey()
+  final String? boxId;
+  @override
   @Deprecated('Use subCategory or mainCategory instead')
   final String? category;
 
   @override
   String toString() {
-    return 'ReceiptItem(description: $description, unitPrice: $unitPrice, quantity: $quantity, totalPrice: $totalPrice, necessity: $necessity, mainCategory: $mainCategory, subCategory: $subCategory, isAsset: $isAsset, category: $category)';
+    return 'ReceiptItem(description: $description, unitPrice: $unitPrice, quantity: $quantity, totalPrice: $totalPrice, necessity: $necessity, mainCategory: $mainCategory, subCategory: $subCategory, isAsset: $isAsset, boxId: $boxId, category: $category)';
   }
 
   @override
@@ -595,13 +634,24 @@ class _$ReceiptItemImpl implements _ReceiptItem {
             (identical(other.subCategory, subCategory) ||
                 other.subCategory == subCategory) &&
             (identical(other.isAsset, isAsset) || other.isAsset == isAsset) &&
+            (identical(other.boxId, boxId) || other.boxId == boxId) &&
             (identical(other.category, category) ||
                 other.category == category));
   }
 
   @override
-  int get hashCode => Object.hash(runtimeType, description, unitPrice, quantity,
-      totalPrice, necessity, mainCategory, subCategory, isAsset, category);
+  int get hashCode => Object.hash(
+      runtimeType,
+      description,
+      unitPrice,
+      quantity,
+      totalPrice,
+      necessity,
+      mainCategory,
+      subCategory,
+      isAsset,
+      boxId,
+      category);
 
   @JsonKey(ignore: true)
   @override
@@ -620,6 +670,7 @@ abstract class _ReceiptItem implements ReceiptItem {
       final String? mainCategory,
       final String? subCategory,
       final bool isAsset,
+      final String? boxId,
       @Deprecated('Use subCategory or mainCategory instead')
       final String? category}) = _$ReceiptItemImpl;
 
@@ -639,6 +690,8 @@ abstract class _ReceiptItem implements ReceiptItem {
   String? get subCategory;
   @override // e.g. "Beverages (Sugary)"
   bool get isAsset;
+  @override
+  String? get boxId;
   @override
   @Deprecated('Use subCategory or mainCategory instead')
   String? get category;

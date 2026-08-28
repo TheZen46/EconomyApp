@@ -1,8 +1,8 @@
-// ignore_for_file: deprecated_member_use, deprecated_member_use_from_same_package, unused_local_variable, unnecessary_underscores, invalid_annotation_target, unused_element, non_constant_identifier_names, use_build_context_synchronously
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/theme/app_theme.dart';
+import '../../../../core/utils/error_handler.dart';
 import '../../../../core/services/secure_storage_service.dart';
 import '../../../receipt_scanning/presentation/providers/receipt_provider.dart';
 
@@ -66,6 +66,7 @@ class _IntegrationsPageState extends ConsumerState<IntegrationsPage> {
     try {
       // Save latest values before testing
       await _save();
+      if (!mounted) return;
 
       final service = ref.read(webhookServiceProvider);
       if (!_isEnabled) {
@@ -76,7 +77,7 @@ class _IntegrationsPageState extends ConsumerState<IntegrationsPage> {
 
       await service.sendTestEvent();
       if (mounted) {
-        showDialog(
+        await showDialog(
           context: context,
           builder: (ctx) => AlertDialog(
             title: const Text('Success', style: TextStyle(color: Colors.green)),
@@ -90,20 +91,19 @@ class _IntegrationsPageState extends ConsumerState<IntegrationsPage> {
       }
     } catch (e) {
       if (mounted) {
-        showDialog(
+        await ErrorHandler.showErrorDialog(
           context: context,
-          builder: (ctx) => AlertDialog(
-            title: const Text('Connection Failed', style: TextStyle(color: AppTheme.error)),
-            content: Text(e.toString()),
-            actions: [
-              TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Close')),
-            ],
-            backgroundColor: AppTheme.surface,
-          ),
+          title: 'Connection Failed',
+          error: e,
+          primaryActionText: 'Dismiss',
+          secondaryActionText: 'Retry',
+          onSecondaryAction: _testConnection,
         );
       }
     } finally {
-      setState(() => _isLoading = false);
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
     }
   }
 

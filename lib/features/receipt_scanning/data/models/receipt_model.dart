@@ -1,4 +1,3 @@
-// ignore_for_file: deprecated_member_use, deprecated_member_use_from_same_package, unused_local_variable, unnecessary_underscores, invalid_annotation_target, unused_element, non_constant_identifier_names, use_build_context_synchronously
 import 'package:hive/hive.dart';
 import 'package:json_annotation/json_annotation.dart';
 import '../../domain/entities/receipt.dart';
@@ -44,6 +43,10 @@ class ReceiptModel extends HiveObject {
   @HiveField(10)
   final String time;
 
+  @HiveField(11)
+  @JsonKey(name: 'box_id', defaultValue: 'main')
+  final String? boxId;
+
   ReceiptModel({
     required this.id,
     required this.merchantName,
@@ -56,6 +59,7 @@ class ReceiptModel extends HiveObject {
     this.vatNumber = '',
     this.merchantAddress = '',
     this.time = '',
+    this.boxId = 'main',
   });
 
   // Custom fromJson to handle the "Perfect JSON" nested structure
@@ -72,6 +76,7 @@ class ReceiptModel extends HiveObject {
     final timeStr = transaction['time'] as String? ?? '00:00';
     final currency = transaction['currency'] as String? ?? 'EUR';
     final totalAmount = (transaction['total_amount'] as num?)?.toDouble() ?? 0.0;
+    final boxId = json['box_id'] as String? ?? 'main';
     
     // 3. Category & Items
     // final category = json['category'] as String? ?? 'Uncategorized';
@@ -90,6 +95,7 @@ class ReceiptModel extends HiveObject {
       vatNumber: vatNumber,
       merchantAddress: address,
       time: timeStr,
+      boxId: boxId,
     );
   }
   
@@ -117,6 +123,7 @@ class ReceiptModel extends HiveObject {
       vatNumber: vatNumber,
       merchantAddress: merchantAddress,
       time: time,
+      boxId: boxId ?? 'main',
     );
   }
 
@@ -133,6 +140,7 @@ class ReceiptModel extends HiveObject {
       vatNumber: receipt.vatNumber,
       merchantAddress: receipt.merchantAddress,
       time: receipt.time,
+      boxId: receipt.boxId ?? 'main',
     );
   }
 }
@@ -174,6 +182,10 @@ class ReceiptItemModel {
   @JsonKey(name: 'is_asset', defaultValue: false)
   final bool? isAsset; // Nullable for migration
 
+  @HiveField(9)
+  @JsonKey(name: 'box_id', defaultValue: 'main')
+  final String? boxId;
+
   ReceiptItemModel({
     required this.description,
     required this.unitPrice,
@@ -184,6 +196,7 @@ class ReceiptItemModel {
     this.mainCategory,
     this.subCategory,
     this.isAsset = false,
+    this.boxId = 'main',
   });
 
   factory ReceiptItemModel.fromJson(Map<String, dynamic> json) => _$ReceiptItemModelFromJson(json);
@@ -200,6 +213,7 @@ class ReceiptItemModel {
       mainCategory: mainCategory,
       subCategory: subCategory,
       isAsset: isAsset ?? false,
+      boxId: boxId ?? 'main',
     );
   }
   
@@ -221,5 +235,6 @@ class ReceiptItemModel {
     mainCategory: item.mainCategory,
     subCategory: item.subCategory,
     isAsset: item.isAsset,
+    boxId: item.boxId ?? 'main',
   );
 }

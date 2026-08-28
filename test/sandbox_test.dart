@@ -3,10 +3,10 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   testWidgets('Overflow test', (WidgetTester tester) async {
+    final originalOnError = FlutterError.onError;
     FlutterError.onError = (FlutterErrorDetails details) {
       // Swallows error or throws it into the void
-      print('Caught by custom handler: ${details.exception}');
-      // throw details.exception; // Even if thrown, might not fail test correctly
+      debugPrint('Caught by custom handler: ${details.exception}');
     };
 
     await tester.pumpWidget(
@@ -20,5 +20,7 @@ void main() {
         ),
       ),
     );
+
+    FlutterError.onError = originalOnError;
   });
 }

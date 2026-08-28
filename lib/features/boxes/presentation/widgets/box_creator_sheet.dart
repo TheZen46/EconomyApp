@@ -7,7 +7,7 @@ import '../../data/providers/boxes_provider.dart';
 class BoxCreatorSheet extends ConsumerStatefulWidget {
   final String? editBoxId;
 
-  const BoxCreatorSheet({Key? key, this.editBoxId}) : super(key: key);
+  const BoxCreatorSheet({super.key, this.editBoxId});
 
   @override
   ConsumerState<BoxCreatorSheet> createState() => _BoxCreatorSheetState();

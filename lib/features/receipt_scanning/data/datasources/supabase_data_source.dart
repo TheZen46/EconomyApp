@@ -1,6 +1,4 @@
-// ignore_for_file: deprecated_member_use, deprecated_member_use_from_same_package, unused_local_variable, unnecessary_underscores, invalid_annotation_target, unused_element, non_constant_identifier_names, use_build_context_synchronously
 import 'dart:convert';
-import 'dart:typed_data';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -9,7 +7,12 @@ import '../../domain/entities/receipt.dart';
 abstract class SupabaseDataSource {
   Future<void> uploadTrainingData(Receipt receipt, String imagePath);
   Future<int> getStorageUsage();
-  Future<void> deleteData(List<String> ids);
+  Future<void> deleteData(List<String> ids, {List<String>? imagePaths});
+  Future<void> deleteReceipts(List<String> ids) async {}
+  Future<List<Map<String, dynamic>>> fetchAllReceipts({
+    int pageSize = 100,
+    String tableName = 'receipts',
+  }) async => [];
 }
 
 class SupabaseDataSourceImpl implements SupabaseDataSource {
@@ -17,15 +20,51 @@ class SupabaseDataSourceImpl implements SupabaseDataSource {
 
   SupabaseDataSourceImpl(this.client);
 
+  /// Default batch chunk size to prevent HTTP query string / URL length overflow.
+  static const int defaultBatchChunkSize = 100;
+
+  /// Helper to partition a list into chunks of at most [chunkSize].
+  static List<List<T>> chunkList<T>(List<T> items, [int chunkSize = defaultBatchChunkSize]) {
+    if (items.isEmpty) return [];
+    if (chunkSize <= 0) return [items];
+
+    final chunks = <List<T>>[];
+    for (int i = 0; i < items.length; i += chunkSize) {
+      final end = (i + chunkSize < items.length) ? i + chunkSize : items.length;
+      chunks.add(items.sublist(i, end));
+    }
+    return chunks;
+  }
+
+  /// Safely resolves the file extension from [imagePath].
+  /// Falls back to '.jpg' if the path has no extension or an invalid one.
+  static String _safeExtension(String imagePath) {
+    final dotIndex = imagePath.lastIndexOf('.');
+    final ext = dotIndex != -1 ? imagePath.substring(dotIndex).toLowerCase() : '';
+    if (ext.isEmpty || ext.length > 5) return '.jpg';
+    // Strip any non-alphanumeric chars after the dot (paranoia)
+    final clean = ext.replaceAll(RegExp(r'[^a-zA-Z0-9.]'), '');
+    return clean.isNotEmpty ? clean : '.jpg';
+  }
+
+  /// Builds the deterministic storage path for an image.
+  /// This must match between upload and delete — single source of truth.
+  static String _imagePath(String receiptId, String imagePath) {
+    final ext = _safeExtension(imagePath);
+    return 'images/$receiptId$ext';
+  }
+
+  /// Builds the deterministic storage path for a label JSON.
+  static String _labelPath(String receiptId) {
+    return 'labels/$receiptId.json';
+  }
+
   @override
   Future<void> uploadTrainingData(Receipt receipt, String imagePath) async {
     try {
-      // 1. Upload Image -> training_data/images/{uuid}.jpg
-      final fileExt = imagePath.split('.').last.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '');
-      final ext = fileExt.isNotEmpty && fileExt.length <= 4 ? fileExt : 'jpg';
-      final fileName = '${receipt.id}.$ext';
-      final storagePathImage = 'images/$fileName';
-      
+      // 1. Upload Image -> training_data/images/{uuid}.ext
+      final storagePathImage = _imagePath(receipt.id, imagePath);
+
       if (!kIsWeb) {
         final file = File(imagePath);
         if (file.existsSync()) {
@@ -35,10 +74,10 @@ class SupabaseDataSourceImpl implements SupabaseDataSource {
             fileOptions: const FileOptions(cacheControl: '3600', upsert: true),
           );
         } else {
-          print('Supabase upload: Image file missing, skipping image upload but proceeding with JSON.');
+          debugPrint('Supabase upload: Image file missing, skipping image upload but proceeding with JSON.');
         }
       } else {
-        print('Supabase upload: Running on Web, skipping direct File upload. Proceeding with JSON.');
+        debugPrint('Supabase upload: Running on Web, skipping direct File upload. Proceeding with JSON.');
       }
 
       // 2. Create and Upload Label JSON -> training_data/labels/{uuid}.json
@@ -48,8 +87,8 @@ class SupabaseDataSourceImpl implements SupabaseDataSource {
         "ground_truth": {
           "merchant": receipt.merchantName,
           "total": receipt.totalAmount,
-          "currency": receipt.currency, // Added currency to keep it complete though user example omitted it
-          "date": receipt.date.toIso8601String().split('T').first, // YYYY-MM-DD
+          "currency": receipt.currency,
+          "date": receipt.date.toIso8601String().split('T').first,
           "items": receipt.items.map((e) => {
             "description": e.description,
             "unit_price": e.unitPrice,
@@ -61,22 +100,21 @@ class SupabaseDataSourceImpl implements SupabaseDataSource {
         },
         "meta": {
           "is_user_corrected": true,
-          "original_ai_prediction_was_wrong": true // Assumption based on context (this is triggered on edit)
+          "original_ai_prediction_was_wrong": true
         }
       };
 
       final jsonString = jsonEncode(labelJson);
-      final storagePathLabel = 'labels/${receipt.id}.json';
+      final storagePathLabel = _labelPath(receipt.id);
 
       await client.storage.from('training_data').uploadBinary(
         storagePathLabel,
         Uint8List.fromList(utf8.encode(jsonString)),
         fileOptions: const FileOptions(cacheControl: '3600', upsert: true),
       );
-      
+
     } catch (e) {
-      // Log error silently, don't crash the app for background sync
-      print('Supabase upload failed: $e');
+      debugPrint('Supabase upload failed: $e');
       rethrow;
     }
   }
@@ -84,10 +122,6 @@ class SupabaseDataSourceImpl implements SupabaseDataSource {
   @override
   Future<int> getStorageUsage() async {
     try {
-      // List files in images and labels folders
-      // Note: Supabase list is shallow by default, need to check if recursive is needed.
-      // Usually it lists root. If we put files in subfolders, we need to search there.
-      
       final images = await client.storage.from('training_data').list(path: 'images');
       final labels = await client.storage.from('training_data').list(path: 'labels');
 
@@ -98,52 +132,89 @@ class SupabaseDataSourceImpl implements SupabaseDataSource {
       for (var file in labels) {
         totalBytes += file.metadata?['size'] as int? ?? 0;
       }
-      
+
       return totalBytes;
     } catch (e) {
-      print('Failed to get storage usage: $e');
+      debugPrint('Failed to get storage usage: $e');
       return 0;
     }
   }
 
+  /// Deletes training data for the given receipt IDs in O(1) per ID.
+  /// Uses chunking of 100 paths per request to avoid payload/URL limits.
   @override
-  Future<void> deleteData(List<String> ids) async {
+  Future<void> deleteData(List<String> ids, {List<String>? imagePaths}) async {
+    if (ids.isEmpty) return;
+
+    final pathsToDelete = <String>[];
+
+    for (int i = 0; i < ids.length; i++) {
+      final id = ids[i];
+      final imgPath = (imagePaths != null && i < imagePaths.length)
+          ? imagePaths[i]
+          : '$id.jpg';
+      pathsToDelete.add(_imagePath(id, imgPath));
+      pathsToDelete.add(_labelPath(id));
+    }
+
     try {
-      final imagePaths = ids.map((id) => 'images/$id.jpg').toList(); // Assuming jpg as per upload
-      final labelPaths = ids.map((id) => 'labels/$id.json').toList();
-      
-      // Note: we don't know exact extension for images unless we store it, 
-      // but uploadTrainingData uses .split('.').last.
-      // However, Supabase remove takes exact path.
-      // Since we didn't store extension in Receipt entity properly for cloud path, this is tricky.
-      // But wait! uploadTrainingData: final imageStoragePath = 'images/${receipt.id}.$fileExt';
-      // To strictly delete correct file, we might need to list files first or try multiple extensions.
-      // For now, let's assume jpg as default or try to delete both jpg/png if possible?
-      // Actually Supabase remove accepts a list of paths.
-      // Let's rely on list first to be safe?
-      // Better: List all files in 'images/' filter by ID? Too slow.
-      // Let's assume .jpg for now as it's most common or try to match what we upload.
-      // In ScanPage image picker returns XFile, we just use path.
-      // Let's implement robust deletion: List the directory and find matches.
-      
-      // 1. List all images
-      final images = await client.storage.from('training_data').list(path: 'images');
-      final imageFilesToDelete = images
-          .where((f) => ids.any((id) => f.name.contains(id)))
-          .map((f) => 'images/${f.name}')
-          .toList();
-
-      if (imageFilesToDelete.isNotEmpty) {
-        await client.storage.from('training_data').remove(imageFilesToDelete);
+      for (final chunk in chunkList(pathsToDelete, defaultBatchChunkSize)) {
+        await client.storage.from('training_data').remove(chunk);
       }
-
-      // 2. Delete labels (Always json)
-      if (labelPaths.isNotEmpty) {
-        await client.storage.from('training_data').remove(labelPaths);
-      }
-      
     } catch (e) {
-       print('Supabase delete failed: $e');
+      debugPrint('Supabase delete failed: $e');
+      throw Exception('Failed to delete training data: $e');
+    }
+  }
+
+  /// Executes single batch deletions on the database using chunked
+  /// `DELETE ... WHERE id IN (...)` queries in batches of 100 IDs.
+  @override
+  Future<void> deleteReceipts(List<String> ids) async {
+    if (ids.isEmpty) return;
+
+    try {
+      final chunks = chunkList(ids, defaultBatchChunkSize);
+      for (final chunk in chunks) {
+        await client.from('receipts').delete().inFilter('id', chunk);
+      }
+    } catch (e) {
+      debugPrint('Supabase deleteReceipts batch failed: $e');
+      throw Exception('Failed to delete receipts: $e');
+    }
+  }
+
+  /// Retrieves datasets larger than 100 records safely using cursor-based
+  /// `.range(from, to)` pagination without hitting the 100-item default ceiling.
+  @override
+  Future<List<Map<String, dynamic>>> fetchAllReceipts({
+    int pageSize = defaultBatchChunkSize,
+    String tableName = 'receipts',
+  }) async {
+    final allRecords = <Map<String, dynamic>>[];
+    int from = 0;
+
+    try {
+      while (true) {
+        final to = from + pageSize - 1;
+        final response = await client
+            .from(tableName)
+            .select()
+            .range(from, to);
+
+        final rows = List<Map<String, dynamic>>.from(response as List);
+        allRecords.addAll(rows);
+
+        if (rows.length < pageSize) {
+          break;
+        }
+        from += pageSize;
+      }
+
+      return allRecords;
+    } catch (e) {
+      debugPrint('Supabase fetchAllReceipts pagination failed: $e');
+      throw Exception('Failed to fetch paginated receipts: $e');
     }
   }
 }

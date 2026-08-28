@@ -1,4 +1,3 @@
-// ignore_for_file: deprecated_member_use, deprecated_member_use_from_same_package, unused_local_variable, unnecessary_underscores, invalid_annotation_target, unused_element, non_constant_identifier_names, use_build_context_synchronously
 import 'package:flutter/material.dart';
 import '../../features/receipt_scanning/domain/entities/receipt.dart';
 
@@ -21,14 +20,26 @@ class Achievement {
 }
 
 class GamificationService {
-  static List<Achievement> calculateAchievements(List<Receipt> receipts, double monthlyBudget) {
+  static List<Achievement> calculateAchievements(List<Receipt> receipts, double monthlyBudget, {bool isBalatro = false}) {
     return [
       _checkFirstScan(receipts),
       _checkStreak(receipts, 3),  // 3 Day Streak
       _checkBudgetNinja(receipts, monthlyBudget),
       _checkDataHoarder(receipts, 10), // 10 Receipts
       _checkNightOwl(receipts), // Scan after 10PM
+      _checkJokersGambit(isBalatro),
     ];
+  }
+
+  static Achievement _checkJokersGambit(bool isUnlocked) {
+    return Achievement(
+      id: 'jokers_gambit',
+      name: "Joker's Gambit 🃏",
+      description: 'Bent reality with an astronomical input (+500 XP / +10k Chips)',
+      icon: Icons.casino,
+      isUnlocked: isUnlocked,
+      color: const Color(0xFFFF3333),
+    );
   }
 
   static Achievement _checkFirstScan(List<Receipt> receipts) {
@@ -48,13 +59,9 @@ class GamificationService {
     
     // Sort desc
     final sorted = List<Receipt>.from(receipts)..sort((a, b) => b.date.compareTo(a.date));
-    int streak = 0;
     
     // Normalize dates to remove time
     DateTime toDate(DateTime dt) => DateTime(dt.year, dt.month, dt.day);
-    
-    // Check from today/yesterday backwards
-    DateTime currentCheck = toDate(DateTime.now());
     
     // If no receipt today, check if streak ended yesterday
     // Optimistic: We just count unique days in sequence

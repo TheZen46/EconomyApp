@@ -1,24 +1,28 @@
-// ignore_for_file: deprecated_member_use, deprecated_member_use_from_same_package, unused_local_variable, unnecessary_underscores, invalid_annotation_target, unused_element, non_constant_identifier_names, use_build_context_synchronously
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hive/hive.dart';
 import '../../data/models/dashboard_config.dart';
 import '../providers/receipt_provider.dart'; // For settingsBoxProvider
 
 final dashboardProvider = StateNotifierProvider<DashboardNotifier, List<DashboardItem>>((ref) {
-  final box = ref.watch(settingsBoxProvider);
-  return DashboardNotifier(box);
+  try {
+    final box = ref.watch(settingsBoxProvider);
+    return DashboardNotifier(box);
+  } catch (_) {
+    return DashboardNotifier(null);
+  }
 });
 
 class DashboardNotifier extends StateNotifier<List<DashboardItem>> {
-  final Box _box;
+  final Box? _box;
   static const String _kDashboardKey = 'dashboard_layout';
 
-  DashboardNotifier(this._box) : super([]) {
+  DashboardNotifier([this._box]) : super([]) {
     _loadLayout();
   }
 
   void _loadLayout() {
-    final dynamic data = _box.get(_kDashboardKey);
+    final dynamic data = _box?.get(_kDashboardKey);
     
     if (data != null && data is List) {
       // Load saved layout
@@ -26,7 +30,7 @@ class DashboardNotifier extends StateNotifier<List<DashboardItem>> {
         state = data.cast<DashboardItem>();
         return;
       } catch (e) {
-        print('Dashboard Load Error: $e. resetting defaults.');
+        debugPrint('Dashboard Load Error: $e. resetting defaults.');
       }
     }
 
@@ -73,6 +77,6 @@ class DashboardNotifier extends StateNotifier<List<DashboardItem>> {
   }
 
   Future<void> _save() async {
-    await _box.put(_kDashboardKey, state);
+    await _box?.put(_kDashboardKey, state);
   }
 }

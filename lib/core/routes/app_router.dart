@@ -1,7 +1,6 @@
 import 'package:go_router/go_router.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../features/auth/presentation/providers/auth_provider.dart';
 import '../../features/receipt_scanning/presentation/pages/home_page.dart';
 import '../../features/receipt_scanning/presentation/pages/scan_page.dart';
@@ -19,7 +18,9 @@ import '../../features/invoices/presentation/pages/invoices_page.dart';
 
 // ── Route Path Constants ────────────────────────────────────────────────────
 abstract class AppRoutes {
-  static const login = '/';
+  static const root = '/';
+  static const login = '/login';
+  static const signup = '/signup';
   static const home = '/home';
   static const settings = '/settings';
   static const priceWatch = '/price_watch';
@@ -33,58 +34,73 @@ abstract class AppRoutes {
   static const invoices = '/invoices';
 }
 
-// ── Public (unauthenticated) routes ─────────────────────────────────────────
-const _publicRoutes = {AppRoutes.login};
-
 final routerProvider = Provider<GoRouter>((ref) {
-  // RouterNotifier is a ChangeNotifier wired to the Supabase auth stream.
+  // RouterNotifier is a ChangeNotifier wired to authProvider and Supabase auth stream.
   // GoRouter calls refreshListenable.addListener so it re-runs redirect:
   // automatically on every auth event (signIn, signOut, tokenRefresh, expiry).
-  final notifier = ref.watch(routerNotifierProvider);
+  final notifier = ref.read(routerNotifierProvider);
 
-  // Determine the correct start location based on the existing Supabase session.
-  // supabase_flutter persists the token natively — no Hive flag needed.
-  final hasSession = Supabase.instance.client.auth.currentSession != null;
+  // Determine the correct start location based on existing session or auth state.
+  final hasSession = ref.read(authProvider).isAuthenticated ||
+      ref.read(authRepositoryProvider).currentSession != null;
 
   return GoRouter(
     initialLocation: hasSession ? AppRoutes.home : AppRoutes.login,
 
-    // Reactive refresh: every Supabase auth event triggers a re-evaluation
-    // of the redirect callback without needing a full widget rebuild.
+    // Reactive refresh: every auth state event triggers a re-evaluation
+    // of the redirect callback without needing a full app restart.
     refreshListenable: notifier,
 
-    // ── Route Guard ────────────────────────────────────────────────────────
+    // ── Centralized Route Guard ─────────────────────────────────────────────
     redirect: (context, state) {
       final authState = ref.read(authProvider);
-      final location = state.matchedLocation;
-      final isPublicRoute = _publicRoutes.contains(location);
+      final loc = state.matchedLocation;
+      final isLoggingIn = loc == AppRoutes.login ||
+          loc == AppRoutes.signup ||
+          loc == AppRoutes.root;
+      final isAuthenticated = authState.user != null || authState.isAuthenticated;
 
-      // While the auth status is still being determined (cold start), hold on
-      // the login page — never allow a protected route through.
-      if (authState.status == AuthStatus.unknown) {
-        return isPublicRoute ? null : AppRoutes.login;
-      }
-
-      final isAuthenticated = authState.isAuthenticated;
-
-      // Unauthenticated → always redirect to login, regardless of target route.
-      if (!isAuthenticated && !isPublicRoute) {
+      // 1. Unauthenticated → redirect to /login and preserve deep-link target
+      if (!isAuthenticated && !isLoggingIn) {
+        final uri = state.uri.toString();
+        if (uri.isNotEmpty &&
+            uri != AppRoutes.root &&
+            uri != AppRoutes.login &&
+            uri != AppRoutes.signup) {
+          return '${AppRoutes.login}?from=${Uri.encodeComponent(uri)}';
+        }
         return AppRoutes.login;
       }
 
-      // Authenticated → don't let them sit on the login page.
-      if (isAuthenticated && isPublicRoute) {
+      // 2. Authenticated on login/signup/root → redirect to intended target or /home
+      if (isAuthenticated && isLoggingIn) {
+        final from = state.uri.queryParameters['from'];
+        if (from != null &&
+            from.isNotEmpty &&
+            from != AppRoutes.login &&
+            from != AppRoutes.signup &&
+            from != AppRoutes.root) {
+          return from;
+        }
         return AppRoutes.home;
       }
 
-      // No redirect needed.
+      // 3. Authenticated navigating to protected route → allow through
       return null;
     },
 
     // ── Route Definitions ──────────────────────────────────────────────────
     routes: [
       GoRoute(
+        path: AppRoutes.root,
+        builder: (context, state) => const LoginPage(),
+      ),
+      GoRoute(
         path: AppRoutes.login,
+        builder: (context, state) => const LoginPage(),
+      ),
+      GoRoute(
+        path: AppRoutes.signup,
         builder: (context, state) => const LoginPage(),
       ),
       GoRoute(

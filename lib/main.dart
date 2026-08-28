@@ -1,3 +1,4 @@
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -21,9 +22,32 @@ import 'features/boxes/data/models/box_model.dart';
 import 'features/boxes/data/providers/boxes_provider.dart';
 import 'features/invoices/data/models/invoice_model.dart';
 import 'features/invoices/data/providers/invoices_provider.dart';
+import 'features/auth/presentation/widgets/biometric_guard.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // ── 0. Global Error Boundary ───────────────────────────────────────────
+  // Intercept uncaught Flutter framework errors (layout, rendering, etc.)
+  FlutterError.onError = (FlutterErrorDetails details) {
+    debugPrint('┌── FlutterError ──────────────────────────────────────');
+    debugPrint('│ Exception: ${details.exceptionAsString()}');
+    debugPrint('│ Library: ${details.library}');
+    debugPrint('│ Context: ${details.context?.toStringDeep() ?? 'none'}');
+    debugPrint('└─────────────────────────────────────────────────────');
+    // In production, forward to a crash reporting service (e.g. Sentry/Firebase)
+  };
+
+  // Intercept uncaught async errors that escape the Dart event loop.
+  // Returning true prevents the runtime from terminating the isolate.
+  PlatformDispatcher.instance.onError = (Object error, StackTrace stack) {
+    debugPrint('┌── Uncaught Async Error ──────────────────────────────');
+    debugPrint('│ Error: $error');
+    debugPrint('│ Stack: ${stack.toString().split('\n').take(5).join('\n│        ')}');
+    debugPrint('└─────────────────────────────────────────────────────');
+    // In production, forward to a crash reporting service (e.g. Sentry/Firebase)
+    return true; // Handled — don't crash the isolate
+  };
 
   // ── 1. Load environment variables from .env ────────────────────────────
   await dotenv.load(fileName: '.env');
@@ -63,13 +87,24 @@ void main() async {
   Hive.registerAdapter(BoxModelAdapter());
   Hive.registerAdapter(InvoiceModelAdapter());
 
-  // ── 4. Open Hive boxes with encryption ─────────────────────────────────
+  // ── 4. Open Settings Box & Execute Structured Migrations ───────────────
   // HiveMigrationService.openBoxSafe() will:
   //   • Return the box on success.
-  //   • On failure: back up the raw .hive file to a timestamped copy, then
-  //     throw SchemaCorruptionException — NO silent data wipe ever occurs.
-  late final Box<ReceiptModel> receiptsBox;
+  //   • On failure: back up the raw .hive file to getApplicationDocumentsDirectory()/hive_backups/,
+  //     log to diagnostics, and throw SchemaCorruptionException — zero data wipe occurs.
   late final Box settingsBox;
+  try {
+    settingsBox = await HiveMigrationService.openBoxSafe('settings');
+    // Execute structured schema migrations (e.g. schema_version = 2)
+    await HiveMigrationService.runSchemaMigrations(settingsBox, cipher: cipher);
+  } on SchemaCorruptionException catch (e) {
+    debugPrint('FATAL Settings Box Corruption: $e');
+    runApp(_DataRecoveryApp(exception: e));
+    return;
+  }
+
+  // ── 5. Open Remaining Hive Boxes Safely with Encryption ─────────────────
+  late final Box<ReceiptModel> receiptsBox;
   late final Box<SyncItemModel> syncBox;
   late final Box<AssetModel> assetsBox;
   late final Box<BoxModel> boxesBox;
@@ -80,8 +115,6 @@ void main() async {
       'receipts_v3',
       encryptionCipher: cipher,
     );
-    // Settings box is unencrypted (no sensitive data after migration)
-    settingsBox = await HiveMigrationService.openBoxSafe('settings');
     syncBox = await HiveMigrationService.openBoxSafe<SyncItemModel>(
       'sync_queue',
       encryptionCipher: cipher,
@@ -99,14 +132,14 @@ void main() async {
       encryptionCipher: cipher,
     );
   } on SchemaCorruptionException catch (e) {
-    // A box failed to open. A backup was already created automatically.
-    // Surface this to the user via a Data Recovery dialog — no data is lost.
-    debugPrint('FATAL: $e');
+    // A box failed to open. A backup was automatically created in hive_backups/.
+    // Surface this to the user via the Data Recovery dialog — no data is lost.
+    debugPrint('FATAL Database Box Corruption: $e');
     runApp(_DataRecoveryApp(exception: e));
     return;
   }
 
-  // ── 5. Migrate plaintext secrets to secure storage ─────────────────────
+  // ── 6. Migrate plaintext secrets to secure storage ─────────────────────
   await _migrateSecretsToSecureStorage(settingsBox);
 
   // ── 6. Launch the app ──────────────────────────────────────────────────
@@ -300,7 +333,7 @@ class _TAIdyAppState extends ConsumerState<TAIdyApp> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) async {
-      ref.read(modelUpdateServiceProvider.notifier).checkForUpdates();
+      await ref.read(modelUpdateServiceProvider.notifier).checkForUpdates();
       final llmService = ref.read(llmServiceProvider);
       await llmService.initialize();
       ref.read(isLlmLoadedProvider.notifier).state = llmService.isModelLoaded;
@@ -311,12 +344,13 @@ class _TAIdyAppState extends ConsumerState<TAIdyApp> {
   Widget build(BuildContext context) {
     final router = ref.watch(routerProvider);
     final themeMode = ref.watch(themeProvider);
+    final isBalatro = ref.watch(isBalatroThemeProvider);
 
     return MaterialApp.router(
       title: 'tAIdy',
-      theme: AppTheme.lightTheme,
-      darkTheme: AppTheme.darkTheme,
-      themeMode: themeMode,
+      theme: isBalatro ? AppTheme.balatroTheme : AppTheme.lightTheme,
+      darkTheme: isBalatro ? AppTheme.balatroTheme : AppTheme.darkTheme,
+      themeMode: isBalatro ? ThemeMode.dark : themeMode,
       debugShowCheckedModeBanner: false,
       routerConfig: router,
       localizationsDelegates: const [
@@ -325,7 +359,37 @@ class _TAIdyAppState extends ConsumerState<TAIdyApp> {
         GlobalCupertinoLocalizations.delegate,
       ],
       supportedLocales: const [Locale('en', 'US')],
-      builder: (context, child) => UpgradeListenerWrapper(child: child),
+      builder: (context, child) => BiometricGuard(
+        child: Stack(
+          children: [
+            UpgradeListenerWrapper(child: child),
+            if (isBalatro)
+              Positioned(
+                top: 40,
+                right: 16,
+                child: Material(
+                  color: Colors.transparent,
+                  child: ElevatedButton.icon(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFFFF3333),
+                      foregroundColor: Colors.white,
+                      elevation: 8,
+                      side: const BorderSide(color: Colors.white, width: 2),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                    ),
+                    onPressed: () => ref.read(isBalatroThemeProvider.notifier).disable(),
+                    icon: const Icon(Icons.casino, size: 16, color: Colors.yellow),
+                    label: const Text(
+                      'CASH OUT ♠',
+                      style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, letterSpacing: 1),
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
     );
   }
 }

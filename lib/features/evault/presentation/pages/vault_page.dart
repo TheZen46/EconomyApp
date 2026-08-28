@@ -69,15 +69,16 @@ class _VaultPageState extends ConsumerState<VaultPage> {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final bgColor = isDark ? const Color(0xFF0A0A0A) : const Color(0xFFFAFAFA);
-    final cardColor = isDark ? const Color(0xFF141414) : Colors.white;
-    final borderColor =
-        isDark ? Colors.white.withOpacity(0.06) : Colors.black.withOpacity(0.04);
-    const accentColor = Color(0xFF002FA7);
-    const destructiveColor = Color(0xFFD4183D);
-    final textColor = isDark ? const Color(0xFFF5F5F5) : const Color(0xFF1A1A1A);
-    final mutedTextColor = isDark ? Colors.white70 : Colors.black54;
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final colorScheme = theme.colorScheme;
+    final bgColor = theme.scaffoldBackgroundColor;
+    final cardColor = colorScheme.surface;
+    final borderColor = colorScheme.outline;
+    final accentColor = colorScheme.primary;
+    final destructiveColor = colorScheme.error;
+    final textColor = colorScheme.onSurface;
+    final mutedTextColor = colorScheme.onSurfaceVariant;
 
     final allAssets = ref.watch(assetListProvider);
     final notifier = ref.read(assetListProvider.notifier);
@@ -147,11 +148,11 @@ class _VaultPageState extends ConsumerState<VaultPage> {
                         colors: isDark
                             ? [
                                 accentColor.withOpacity(0.4),
-                                const Color(0xFF0891B2).withOpacity(0.2)
+                                colorScheme.secondary.withOpacity(0.2),
                               ]
                             : [
                                 accentColor.withOpacity(0.9),
-                                const Color(0xFF0891B2).withOpacity(0.9)
+                                colorScheme.secondary.withOpacity(0.9),
                               ],
                         begin: Alignment.topLeft,
                         end: Alignment.bottomRight,
@@ -457,7 +458,6 @@ class _AssetCardWidget extends StatefulWidget {
   final Color destructiveColor;
 
   const _AssetCardWidget({
-    Key? key,
     required this.asset,
     required this.onDelete,
     required this.cardColor,
@@ -465,7 +465,7 @@ class _AssetCardWidget extends StatefulWidget {
     required this.textColor,
     required this.mutedTextColor,
     required this.destructiveColor,
-  }) : super(key: key);
+  });
 
   @override
   State<_AssetCardWidget> createState() => _AssetCardWidgetState();
@@ -499,6 +499,14 @@ class _AssetCardWidgetState extends State<_AssetCardWidget> {
             padding: const EdgeInsets.only(right: 16),
             child: const Icon(Icons.delete_outline, color: Colors.white),
           ),
+          confirmDismiss: (direction) async {
+            return await showDestructiveConfirmationDialog(
+              context: context,
+              title: 'Delete Asset?',
+              message: 'Are you sure? This action cannot be undone.',
+              confirmLabel: 'Delete',
+            );
+          },
           onDismissed: (_) {
             widget.onDelete();
             ScaffoldMessenger.of(context).showSnackBar(
@@ -529,12 +537,12 @@ class _AssetCardWidgetState extends State<_AssetCardWidget> {
                           ? Image.network(
                               widget.asset.receiptImagePath,
                               fit: BoxFit.cover,
-                              errorBuilder: (_, __, ___) => _buildFallbackImage(),
+                              errorBuilder: (ctx, err, stack) => _buildFallbackImage(),
                             )
                           : Image.file(
                               File(widget.asset.receiptImagePath),
                               fit: BoxFit.cover,
-                              errorBuilder: (_, __, ___) => _buildFallbackImage(),
+                              errorBuilder: (ctx, err, stack) => _buildFallbackImage(),
                             )
                       else
                         _buildFallbackImage(),
@@ -617,7 +625,7 @@ class _AssetCardWidgetState extends State<_AssetCardWidget> {
                           decoration: BoxDecoration(
                             color: isExpired
                                 ? widget.destructiveColor
-                                : const Color(0xFF10B981), // Emerald
+                                : Theme.of(context).colorScheme.secondary,
                             borderRadius: BorderRadius.circular(12), // Pill shape
                           ),
                           child: Text(
@@ -625,7 +633,9 @@ class _AssetCardWidgetState extends State<_AssetCardWidget> {
                                 ? 'Warranty Expired'
                                 : '$daysLeft days left on warranty',
                             style: GoogleFonts.spaceGrotesk(
-                              color: Colors.white,
+                              color: isExpired
+                                  ? Theme.of(context).colorScheme.onError
+                                  : Theme.of(context).colorScheme.onSecondary,
                               fontSize: 10,
                               fontWeight: FontWeight.w600,
                             ),

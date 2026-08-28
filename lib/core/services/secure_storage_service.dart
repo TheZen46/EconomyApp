@@ -1,5 +1,4 @@
 import 'dart:convert';
-import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:hive/hive.dart';
@@ -54,6 +53,56 @@ class SecureStorageService {
     return val != null && val.isNotEmpty;
   }
 
+  // ── Session & Auth Persistence ──────────────────────────────────────────
+
+  /// Store the Supabase refresh token in secure storage.
+  static Future<void> saveRefreshToken(String token) async {
+    await writeSecret(SecretKeys.supabaseRefreshToken, token);
+  }
+
+  /// Retrieve the stored Supabase refresh token.
+  static Future<String?> getRefreshToken() async {
+    return await readSecret(SecretKeys.supabaseRefreshToken);
+  }
+
+  /// Delete the stored Supabase refresh token.
+  static Future<void> deleteRefreshToken() async {
+    await deleteSecret(SecretKeys.supabaseRefreshToken);
+  }
+
+  /// Store the serialized Supabase session string.
+  static Future<void> savePersistedSession(String sessionJson) async {
+    await writeSecret(SecretKeys.supabasePersistedSession, sessionJson);
+  }
+
+  /// Retrieve the persisted Supabase session string.
+  static Future<String?> getPersistedSession() async {
+    return await readSecret(SecretKeys.supabasePersistedSession);
+  }
+
+  /// Delete the persisted Supabase session string.
+  static Future<void> deletePersistedSession() async {
+    await deleteSecret(SecretKeys.supabasePersistedSession);
+  }
+
+  /// Record "Remember me" preference.
+  static Future<void> setRememberMe(bool enabled) async {
+    await writeSecret(SecretKeys.rememberMe, enabled.toString());
+  }
+
+  /// Check whether "Remember me" is active. Defaults to true if unset.
+  static Future<bool> getRememberMe() async {
+    final val = await readSecret(SecretKeys.rememberMe);
+    if (val == null) return true;
+    return val == 'true';
+  }
+
+  /// Purge all authentication and session data from secure storage.
+  static Future<void> purgeAuthData() async {
+    await deleteRefreshToken();
+    await deletePersistedSession();
+  }
+
   /// Clear all secrets (nuclear option for clear-all-data).
   static Future<void> clearAll() async {
     await _storage.deleteAll();
@@ -67,6 +116,9 @@ abstract class SecretKeys {
   static const geminiApiKey = 'gemini_api_key';
   static const webhookSecret = 'webhook_secret';
   static const webhookUrl = 'webhook_url';
+  static const supabaseRefreshToken = 'supabase_refresh_token';
+  static const supabasePersistedSession = 'supabase_persisted_session';
+  static const rememberMe = 'auth_remember_me';
 }
 
 // ── Riverpod Provider ───────────────────────────────────────────────────────

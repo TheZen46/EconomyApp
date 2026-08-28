@@ -1,9 +1,7 @@
-// ignore_for_file: deprecated_member_use, deprecated_member_use_from_same_package, unused_local_variable, unnecessary_underscores, invalid_annotation_target, unused_element, non_constant_identifier_names, use_build_context_synchronously
 import 'package:freezed_annotation/freezed_annotation.dart';
 
 part 'receipt.freezed.dart';
 
-@freezed
 @freezed
 class Receipt with _$Receipt {
   const factory Receipt({
@@ -18,6 +16,7 @@ class Receipt with _$Receipt {
     // required String category, // Removed as per user request
     @Default([]) List<ReceiptItem> items,
     String? imagePath,
+    @Default('main') String? boxId,
   }) = _Receipt;
 
   const Receipt._();
@@ -70,6 +69,7 @@ class ReceiptItem with _$ReceiptItem {
     String? mainCategory, // e.g. "Food & Drink"
     String? subCategory,  // e.g. "Beverages (Sugary)"
     @Default(false) bool isAsset,
+    @Default('main') String? boxId,
     
     @Deprecated('Use subCategory or mainCategory instead')
     String? category, // Keeping for backward compatibility temporarily

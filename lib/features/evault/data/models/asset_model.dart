@@ -1,4 +1,3 @@
-// ignore_for_file: deprecated_member_use, deprecated_member_use_from_same_package, unused_local_variable, unnecessary_underscores, invalid_annotation_target, unused_element, non_constant_identifier_names, use_build_context_synchronously
 import 'package:hive/hive.dart';
 
 part 'asset_model.g.dart';
@@ -40,7 +39,8 @@ class AssetModel {
     this.receiptId,
   });
 
-  DateTime get warrantyExpiryDate => purchaseDate.add(Duration(days: warrantyMonths * 30));
+  DateTime get warrantyExpiryDate =>
+      DateTime(purchaseDate.year, purchaseDate.month + warrantyMonths, purchaseDate.day, purchaseDate.hour, purchaseDate.minute);
   
   bool get isWarrantyActive => DateTime.now().isBefore(warrantyExpiryDate);
 }

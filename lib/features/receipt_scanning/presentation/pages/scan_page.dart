@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:google_fonts/google_fonts.dart';
 
@@ -63,9 +64,92 @@ class _ScanPageState extends ConsumerState<ScanPage> with SingleTickerProviderSt
     _hexTimer?.cancel();
   }
 
+  Future<bool> _checkAndRequestPermission(ImageSource source) async {
+    final Permission permission = source == ImageSource.camera
+        ? Permission.camera
+        : Permission.photos;
+
+    var status = await permission.status;
+    if (status.isDenied) {
+      status = await permission.request();
+    }
+
+    if (status.isPermanentlyDenied || status.isDenied || status.isRestricted) {
+      if (!mounted) return false;
+      final String featureName = source == ImageSource.camera ? 'Camera' : 'Photo Gallery';
+      final String actionNeeded = source == ImageSource.camera
+          ? 'tAIdy needs camera access to scan and extract data from your receipts.'
+          : 'tAIdy needs photo gallery access to import and process receipt images.';
+
+      await showDialog(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          backgroundColor: Theme.of(context).colorScheme.surface,
+          title: Text(
+            '$featureName Permission Required',
+            style: GoogleFonts.spaceGrotesk(
+              color: Theme.of(context).colorScheme.onSurface,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          content: Text(
+            actionNeeded,
+            style: GoogleFonts.spaceGrotesk(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: Text(
+                'Cancel',
+                style: GoogleFonts.spaceGrotesk(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Theme.of(context).colorScheme.primary,
+                foregroundColor: Theme.of(context).colorScheme.onPrimary,
+              ),
+              onPressed: () {
+                Navigator.of(ctx).pop();
+                openAppSettings();
+              },
+              child: Text(
+                'Open Settings',
+                style: GoogleFonts.spaceGrotesk(fontWeight: FontWeight.bold),
+              ),
+            ),
+          ],
+        ),
+      );
+      return false;
+    }
+
+    return true;
+  }
+
   Future<void> _pickImage(ImageSource source) async {
+    final hasPermission = await _checkAndRequestPermission(source);
+    if (!hasPermission) {
+      if (mounted) {
+        setState(() {
+          _scanState = ScanState.idle;
+        });
+      }
+      return;
+    }
+
     try {
-      final XFile? image = await _picker.pickImage(source: source);
+      final XFile? image = await _picker.pickImage(
+        source: source,
+        maxWidth: 1920,
+        maxHeight: 1920,
+        imageQuality: 85,
+        requestFullMetadata: false,
+      );
       if (image == null) {
         if (mounted) {
           setState(() {
@@ -80,12 +164,16 @@ class _ScanPageState extends ConsumerState<ScanPage> with SingleTickerProviderSt
           _scanState = ScanState.analyzing;
         });
         _startHexCounter();
-        _scannerController.repeat();
+        unawaited(_scannerController.repeat());
       }
 
       final repository = ref.read(receiptRepositoryProvider);
       final taxonomy = ref.read(taxonomyProvider);
       final result = await repository.processReceiptImage(image.path, taxonomy: taxonomy);
+
+      // Promptly clear image cache to release memory buffers after OCR extraction
+      PaintingBinding.instance.imageCache.clear();
+      PaintingBinding.instance.imageCache.clearLiveImages();
 
       if (!mounted) return;
 
@@ -141,10 +229,10 @@ class _ScanPageState extends ConsumerState<ScanPage> with SingleTickerProviderSt
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-    final bgColor = isDark ? const Color(0xFF050505) : const Color(0xFFF0F0F0);
-    final accentColor = const Color(0xFF002FA7);
-    final textColor = isDark ? const Color(0xFFF5F5F5) : const Color(0xFF1A1A1A);
+    final colorScheme = theme.colorScheme;
+    final bgColor = theme.scaffoldBackgroundColor;
+    final accentColor = colorScheme.primary;
+    final textColor = colorScheme.onSurface;
 
     return Scaffold(
       backgroundColor: bgColor,
@@ -284,7 +372,7 @@ class _ScanPageState extends ConsumerState<ScanPage> with SingleTickerProviderSt
     final maxWidth = min(MediaQuery.of(context).size.width - 48, 400.0);
     final maxHeight = maxWidth * (4 / 3);
 
-    return Container(
+    return SizedBox(
       width: maxWidth,
       height: maxHeight,
       child: Stack(

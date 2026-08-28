@@ -1,4 +1,5 @@
-// ignore_for_file: deprecated_member_use, deprecated_member_use_from_same_package, unused_local_variable, unnecessary_underscores, invalid_annotation_target, unused_element, non_constant_identifier_names, use_build_context_synchronously
+import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:dartz/dartz.dart';
 import '../../../../core/error/failures.dart';
 import '../../../../core/services/ai_service.dart';
@@ -63,14 +64,14 @@ class ReceiptRepositoryImpl implements ReceiptRepository {
       // 2. Schedule Background Upload (Auto-Retry)
       if (receipt.imagePath != null) {
         // Fire and forget, SyncService handles the rest
-        syncService.scheduleUpload(receipt.id, receipt.imagePath!);
+        unawaited(syncService.scheduleUpload(receipt.id, receipt.imagePath!));
       }
 
       // 3. Trigger Webhook (Fire & Forget)
       // We don't await this to keep UI snappy
-      webhookService.sendWebhook(receipt).catchError((e) {
-        print('Webhook failed: $e');
-      });
+      unawaited(webhookService.sendWebhook(receipt).catchError((e) {
+        debugPrint('Webhook failed: $e');
+      }));
 
       // 4. Update Digital Vault
       try {
@@ -89,12 +90,12 @@ class ReceiptRepositoryImpl implements ReceiptRepository {
                   receiptId: receipt.id,
                );
                await assetsBox.add(asset);
-               print('Vault: Added ${item.description}');
+               debugPrint('Vault: Added ${item.description}');
              }
           }
         }
       } catch (e) {
-         print('Vault Error: $e');
+         debugPrint('Vault Error: $e');
       }
 
       return const Right(null);
@@ -106,7 +107,7 @@ class ReceiptRepositoryImpl implements ReceiptRepository {
   @override
   Future<Either<Failure, void>> syncCorrectedReceipt(Receipt receipt, String imagePath) async {
     try {
-      syncService.scheduleUpload(receipt.id, imagePath);
+      unawaited(syncService.scheduleUpload(receipt.id, imagePath));
       return const Right(null);
     } catch (e) {
       return const Right(null); 
@@ -123,7 +124,8 @@ class ReceiptRepositoryImpl implements ReceiptRepository {
         final ids = receiptModels.map((e) => e.id).toList();
         
         if (ids.isNotEmpty) {
-           await supabaseDataSource.deleteData(ids);
+          await supabaseDataSource.deleteData(ids);
+          await supabaseDataSource.deleteReceipts(ids);
         }
       }
       
@@ -142,6 +144,7 @@ class ReceiptRepositoryImpl implements ReceiptRepository {
       // 1. Try to delete from Cloud (Best effort)
       try {
         await supabaseDataSource.deleteData([id]);
+        await supabaseDataSource.deleteReceipts([id]);
       } catch (e) {
         // Ignore cloud deletion error if offline
       }

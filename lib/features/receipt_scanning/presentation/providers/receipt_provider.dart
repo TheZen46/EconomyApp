@@ -1,6 +1,8 @@
-// ignore_for_file: deprecated_member_use, deprecated_member_use_from_same_package, unused_local_variable, unnecessary_underscores, invalid_annotation_target, unused_element, non_constant_identifier_names, use_build_context_synchronously
+import 'package:flutter/foundation.dart';
+import 'package:dartz/dartz.dart';
 import 'package:hive/hive.dart';
 import '../../../../core/services/secure_storage_service.dart';
+import '../../../../core/error/failures.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -26,6 +28,7 @@ import '../../../../core/services/google_drive_service.dart'; // Ensure global a
 import '../../../settings/data/datasources/webhook_service.dart';
 import '../../../evault/presentation/providers/asset_provider.dart';
 import '../../../settings/presentation/providers/llm_provider.dart';
+import '../../../boxes/data/providers/boxes_provider.dart';
 import '../../data/datasources/csv_parser_service.dart';
 
 final csvParserServiceProvider = Provider<CsvParserService>((ref) => CsvParserService());
@@ -58,6 +61,17 @@ final syncServiceProvider = Provider<SyncService>((ref) {
     settingsBox: settingsBox,
     googleDriveService: googleDriveService,
   );
+});
+
+final syncQueueStreamProvider = StreamProvider<List<SyncItemModel>>((ref) async* {
+  final box = ref.watch(syncBoxProvider);
+  yield box.values.toList();
+  yield* box.watch().map((_) => box.values.toList());
+});
+
+final permanentlyFailedSyncItemsProvider = Provider<List<SyncItemModel>>((ref) {
+  final items = ref.watch(syncQueueStreamProvider).valueOrNull ?? [];
+  return items.where((item) => item.status == SyncStatus.permanentlyFailed).toList();
 });
 
 final webhookServiceProvider = Provider<WebhookService>((ref) {
@@ -148,6 +162,18 @@ final receiptListProvider = StateNotifierProvider<ReceiptListNotifier, AsyncValu
   return ReceiptListNotifier(repository);
 });
 
+final filteredReceiptsByActiveBoxProvider = Provider<AsyncValue<List<Receipt>>>((ref) {
+  final receiptsAsync = ref.watch(receiptListProvider);
+  final activeBoxId = ref.watch(activeBoxIdProvider);
+
+  return receiptsAsync.whenData((receipts) {
+    if (activeBoxId == 'main') {
+      return receipts.where((r) => (r.boxId ?? 'main') == 'main').toList();
+    }
+    return receipts.where((r) => r.boxId == activeBoxId).toList();
+  });
+});
+
 class ReceiptListNotifier extends StateNotifier<AsyncValue<List<Receipt>>> {
   final ReceiptRepository _repository;
 
@@ -156,7 +182,9 @@ class ReceiptListNotifier extends StateNotifier<AsyncValue<List<Receipt>>> {
   }
 
   Future<void> loadReceipts() async {
-    state = const AsyncValue.loading();
+    if (!state.hasValue) {
+      state = const AsyncValue.loading();
+    }
     final result = await _repository.getReceipts();
     result.fold(
       (failure) => state = AsyncValue.error(failure, StackTrace.current),
@@ -165,97 +193,135 @@ class ReceiptListNotifier extends StateNotifier<AsyncValue<List<Receipt>>> {
   }
 
   Future<void> addReceipt(Receipt receipt) async {
+    final current = state.valueOrNull ?? [];
+    final updated = current.any((r) => r.id == receipt.id)
+        ? current.map((r) => r.id == receipt.id ? receipt : r).toList()
+        : [receipt, ...current];
+    state = AsyncValue.data(updated);
+
     final result = await _repository.saveReceipt(receipt);
     result.fold(
-      (failure) { /* Handle error if needed, or expose via state */ },
-      (_) => loadReceipts(), // Refresh list
+      (failure) {
+        debugPrint('Error saving receipt: ${failure.message}');
+      },
+      (_) {},
     );
   }
 
   Future<void> clearAll({bool includeCloud = false}) async {
+    state = const AsyncValue.data([]);
     final result = await _repository.clearAllData(includeCloud: includeCloud);
     result.fold(
-      (failure) { /* Handle error */ },
-      (_) => loadReceipts(), // Refresh list (should be empty)
+      (failure) {
+        debugPrint('Error clearing receipts: ${failure.message}');
+      },
+      (_) {},
     );
   }
 
   Future<void> deleteReceipt(String id) async {
+    final current = state.valueOrNull ?? [];
+    state = AsyncValue.data(current.where((r) => r.id != id).toList());
+
     final result = await _repository.deleteReceipt(id);
     result.fold(
-      (failure) { /* Handle error */ },
-      (_) => loadReceipts(), // Refresh list
+      (failure) {
+        debugPrint('Error deleting receipt: ${failure.message}');
+      },
+      (_) {},
     );
   }
 
-  Future<int> importCsvTransactions(String csvString, CsvParserService parser) async {
-    state = const AsyncValue.loading();
+  Future<Either<Failure, CsvImportReport>> importCsvTransactions(String csvString, CsvParserService parser) async {
     try {
-      final receipts = parser.parseBankCsv(csvString);
-      int addedCount = 0;
-      for (final r in receipts) {
-        await _repository.saveReceipt(r);
-        addedCount++;
-      }
-      await loadReceipts();
-      return addedCount;
+      final parseResult = parser.importCsv(csvString);
+      return await parseResult.fold(
+        (failure) async => Left(failure),
+        (report) async {
+          if (report.successfulReceipts.isEmpty) {
+            return Right(report);
+          }
+
+          final current = state.valueOrNull ?? [];
+          final List<Receipt> newlyAdded = [];
+          for (final r in report.successfulReceipts) {
+            final saveResult = await _repository.saveReceipt(r);
+            saveResult.fold(
+              (failure) => debugPrint('Error saving CSV receipt: ${failure.message}'),
+              (_) => newlyAdded.add(r),
+            );
+          }
+          state = AsyncValue.data([...newlyAdded, ...current]);
+          return Right(report);
+        },
+      );
     } catch (e) {
-      await loadReceipts();
-      return 0;
+      return Left(CacheFailure('Failed to import CSV: $e'));
     }
   }
-
 }
 
 // --- User Prefs Providers ---
 
 final monthlyBudgetProvider = StateNotifierProvider<BudgetNotifier, double>((ref) {
-  final box = ref.watch(settingsBoxProvider);
-  return BudgetNotifier(box);
+  try {
+    final box = ref.watch(settingsBoxProvider);
+    return BudgetNotifier(box);
+  } catch (_) {
+    return BudgetNotifier(null);
+  }
 });
 
 class BudgetNotifier extends StateNotifier<double> {
-  final Box _box;
+  final Box? _box;
   static const _key = 'monthly_budget_limit';
 
-  BudgetNotifier(this._box) : super(_box.get(_key, defaultValue: 500.0) as double);
+  BudgetNotifier([this._box]) : super((_box?.get(_key, defaultValue: 500.0) as num?)?.toDouble() ?? 500.0);
 
   Future<void> setBudget(double newLimit) async {
-    await _box.put(_key, newLimit);
+    await _box?.put(_key, newLimit);
     state = newLimit;
   }
 }
 
 final currentBalanceProvider = StateNotifierProvider<CurrentBalanceNotifier, double>((ref) {
-  final box = ref.watch(settingsBoxProvider);
-  return CurrentBalanceNotifier(box);
+  try {
+    final box = ref.watch(settingsBoxProvider);
+    return CurrentBalanceNotifier(box);
+  } catch (_) {
+    return CurrentBalanceNotifier(null);
+  }
 });
 
 class CurrentBalanceNotifier extends StateNotifier<double> {
-  final Box _box;
+  final Box? _box;
   static const _key = 'current_balance';
 
-  CurrentBalanceNotifier(this._box) : super(_box.get(_key, defaultValue: 0.0) as double);
+  CurrentBalanceNotifier([this._box]) : super((_box?.get(_key, defaultValue: 0.0) as num?)?.toDouble() ?? 0.0);
 
   Future<void> setBalance(double newBalance) async {
-    await _box.put(_key, newBalance);
+    await _box?.put(_key, newBalance);
     state = newBalance;
   }
 }
 
 final projectedIncomeProvider = StateNotifierProvider<ProjectedIncomeNotifier, double>((ref) {
-  final box = ref.watch(settingsBoxProvider);
-  return ProjectedIncomeNotifier(box);
+  try {
+    final box = ref.watch(settingsBoxProvider);
+    return ProjectedIncomeNotifier(box);
+  } catch (_) {
+    return ProjectedIncomeNotifier(null);
+  }
 });
 
 class ProjectedIncomeNotifier extends StateNotifier<double> {
-  final Box _box;
+  final Box? _box;
   static const _key = 'projected_income';
 
-  ProjectedIncomeNotifier(this._box) : super(_box.get(_key, defaultValue: 0.0) as double);
+  ProjectedIncomeNotifier([this._box]) : super((_box?.get(_key, defaultValue: 0.0) as num?)?.toDouble() ?? 0.0);
 
   Future<void> setIncome(double newIncome) async {
-    await _box.put(_key, newIncome);
+    await _box?.put(_key, newIncome);
     state = newIncome;
   }
 }

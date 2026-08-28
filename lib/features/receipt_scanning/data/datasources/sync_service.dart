@@ -1,8 +1,9 @@
-// ignore_for_file: deprecated_member_use, deprecated_member_use_from_same_package, unused_local_variable, unnecessary_underscores, invalid_annotation_target, unused_element, non_constant_identifier_names, use_build_context_synchronously
 import 'dart:async';
-import 'dart:io';
+import 'dart:math' as math;
 import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:flutter/foundation.dart';
 import 'package:hive/hive.dart';
+import 'package:synchronized/synchronized.dart';
 
 import '../../../../core/services/google_drive_service.dart';
 import '../models/sync_item_model.dart';
@@ -15,9 +16,16 @@ class SyncService {
   final SupabaseDataSource supabaseDataSource;
   final Box settingsBox;
   final GoogleDriveService googleDriveService;
-  
+  final math.Random _random = math.Random();
+
   StreamSubscription<List<ConnectivityResult>>? _connectivitySubscription;
-  bool _isSyncing = false;
+
+  /// Asynchronous Mutex lock ensuring only 1 sync execution occurs at a time.
+  final Lock _syncLock = Lock();
+
+  /// Item-level transaction locks to prevent concurrent workers from processing
+  /// the same receipt item simultaneously.
+  final Set<String> _inFlightItemIds = <String>{};
 
   SyncService({
     required this.queueBox,
@@ -27,79 +35,171 @@ class SyncService {
     required this.googleDriveService,
   }) {
     // Listen to network changes (v6.0 API returns List)
-    // Listen to network changes (v6.0 API returns List)
     try {
       _connectivitySubscription = Connectivity().onConnectivityChanged.listen((List<ConnectivityResult> results) {
         // If we have any connection that is NOT none
         if (!results.contains(ConnectivityResult.none)) {
-          processQueue();
+          syncPendingItems();
         }
       });
     } catch (e) {
-      print('SyncService: Connectivity listener failed to start: $e');
+      debugPrint('SyncService: Connectivity listener failed to start: $e');
     }
 
     // Initial check
-    processQueue();
+    syncPendingItems();
   }
 
   /// Add item to upload queue
   Future<void> scheduleUpload(String receiptId, String imagePath) async {
-    // Avoid duplicates
-    if (queueBox.values.any((item) => item.receiptId == receiptId)) {
-      processQueue();
-      return;
-    }
+    await _syncLock.synchronized(() async {
+      // Avoid duplicate queue entries or re-queuing in-flight items
+      if (queueBox.values.any((item) => item.receiptId == receiptId) ||
+          _inFlightItemIds.contains(receiptId)) {
+        return;
+      }
 
-    final item = SyncItemModel(
-      receiptId: receiptId,
-      imagePath: imagePath,
-      addedAt: DateTime.now(),
-    );
-    await queueBox.add(item);
-    
-    // Try immediate sync (will fail fast if offline)
-    processQueue();
+      final item = SyncItemModel(
+        receiptId: receiptId,
+        imagePath: imagePath,
+        addedAt: DateTime.now(),
+      );
+      await queueBox.add(item);
+    });
+
+    // Try immediate sync (will queue behind the lock and execute safely)
+    await syncPendingItems();
   }
 
-  /// Attempt to upload pending items
-  Future<void> processQueue() async {
-    // ── Acquire lock synchronously ──────────────────────────────────────────
-    // MUST happen before any await. If two callers reach this line at the same
-    // time, the second one sees _isSyncing == true and exits immediately,
-    // with no window for a race condition.
-    if (_isSyncing || queueBox.isEmpty) return;
-    _isSyncing = true;
+  /// Safely processes the sync queue with an asynchronous Mutex lock.
+  ///
+  /// Concurrent calls will be queued through [_syncLock] and executed sequentially,
+  /// preventing overlapping network calls or duplicate uploads to Supabase.
+  Future<void> syncPendingItems() async {
+    await _syncLock.synchronized(() async {
+      if (queueBox.isEmpty) return;
 
-    try {
-      // Check connectivity only after the lock is held
-      final connectivity = await Connectivity().checkConnectivity();
-      if (connectivity.contains(ConnectivityResult.none)) return;
+      // Check network connectivity before processing
+      try {
+        final connectivity = await Connectivity().checkConnectivity();
+        if (connectivity.contains(ConnectivityResult.none)) {
+          debugPrint('SyncService: Offline - skipping syncPendingItems.');
+          return;
+        }
+      } catch (e) {
+        debugPrint('SyncService: Error checking connectivity: $e');
+      }
 
-      print('SyncService: Starting sync of ${queueBox.length} items...');
+      debugPrint('SyncService: Starting safe synchronized sync of ${queueBox.length} items...');
 
-      // Iterate keys so we can delete by key
+      // Snapshot keys so we can mutate the box while iterating
       final keys = queueBox.keys.toList();
 
       for (var key in keys) {
         final item = queueBox.get(key);
         if (item == null) continue;
 
+        // ── Item-Level Transaction Lock ──────────────────────────────────────
+        if (_inFlightItemIds.contains(item.receiptId)) {
+          debugPrint('SyncService: Item ${item.receiptId} is already in-flight. Skipping.');
+          continue;
+        }
+
+        // ── Permanently Failed / Dead-letter check ───────────────────────────
+        if (item.status == SyncStatus.permanentlyFailed || item.retryCount >= SyncItemModel.maxRetries) {
+          debugPrint('SyncService: Item ${item.receiptId} is marked permanently failed '
+              'after ${item.retryCount} attempts. Manual retry required.');
+          continue;
+        }
+
+        // ── Exponential backoff check ────────────────────────────────────────
+        // Skip this item if we haven't waited long enough since the last failure.
+        if (!item.isReadyForRetry) {
+          debugPrint('SyncService: Skipping ${item.receiptId} — backoff active '
+              '(retry ${item.retryCount}, next at ${item.nextRetryTimestamp})');
+          continue;
+        }
+
+        // Acquire item-level transaction lock
+        _inFlightItemIds.add(item.receiptId);
+
         try {
           await _uploadItem(item);
           // Success: remove from queue
           await queueBox.delete(key);
-          print('SyncService: Synced receipt ${item.receiptId}');
+          debugPrint('SyncService: Synced receipt ${item.receiptId}');
         } catch (e) {
-          print('SyncService: Failed to sync ${item.receiptId}: $e');
-          // Keep in queue for retry later
+          // ── Exponential Backoff with Jitter ────────────────────────────────
+          final jitterMs = _random.nextInt(250);
+          final updated = item.withFailedAttempt(
+            error: e.toString(),
+            jitterMs: jitterMs,
+          );
+          await queueBox.put(key, updated);
+
+          if (updated.status == SyncStatus.permanentlyFailed) {
+            debugPrint('SyncService: Receipt ${item.receiptId} permanently failed '
+                'after ${updated.retryCount} attempts: $e');
+          } else {
+            debugPrint('SyncService: Failed to sync ${item.receiptId} '
+                '(attempt ${updated.retryCount}/${SyncItemModel.maxRetries}, '
+                'next retry at ${updated.nextRetryTimestamp}): $e');
+          }
+        } finally {
+          // Release item-level transaction lock
+          _inFlightItemIds.remove(item.receiptId);
         }
       }
-    } finally {
-      // Always release the lock — success, offline abort, or any thrown error.
-      _isSyncing = false;
-    }
+    });
   }
+
+  /// Resets a permanently failed item to pending for a manual retry.
+  Future<void> retryFailedItem(String receiptId) async {
+    await _syncLock.synchronized(() async {
+      for (var key in queueBox.keys) {
+        final item = queueBox.get(key);
+        if (item != null && item.receiptId == receiptId) {
+          final reset = item.forManualRetry();
+          await queueBox.put(key, reset);
+          debugPrint('SyncService: Reset receipt $receiptId for manual retry');
+          break;
+        }
+      }
+    });
+    await syncPendingItems();
+  }
+
+  /// Resets all permanently failed items for manual retry.
+  Future<void> retryAllFailed() async {
+    await _syncLock.synchronized(() async {
+      for (var key in queueBox.keys) {
+        final item = queueBox.get(key);
+        if (item != null && item.status == SyncStatus.permanentlyFailed) {
+          await queueBox.put(key, item.forManualRetry());
+        }
+      }
+    });
+    await syncPendingItems();
+  }
+
+  /// Deletes all permanently failed items from the queue.
+  Future<void> clearFailedItems() async {
+    await _syncLock.synchronized(() async {
+      final keysToDelete = <dynamic>[];
+      for (var key in queueBox.keys) {
+        final item = queueBox.get(key);
+        if (item != null && item.status == SyncStatus.permanentlyFailed) {
+          keysToDelete.add(key);
+        }
+      }
+      for (var key in keysToDelete) {
+        await queueBox.delete(key);
+      }
+    });
+  }
+
+  /// Alias for [syncPendingItems] to maintain backward compatibility.
+  Future<void> processQueue() => syncPendingItems();
 
   Future<void> _uploadItem(SyncItemModel item) async {
     // 1. Load Receipt from Local
@@ -108,22 +208,20 @@ class SyncService {
       final receiptModel = receiptModels.firstWhere((r) => r.id == item.receiptId);
       final receipt = receiptModel.toEntity();
 
-      // 2. Check Image (handled gracefully by providers now)
-
-      // 3. Upload to Configured Provider
+      // 2. Upload to Configured Provider
       final useDrive = settingsBox.get('use_google_drive_storage', defaultValue: false);
       if (useDrive) {
-         await googleDriveService.uploadReceiptData(receiptModel.toJson(), receipt.id, item.imagePath);
+        await googleDriveService.uploadReceiptData(receiptModel.toJson(), receipt.id, item.imagePath);
       } else {
-         await supabaseDataSource.uploadTrainingData(receipt, item.imagePath);
+        await supabaseDataSource.uploadTrainingData(receipt, item.imagePath);
       }
     } catch (e) {
       // If receipt not found locally, maybe it was deleted?
       if (e is StateError) {
-         // Receipt deleted locally - safe to remove from queue?
-         // Yes, we assume local deletion is authoritative.
-         print('SyncService: Receipt not found locally, skipping upload.');
-         return; 
+        // Receipt deleted locally - safe to remove from queue.
+        // We assume local deletion is authoritative.
+        debugPrint('SyncService: Receipt not found locally, skipping upload.');
+        return;
       }
       rethrow;
     }

@@ -1,4 +1,3 @@
-// ignore_for_file: deprecated_member_use
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hive/hive.dart';
@@ -12,15 +11,16 @@ final boxesHiveBoxProvider = Provider<Box<BoxModel>>((ref) {
 final activeBoxIdProvider = StateProvider<String>((ref) => 'main');
 
 class BoxesNotifier extends StateNotifier<List<BoxModel>> {
-  final Box<BoxModel> _box;
+  final Box<BoxModel>? _box;
+  final Ref? _ref;
   static const _uuid = Uuid();
 
-  BoxesNotifier(this._box) : super([]) {
+  BoxesNotifier([this._box, this._ref]) : super([]) {
     _load();
   }
 
   void _load() {
-    final items = _box.values.toList();
+    final items = _box?.values.toList() ?? [];
     if (items.isEmpty) {
       // Seed default box
       final main = BoxModel(
@@ -32,7 +32,7 @@ class BoxesNotifier extends StateNotifier<List<BoxModel>> {
         color: Colors.black.value,
         icon: 'Home',
       );
-      _box.put(main.id, main);
+      _box?.put(main.id, main);
       state = [main];
     } else {
       state = items;
@@ -48,19 +48,22 @@ class BoxesNotifier extends StateNotifier<List<BoxModel>> {
   }
 
   Future<void> addBox(BoxModel box) async {
-    await _box.put(box.id, box);
+    await _box?.put(box.id, box);
     state = [...state, box];
   }
 
   Future<void> updateBox(String id, BoxModel updated) async {
-    await _box.put(id, updated);
+    await _box?.put(id, updated);
     state = state.map((b) => b.id == id ? updated : b).toList();
   }
 
   Future<void> deleteBox(String id) async {
     if (id == 'main') return; // cannot delete main
-    await _box.delete(id);
+    await _box?.delete(id);
     state = state.where((b) => b.id != id).toList();
+    if (_ref != null && _ref.read(activeBoxIdProvider) == id) {
+      _ref.read(activeBoxIdProvider.notifier).state = 'main';
+    }
   }
 
   Future<void> addSpent(String id, double amount) async {
@@ -98,6 +101,10 @@ class BoxesNotifier extends StateNotifier<List<BoxModel>> {
 }
 
 final boxesProvider = StateNotifierProvider<BoxesNotifier, List<BoxModel>>((ref) {
-  final box = ref.watch(boxesHiveBoxProvider);
-  return BoxesNotifier(box);
+  try {
+    final box = ref.watch(boxesHiveBoxProvider);
+    return BoxesNotifier(box, ref);
+  } catch (_) {
+    return BoxesNotifier(null, ref);
+  }
 });

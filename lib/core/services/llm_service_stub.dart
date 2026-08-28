@@ -1,4 +1,3 @@
-// ignore_for_file: deprecated_member_use, deprecated_member_use_from_same_package, unused_local_variable, unnecessary_underscores, invalid_annotation_target, unused_element, non_constant_identifier_names, use_build_context_synchronously
 import 'dart:async';
 import 'package:dartz/dartz.dart';
 import '../../features/receipt_scanning/domain/entities/receipt.dart';
@@ -17,6 +16,10 @@ class LLMService implements AIService {
   }
 
   Future<String> extractTextFromImage(String path) async {
+    return "Not supported on Web";
+  }
+
+  static Future<String> generateReceiptData(String prompt, String modelPath) async {
     return "Not supported on Web";
   }
 

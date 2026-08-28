@@ -7,7 +7,6 @@ void main() {
     tester.view.physicalSize = const Size(800, 600);
     tester.view.devicePixelRatio = 1.0;
 
-    bool isSearchExpanded = true;
     final screenWidth = 800.0;
 
     await tester.pumpWidget(
@@ -21,7 +20,7 @@ void main() {
                   const Text('tAIdy', style: TextStyle(fontSize: 24)),
                   const Spacer(),
                   Container(
-                    width: isSearchExpanded ? screenWidth - 32 : 44,
+                    width: screenWidth - 32,
                     height: 44,
                     color: Colors.red,
                   ),
@@ -35,10 +34,6 @@ void main() {
 
     // We expect the tester to report an overflow exception
     final dynamic exception = tester.takeException();
-    if (exception != null) {
-      print('EXCEPTION CAUGHT: $exception');
-    } else {
-      print('NO EXCEPTION');
-    }
+    expect(exception, isNotNull);
   });
 }

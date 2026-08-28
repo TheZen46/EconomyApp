@@ -1,21 +1,27 @@
-// ignore_for_file: deprecated_member_use, deprecated_member_use_from_same_package, unused_local_variable, unnecessary_underscores, invalid_annotation_target, unused_element, non_constant_identifier_names, use_build_context_synchronously
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 import 'package:hive/hive.dart';
 import '../../../receipt_scanning/domain/entities/receipt.dart';
 import '../../../receipt_scanning/data/models/receipt_model.dart';
 import '../../../../core/services/secure_storage_service.dart';
+import '../../../../core/error/failures.dart';
+import '../../../../core/utils/error_handler.dart';
 
 class WebhookService {
   final Box settingsBox;
   final Dio _dio;
 
-  WebhookService(this.settingsBox) : _dio = Dio(BaseOptions(
-    connectTimeout: const Duration(seconds: 10),
-    sendTimeout: const Duration(seconds: 10),
-  ));
+  WebhookService(this.settingsBox, [Dio? dio])
+      : _dio = dio ??
+            Dio(BaseOptions(
+              connectTimeout: const Duration(seconds: 10),
+              sendTimeout: const Duration(seconds: 10),
+            ));
 
   Future<void> sendWebhook(Receipt receipt) async {
-    if (!settingsBox.get('webhook_enabled', defaultValue: false)) throw Exception('Webhook disabled');
+    if (!settingsBox.get('webhook_enabled', defaultValue: false)) {
+      throw const WebhookFailure('Webhook is disabled');
+    }
 
     final url = settingsBox.get('webhook_url', defaultValue: '') as String;
     if (url.isEmpty) return;
@@ -34,20 +40,24 @@ class WebhookService {
     final payload = ReceiptModel.fromEntity(receipt).toJson();
 
     try {
-      print('Webhook: Sending receipt ${receipt.id} to $url');
+      debugPrint('Webhook: Sending receipt ${receipt.id} to $url');
       await _dio.post(url, data: payload, options: options);
-      print('Webhook: Success');
+      debugPrint('Webhook: Success');
     } catch (e) {
-      print('Webhook: Failed - $e');
-      rethrow;
+      debugPrint('Webhook: Failed - $e');
+      throw ErrorHandler.mapException(e);
     }
   }
 
   Future<void> sendTestEvent() async {
-    if (!settingsBox.get('webhook_enabled', defaultValue: false)) throw Exception('Webhook disabled');
-    final url = settingsBox.get('webhook_url', defaultValue: '') as String;
+    if (!settingsBox.get('webhook_enabled', defaultValue: false)) {
+      throw const WebhookFailure('Webhook is disabled');
+    }
 
-    if (url.isEmpty) throw Exception('No URL configured');
+    final url = settingsBox.get('webhook_url', defaultValue: '') as String;
+    if (url.isEmpty) {
+      throw const WebhookFailure('No webhook URL configured');
+    }
 
     // Read secret from secure storage, not Hive
     final secret = await SecureStorageService.readSecret(SecretKeys.webhookSecret) ?? '';
@@ -67,6 +77,11 @@ class WebhookService {
       'message': 'This is verified connection from tAIdy.',
     };
 
-    await _dio.post(url, data: payload, options: options);
+    try {
+      await _dio.post(url, data: payload, options: options);
+    } catch (e) {
+      debugPrint('Webhook test: Failed - $e');
+      throw ErrorHandler.mapException(e);
+    }
   }
 }

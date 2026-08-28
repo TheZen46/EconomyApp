@@ -1,4 +1,3 @@
-// ignore_for_file: deprecated_member_use, deprecated_member_use_from_same_package, unused_local_variable, unnecessary_underscores, invalid_annotation_target, unused_element, non_constant_identifier_names, use_build_context_synchronously
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -14,6 +13,9 @@ import '../../domain/entities/receipt.dart';
 import '../providers/receipt_provider.dart';
 import '../widgets/receipt_item_row.dart';
 import '../../../../features/boxes/data/providers/boxes_provider.dart';
+import '../../../../core/theme/app_theme.dart';
+import '../../../../core/theme/theme_notifier.dart';
+import '../../../../core/utils/error_handler.dart';
 
 class ReviewPage extends ConsumerStatefulWidget {
   final Receipt receipt;
@@ -34,14 +36,14 @@ class _ReviewPageState extends ConsumerState<ReviewPage> {
   
   String _selectedCurrency = 'USD';
   String _selectedBoxId = 'main';
+  Color _getBgColor(BuildContext context) => Theme.of(context).scaffoldBackgroundColor;
+  Color _getCardColor(BuildContext context) => Theme.of(context).colorScheme.surface;
+  Color _getBorderColor(BuildContext context) => Theme.of(context).colorScheme.outline;
+  Color _getMutedColor(BuildContext context) => Theme.of(context).colorScheme.onSurfaceVariant;
+  Color _getTextColor(BuildContext context) => Theme.of(context).colorScheme.onSurface;
 
-  Color get _accentColor => const Color(0xFF002FA7);
-  Color get _destructiveColor => const Color(0xFFD4183D);
-  Color _getBgColor(BuildContext context) => Theme.of(context).brightness == Brightness.dark ? const Color(0xFF050505) : const Color(0xFFFAFAFA);
-  Color _getCardColor(BuildContext context) => Theme.of(context).brightness == Brightness.dark ? const Color(0xFF0F0F0F) : Colors.white;
-  Color _getBorderColor(BuildContext context) => Theme.of(context).brightness == Brightness.dark ? Colors.white.withOpacity(0.06) : Colors.black.withOpacity(0.06);
-  Color _getMutedColor(BuildContext context) => const Color(0xFF737373);
-  Color _getTextColor(BuildContext context) => Theme.of(context).brightness == Brightness.dark ? const Color(0xFFF5F5F5) : const Color(0xFF1A1A1A);
+  Color get _accentColor => AppColors.accent;
+  Color get _destructiveColor => AppColors.destructive;
 
   @override
   void initState() {
@@ -51,23 +53,54 @@ class _ReviewPageState extends ConsumerState<ReviewPage> {
     _items = widget.receipt.items.map((i) => _UiReceiptItem(const Uuid().v4(), i)).toList();
     _selectedCurrency = widget.receipt.currency;
     if (_selectedCurrency.isEmpty) _selectedCurrency = 'USD';
+    _selectedBoxId = widget.receipt.boxId ?? ref.read(activeBoxIdProvider);
     
     _totalController = TextEditingController(text: widget.receipt.totalAmount.toStringAsFixed(2));
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.read(isBalatroThemeProvider.notifier).checkTrigger(widget.receipt.totalAmount);
+      for (final item in widget.receipt.items) {
+        ref.read(isBalatroThemeProvider.notifier).checkTrigger(item.unitPrice);
+        ref.read(isBalatroThemeProvider.notifier).checkTrigger(item.totalPrice);
+      }
+    });
   }
 
   void _calculateTotal() {
+    final sum = _items.fold(0.0, (prev, wrapper) => prev + wrapper.item.totalPrice);
     if (_isTotalLocked) {
-      final sum = _items.fold(0.0, (prev, wrapper) => prev + wrapper.item.totalPrice);
       _totalController.text = sum.toStringAsFixed(2);
     }
+    ref.read(isBalatroThemeProvider.notifier).checkTrigger(sum);
+    ref.read(isBalatroThemeProvider.notifier).checkTrigger(_totalController.text);
   }
 
   void _updateItem(int index, ReceiptItem newItem) {
+    final triggeredPrice = ref.read(isBalatroThemeProvider.notifier).checkTrigger(newItem.unitPrice) ||
+                           ref.read(isBalatroThemeProvider.notifier).checkTrigger(newItem.totalPrice) ||
+                           ref.read(isBalatroThemeProvider.notifier).checkTrigger(newItem.description);
+
+    final sanitizedItem = triggeredPrice
+        ? newItem.copyWith(unitPrice: 0.0, totalPrice: 0.0)
+        : newItem;
+
     setState(() {
-      _items[index] = _UiReceiptItem(_items[index].id, newItem);
+      _items[index] = _UiReceiptItem(_items[index].id, sanitizedItem);
       _calculateTotal();
     });
+
+    if (triggeredPrice && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("🃏 Balatro Reality Engaged! +500 XP Awarded! Value sanitized to protect database."),
+          backgroundColor: Color(0xFFFF3333),
+          behavior: SnackBarBehavior.floating,
+          duration: Duration(seconds: 4),
+        ),
+      );
+    }
   }
+
   
   void _deleteItem(int index) {
     setState(() {
@@ -97,7 +130,8 @@ class _ReviewPageState extends ConsumerState<ReviewPage> {
         totalAmount: double.tryParse(_totalController.text) ?? 0.0,
         date: _currentDate,
         currency: _selectedCurrency,
-        items: _items.map((w) => w.item).toList(),
+        items: _items.map((w) => w.item.copyWith(boxId: _selectedBoxId)).toList(),
+        boxId: _selectedBoxId,
       );
 
       await ref.read(receiptListProvider.notifier).addReceipt(updatedReceipt);
@@ -107,8 +141,11 @@ class _ReviewPageState extends ConsumerState<ReviewPage> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e'), backgroundColor: _destructiveColor),
+        ErrorHandler.showErrorSnackBar(
+          context: context,
+          error: e,
+          actionLabel: 'Retry',
+          onAction: _saveReceipt,
         );
         setState(() => _isSaving = false);
       }
@@ -152,7 +189,8 @@ class _ReviewPageState extends ConsumerState<ReviewPage> {
                        onPressed: () async {
                          Navigator.pop(ctx);
                          await ref.read(receiptListProvider.notifier).deleteReceipt(widget.receipt.id);
-                         if (mounted) context.go('/home');
+                         if (!context.mounted) return;
+                         context.go('/home');
                        },
                      ),
                    ],

@@ -27,13 +27,14 @@ class ReceiptModelAdapter extends TypeAdapter<ReceiptModel> {
       vatNumber: fields[8] as String,
       merchantAddress: fields[9] as String,
       time: fields[10] as String,
+      boxId: fields[11] as String?,
     );
   }
 
   @override
   void write(BinaryWriter writer, ReceiptModel obj) {
     writer
-      ..writeByte(10)
+      ..writeByte(11)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -53,7 +54,9 @@ class ReceiptModelAdapter extends TypeAdapter<ReceiptModel> {
       ..writeByte(9)
       ..write(obj.merchantAddress)
       ..writeByte(10)
-      ..write(obj.time);
+      ..write(obj.time)
+      ..writeByte(11)
+      ..write(obj.boxId);
   }
 
   @override
@@ -87,13 +90,14 @@ class ReceiptItemModelAdapter extends TypeAdapter<ReceiptItemModel> {
       mainCategory: fields[6] as String?,
       subCategory: fields[7] as String?,
       isAsset: fields[8] as bool?,
+      boxId: fields[9] as String?,
     );
   }
 
   @override
   void write(BinaryWriter writer, ReceiptItemModel obj) {
     writer
-      ..writeByte(9)
+      ..writeByte(10)
       ..writeByte(0)
       ..write(obj.description)
       ..writeByte(1)
@@ -111,7 +115,9 @@ class ReceiptItemModelAdapter extends TypeAdapter<ReceiptItemModel> {
       ..writeByte(7)
       ..write(obj.subCategory)
       ..writeByte(8)
-      ..write(obj.isAsset);
+      ..write(obj.isAsset)
+      ..writeByte(9)
+      ..write(obj.boxId);
   }
 
   @override
@@ -142,6 +148,7 @@ ReceiptModel _$ReceiptModelFromJson(Map<String, dynamic> json) => ReceiptModel(
       vatNumber: json['vatNumber'] as String? ?? '',
       merchantAddress: json['merchantAddress'] as String? ?? '',
       time: json['time'] as String? ?? '',
+      boxId: json['box_id'] as String? ?? 'main',
     );
 
 Map<String, dynamic> _$ReceiptModelToJson(ReceiptModel instance) =>
@@ -156,6 +163,7 @@ Map<String, dynamic> _$ReceiptModelToJson(ReceiptModel instance) =>
       'vatNumber': instance.vatNumber,
       'merchantAddress': instance.merchantAddress,
       'time': instance.time,
+      'box_id': instance.boxId,
     };
 
 ReceiptItemModel _$ReceiptItemModelFromJson(Map<String, dynamic> json) =>
@@ -169,6 +177,7 @@ ReceiptItemModel _$ReceiptItemModelFromJson(Map<String, dynamic> json) =>
       mainCategory: json['main_category'] as String?,
       subCategory: json['sub_category'] as String?,
       isAsset: json['is_asset'] as bool? ?? false,
+      boxId: json['box_id'] as String? ?? 'main',
     );
 
 Map<String, dynamic> _$ReceiptItemModelToJson(ReceiptItemModel instance) =>
@@ -182,4 +191,5 @@ Map<String, dynamic> _$ReceiptItemModelToJson(ReceiptItemModel instance) =>
       'main_category': instance.mainCategory,
       'sub_category': instance.subCategory,
       'is_asset': instance.isAsset,
+      'box_id': instance.boxId,
     };

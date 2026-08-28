@@ -16,23 +16,50 @@ class SyncItemModelAdapter extends TypeAdapter<SyncItemModel> {
     final fields = <int, dynamic>{
       for (int i = 0; i < numOfFields; i++) reader.readByte(): reader.read(),
     };
+
+    final retryCount = (fields[3] as int?) ?? 0;
+    final statusRaw = fields[6];
+    SyncStatus status;
+    if (statusRaw is SyncStatus) {
+      status = statusRaw;
+    } else if (statusRaw is int && statusRaw >= 0 && statusRaw < SyncStatus.values.length) {
+      status = SyncStatus.values[statusRaw];
+    } else {
+      status = retryCount >= 5 ? SyncStatus.permanentlyFailed : SyncStatus.pending;
+    }
+
     return SyncItemModel(
       receiptId: fields[0] as String,
       imagePath: fields[1] as String,
       addedAt: fields[2] as DateTime,
+      retryCount: retryCount,
+      lastAttemptAt: fields[4] as DateTime?,
+      nextRetryTimestamp: fields[5] as DateTime?,
+      status: status,
+      errorMessage: fields[7] as String?,
     );
   }
 
   @override
   void write(BinaryWriter writer, SyncItemModel obj) {
     writer
-      ..writeByte(3)
+      ..writeByte(8)
       ..writeByte(0)
       ..write(obj.receiptId)
       ..writeByte(1)
       ..write(obj.imagePath)
       ..writeByte(2)
-      ..write(obj.addedAt);
+      ..write(obj.addedAt)
+      ..writeByte(3)
+      ..write(obj.retryCount)
+      ..writeByte(4)
+      ..write(obj.lastAttemptAt)
+      ..writeByte(5)
+      ..write(obj.nextRetryTimestamp)
+      ..writeByte(6)
+      ..write(obj.status.index)
+      ..writeByte(7)
+      ..write(obj.errorMessage);
   }
 
   @override

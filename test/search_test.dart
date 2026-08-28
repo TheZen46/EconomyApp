@@ -28,7 +28,7 @@ void main() {
     // Verify initial state
     expect(find.text('tAIdy'), findsOneWidget);
     expect(find.byIcon(Icons.search), findsOneWidget);
-    expect(find.text('Everything'), findsNothing);
+    expect(find.byType(TextField), findsNothing);
 
     // Tap search icon
     await tester.tap(find.byIcon(Icons.search));
@@ -37,10 +37,12 @@ void main() {
     // Verify expanded state
     expect(find.text('tAIdy'), findsNothing);
     expect(find.byType(TextField), findsOneWidget);
-    expect(find.text('Everything'), findsOneWidget);
-    expect(find.text('Merchants'), findsOneWidget);
-    expect(find.text('Invoices'), findsOneWidget);
-    expect(find.text('Vault Assets'), findsOneWidget);
+    expect(find.byIcon(Icons.close), findsOneWidget);
+
+    // Enter search text
+    await tester.enterText(find.byType(TextField), 'Groceries');
+    await tester.pump(const Duration(milliseconds: 200));
+    expect(find.text('Groceries'), findsOneWidget);
 
     // Tap close
     await tester.tap(find.byIcon(Icons.close));
@@ -50,6 +52,8 @@ void main() {
     expect(find.text('tAIdy'), findsOneWidget);
     expect(find.byType(TextField), findsNothing);
 
+    await tester.pumpWidget(const SizedBox());
+    await tester.pump(const Duration(seconds: 2));
     await tester.binding.setSurfaceSize(null);
   });
 }

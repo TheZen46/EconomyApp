@@ -1,4 +1,3 @@
-// ignore_for_file: deprecated_member_use
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
@@ -73,10 +72,16 @@ class AppTheme {
         primary: accent,
         secondary: AppColors.accentLight,
         surface: card,
+        surfaceContainer: AppColors.lightSecondary,
+        surfaceContainerHigh: AppColors.lightCardAlt,
+        surfaceContainerHighest: const Color(0xFFEFEFEF),
         error: AppColors.destructive,
         onPrimary: Colors.white,
         onSurface: fg,
+        onSurfaceVariant: AppColors.lightMuted,
         onSecondary: Colors.white,
+        outline: border,
+        outlineVariant: AppColors.lightBorderStrong,
       ),
       textTheme: _buildTextTheme(fg),
       appBarTheme: AppBarTheme(
@@ -154,10 +159,16 @@ class AppTheme {
         primary: accent,
         secondary: AppColors.accentLight,
         surface: card,
+        surfaceContainer: AppColors.darkSecondary,
+        surfaceContainerHigh: AppColors.darkCardAlt,
+        surfaceContainerHighest: const Color(0xFF1E1E1E),
         error: AppColors.destructive,
         onPrimary: Colors.white,
         onSurface: fg,
+        onSurfaceVariant: AppColors.darkFgDim,
         onSecondary: Colors.white,
+        outline: border,
+        outlineVariant: AppColors.darkBorderStrong,
       ),
       textTheme: _buildTextTheme(fg),
       appBarTheme: AppBarTheme(
@@ -219,4 +230,172 @@ class AppTheme {
       ),
     );
   }
+
+  /// Reusable destructive confirmation dialog adhering to [AppTheme].
+  static Future<bool> showDestructiveConfirmationDialog({
+    required BuildContext context,
+    required String title,
+    required String message,
+    String confirmLabel = 'Delete',
+    String cancelLabel = 'Cancel',
+  }) {
+    return _showDestructiveConfirmationDialogImpl(
+      context: context,
+      title: title,
+      message: message,
+      confirmLabel: confirmLabel,
+      cancelLabel: cancelLabel,
+    );
+  }
+
+  static TextTheme _buildBalatroTextTheme(Color bodyColor) {
+    return _buildTextTheme(bodyColor).apply(
+      fontFamily: GoogleFonts.pressStart2p().fontFamily,
+      bodyColor: bodyColor,
+      displayColor: bodyColor,
+    );
+  }
+
+  static ThemeData get balatroTheme {
+    const bg = Color(0xFF0A1C14); // Void green
+    const fg = Colors.white;
+    const card = Color(0xFF0E241B);
+    const border = Colors.white;
+    const accent = Color(0xFFFF3333); // Poker red
+    const secondary = Color(0xFF33CCFF); // Electric cyan
+
+    return ThemeData(
+      useMaterial3: true,
+      brightness: Brightness.dark,
+      scaffoldBackgroundColor: bg,
+      colorScheme: const ColorScheme.dark(
+        primary: accent,
+        secondary: secondary,
+        surface: card,
+        surfaceContainer: Color(0xFF050A1F),
+        surfaceContainerHigh: Color(0xFF0E241B),
+        surfaceContainerHighest: Color(0xFF18382B),
+        error: Color(0xFFFF2222),
+        onPrimary: Colors.white,
+        onSurface: fg,
+        onSurfaceVariant: Color(0xFF8EF7C2),
+        onSecondary: Colors.black,
+        outline: border,
+        outlineVariant: Colors.white70,
+      ),
+      textTheme: _buildBalatroTextTheme(fg),
+      appBarTheme: AppBarTheme(
+        backgroundColor: bg,
+        elevation: 0,
+        scrolledUnderElevation: 0,
+        titleTextStyle: GoogleFonts.pressStart2p(
+          color: fg, fontSize: 14, fontWeight: FontWeight.bold,
+        ),
+        iconTheme: const IconThemeData(color: fg),
+      ),
+      cardTheme: CardThemeData(
+        color: card,
+        elevation: 8,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: const BorderSide(color: border, width: 3),
+        ),
+      ),
+      dividerColor: border,
+      elevatedButtonTheme: ElevatedButtonThemeData(
+        style: ElevatedButton.styleFrom(
+          backgroundColor: accent,
+          foregroundColor: Colors.white,
+          elevation: 4,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+            side: const BorderSide(color: Colors.white, width: 2),
+          ),
+          textStyle: GoogleFonts.pressStart2p(fontSize: 10, fontWeight: FontWeight.bold),
+        ),
+      ),
+    );
+  }
 }
+
+/// Standardized destructive confirmation dialog adhering to the current Theme and ColorScheme.
+///
+/// Prompts the user with [title] and [message] before proceeding with a destructive action.
+/// Returns `true` if confirmed, and `false` otherwise.
+Future<bool> showDestructiveConfirmationDialog({
+  required BuildContext context,
+  required String title,
+  required String message,
+  String confirmLabel = 'Delete',
+  String cancelLabel = 'Cancel',
+}) {
+  return _showDestructiveConfirmationDialogImpl(
+    context: context,
+    title: title,
+    message: message,
+    confirmLabel: confirmLabel,
+    cancelLabel: cancelLabel,
+  );
+}
+
+Future<bool> _showDestructiveConfirmationDialogImpl({
+  required BuildContext context,
+  required String title,
+  required String message,
+  required String confirmLabel,
+  required String cancelLabel,
+}) async {
+  final theme = Theme.of(context);
+  final colorScheme = theme.colorScheme;
+
+  final confirmed = await showDialog<bool>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      backgroundColor: colorScheme.surface,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      title: Text(
+        title,
+        style: GoogleFonts.spaceGrotesk(
+          color: colorScheme.onSurface,
+          fontWeight: FontWeight.bold,
+          fontSize: 18,
+        ),
+      ),
+      content: Text(
+        message,
+        style: GoogleFonts.spaceGrotesk(
+          color: colorScheme.onSurfaceVariant,
+          fontSize: 14,
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(ctx, false),
+          child: Text(
+            cancelLabel,
+            style: GoogleFonts.spaceGrotesk(
+              color: colorScheme.onSurfaceVariant,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ),
+        TextButton(
+          onPressed: () => Navigator.pop(ctx, true),
+          style: TextButton.styleFrom(
+            foregroundColor: colorScheme.error,
+          ),
+          child: Text(
+            confirmLabel,
+            style: GoogleFonts.spaceGrotesk(
+              color: colorScheme.error,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ),
+      ],
+    ),
+  );
+
+  return confirmed ?? false;
+}
+

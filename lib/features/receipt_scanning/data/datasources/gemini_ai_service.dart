@@ -1,12 +1,12 @@
-// ignore_for_file: deprecated_member_use, deprecated_member_use_from_same_package, unused_local_variable, unnecessary_underscores, invalid_annotation_target, unused_element, non_constant_identifier_names, use_build_context_synchronously
-import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:dartz/dartz.dart';
 import 'package:google_generative_ai/google_generative_ai.dart';
 
 import '../../../../core/error/failures.dart';
 import '../../../../core/services/ai_service.dart';
+import '../../../../core/utils/json_parser_utils.dart';
 import '../../domain/entities/receipt.dart';
 import '../models/receipt_model.dart';
 import '../../../../core/constants/taxonomy_constants.dart';
@@ -93,27 +93,28 @@ ${taxonomyBuffer.toString()}
         return const Left(CacheFailure("AI returned empty response"));
       }
 
-      // Clean response (remove markdown if present)
-      final cleanJson = response.text!.replaceAll('```json', '').replaceAll('```', '').trim();
-      
+      // Extract JSON robustly — handles markdown fences, filler text, nested braces
+      final jsonMap = JsonParserUtils.extractJsonMap(response.text!);
+
+      if (jsonMap == null) {
+        debugPrint("Gemini: Failed to extract JSON from response");
+        debugPrint("Gemini Raw Response: ${response.text}");
+        return const Left(AIProcessingFailure("Failed to parse AI output"));
+      }
+
       try {
-        final Map<String, dynamic> jsonMap = jsonDecode(cleanJson);
-        
         // Use ReceiptModel.fromJson logic to parse
         final receiptModel = ReceiptModel.fromJson(jsonMap);
-        
-        // Assign the correct image path (Model gen creates a dummy ID, preserve it or new?)
-        // The ID is generated in fromJson.
-        
+
         return Right(receiptModel.toEntity().copyWith(imagePath: imagePath));
 
       } catch (e) {
-        print("Gemini JSON Parse Error: $e");
-        print("Raw Response: ${response.text}");
-        return const Left(AIProcessingFailure("Failed to parse AI JSON"));
+        debugPrint("Gemini JSON Parse Error: $e");
+        debugPrint("Raw Response: ${response.text}");
+        return const Left(AIProcessingFailure("Failed to parse AI output"));
       }
     } catch (e) {
-      print("Gemini AI Error: $e");
+      debugPrint("Gemini AI Error: $e");
       if (e.toString().contains('Quota exceeded')) {
          return const Left(ServerFailure("AI Quota Exceeded. Please wait a moment."));
       }

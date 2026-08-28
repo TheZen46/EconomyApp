@@ -1,4 +1,6 @@
-// ignore_for_file: deprecated_member_use
+import 'dart:convert';
+import 'dart:io';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -8,8 +10,12 @@ import 'package:flutter_animate/flutter_animate.dart';
 import '../../../../core/theme/theme_notifier.dart';
 import '../../../../core/services/secure_storage_service.dart';
 import '../../../receipt_scanning/presentation/providers/receipt_provider.dart';
+import '../../../receipt_scanning/data/datasources/csv_parser_service.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
+import '../../../receipt_scanning/data/models/sync_item_model.dart';
 import '../../../../core/services/google_drive_service.dart';
+import '../../../../core/services/biometric_service.dart';
+import '../../../../core/utils/error_handler.dart';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const _accent = Color(0xFF002FA7);
@@ -105,12 +111,14 @@ class _SettingsPanelWidgetState extends ConsumerState<SettingsPanelWidget> {
   Widget build(BuildContext context) {
     final themeMode = ref.watch(themeProvider);
     final isDark = themeMode == ThemeMode.dark;
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
 
-    final bg = isDark ? const Color(0xFF0F0F0F) : Colors.white;
-    final fgCol = isDark ? Colors.white : Colors.black;
-    final muted = fgCol.withAlpha(102);
-    final divider = isDark ? Colors.white.withAlpha(15) : Colors.black.withAlpha(10);
-    final tileBg = isDark ? const Color(0xFF141414) : const Color(0xFFF9F9F9);
+    final bg = colorScheme.surface;
+    final fgCol = colorScheme.onSurface;
+    final muted = colorScheme.onSurfaceVariant;
+    final divider = colorScheme.outline;
+    final tileBg = colorScheme.surfaceContainer;
 
     final storageAsync = ref.watch(storageUsageProvider);
     final currentBudget = ref.watch(monthlyBudgetProvider);
@@ -362,25 +370,189 @@ class _SettingsPanelWidgetState extends ConsumerState<SettingsPanelWidget> {
                       const SizedBox(height: 12),
 
                       _cardWrapper(tileBg: tileBg, divider: divider, child:
-                        storageAsync.when(
-                          data: (bytes) => _row(
-                              label: 'Dataset Contribution',
-                              fgCol: fgCol, muted: muted,
-                              trailing: Text('${(bytes / 1024).toStringAsFixed(1)} KB',
-                                  style: GoogleFonts.jetBrainsMono(fontSize: 12, color: muted)),
-                              onTap: () => ref.refresh(storageUsageProvider)),
-                          loading: () => _row(
-                              label: 'Dataset Contribution',
-                              fgCol: fgCol, muted: muted,
-                              trailing: SizedBox(width: 14, height: 14,
-                                  child: CircularProgressIndicator(strokeWidth: 1.5, color: muted))),
-                          error: (_, __) => _row(
-                              label: 'Dataset Contribution',
-                              fgCol: fgCol, muted: muted,
-                              trailing: Text('Error', style: GoogleFonts.spaceGrotesk(
-                                  fontSize: 12, color: const Color(0xFFD4183D)))),
+                        Column(
+                          children: [
+                            Consumer(builder: (context, ref, _) {
+                              final isBiometricEnabled = ref.watch(biometricEnabledProvider);
+                              return _row(
+                                label: 'Biometric Lock (FaceID / Fingerprint)',
+                                fgCol: fgCol,
+                                muted: muted,
+                                trailing: _FigmaToggle(
+                                  value: isBiometricEnabled,
+                                  onChanged: (val) async {
+                                    if (val) {
+                                      final canAuth = await ref.read(biometricServiceProvider).canAuthenticate();
+                                      if (!canAuth) {
+                                        if (context.mounted) {
+                                          ScaffoldMessenger.of(context).showSnackBar(
+                                            const SnackBar(
+                                              content: Text('Biometrics not available on this device'),
+                                              backgroundColor: Color(0xFFD4183D),
+                                            ),
+                                          );
+                                        }
+                                        return;
+                                      }
+                                    }
+                                    await ref.read(biometricEnabledProvider.notifier).setEnabled(val);
+                                  },
+                                ),
+                              );
+                            }),
+                            Divider(color: divider, height: 1, indent: 20, endIndent: 20),
+                            storageAsync.when(
+                              data: (bytes) => _row(
+                                  label: 'Dataset Contribution',
+                                  fgCol: fgCol, muted: muted,
+                                  trailing: Text('${(bytes / 1024).toStringAsFixed(1)} KB',
+                                      style: GoogleFonts.jetBrainsMono(fontSize: 12, color: muted)),
+                                  onTap: () => ref.refresh(storageUsageProvider)),
+                              loading: () => _row(
+                                  label: 'Dataset Contribution',
+                                  fgCol: fgCol, muted: muted,
+                                  trailing: SizedBox(width: 14, height: 14,
+                                      child: CircularProgressIndicator(strokeWidth: 1.5, color: muted))),
+                              error: (err, stack) => _row(
+                                  label: 'Dataset Contribution',
+                                  fgCol: fgCol, muted: muted,
+                                  trailing: Text('Error', style: GoogleFonts.spaceGrotesk(
+                                      fontSize: 12, color: const Color(0xFFD4183D)))),
+                            ),
+                            Divider(color: divider, height: 1, indent: 20, endIndent: 20),
+                            _row(
+                              label: 'Import Bank CSV',
+                              fgCol: fgCol,
+                              muted: muted,
+                              trailing: Icon(Icons.file_upload_outlined, size: 18, color: muted),
+                              onTap: _importCsv,
+                            ),
+                          ],
                         ),
                       ),
+
+                      const SizedBox(height: 12),
+
+                      // ── Sync Center ──────────────────────────────────────
+                      Consumer(builder: (context, ref, _) {
+                        final syncItemsAsync = ref.watch(syncQueueStreamProvider);
+                        final syncItems = syncItemsAsync.valueOrNull ?? [];
+                        final failedItems = syncItems.where((i) => i.status == SyncStatus.permanentlyFailed).toList();
+                        final pendingItems = syncItems.where((i) => i.status != SyncStatus.permanentlyFailed).toList();
+
+                        return _cardWrapper(
+                          tileBg: tileBg,
+                          divider: divider,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              _row(
+                                label: 'Sync Center',
+                                fgCol: fgCol,
+                                muted: muted,
+                                trailing: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    if (failedItems.isNotEmpty)
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                        margin: const EdgeInsets.only(right: 8),
+                                        decoration: BoxDecoration(
+                                          color: const Color(0xFFD4183D).withAlpha(40),
+                                          borderRadius: BorderRadius.circular(10),
+                                          border: Border.all(color: const Color(0xFFD4183D)),
+                                        ),
+                                        child: Text(
+                                          '${failedItems.length} Failed',
+                                          style: GoogleFonts.spaceGrotesk(
+                                            fontSize: 11,
+                                            fontWeight: FontWeight.bold,
+                                            color: const Color(0xFFD4183D),
+                                          ),
+                                        ),
+                                      ),
+                                    Text(
+                                      pendingItems.isEmpty ? 'All Synced' : '${pendingItems.length} Pending',
+                                      style: GoogleFonts.jetBrainsMono(
+                                        fontSize: 12,
+                                        color: pendingItems.isEmpty ? const Color(0xFF10B981) : muted,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              if (failedItems.isNotEmpty) ...[
+                                Divider(color: divider, height: 1, indent: 20, endIndent: 20),
+                                Padding(
+                                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        'Permanently Failed Uploads (Max 5 attempts exceeded)',
+                                        style: GoogleFonts.spaceGrotesk(
+                                          fontSize: 12,
+                                          color: const Color(0xFFD4183D),
+                                          fontWeight: FontWeight.w500,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 8),
+                                      for (final item in failedItems)
+                                        Padding(
+                                          padding: const EdgeInsets.only(bottom: 8.0),
+                                          child: Row(
+                                            children: [
+                                              Expanded(
+                                                child: Column(
+                                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                                  children: [
+                                                    Text(
+                                                      'Receipt ${item.receiptId.length > 8 ? item.receiptId.substring(0, 8) : item.receiptId}',
+                                                      style: GoogleFonts.jetBrainsMono(
+                                                        fontSize: 13,
+                                                        color: fgCol,
+                                                      ),
+                                                    ),
+                                                    if (item.errorMessage != null)
+                                                      Text(
+                                                        item.errorMessage!,
+                                                        maxLines: 1,
+                                                        overflow: TextOverflow.ellipsis,
+                                                        style: GoogleFonts.spaceGrotesk(
+                                                          fontSize: 11,
+                                                          color: muted,
+                                                        ),
+                                                      ),
+                                                  ],
+                                                ),
+                                              ),
+                                              TextButton.icon(
+                                                onPressed: () {
+                                                  ref.read(syncServiceProvider).retryFailedItem(item.receiptId);
+                                                  ScaffoldMessenger.of(context).showSnackBar(
+                                                    SnackBar(content: Text('Retrying receipt ${item.receiptId}…')),
+                                                  );
+                                                },
+                                                icon: const Icon(Icons.refresh, size: 14),
+                                                label: Text(
+                                                  'Manual Retry',
+                                                  style: GoogleFonts.spaceGrotesk(fontSize: 12, fontWeight: FontWeight.bold),
+                                                ),
+                                                style: TextButton.styleFrom(
+                                                  foregroundColor: _accent,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
+                        );
+                      }),
 
                       const SizedBox(height: 12),
 
@@ -587,11 +759,11 @@ class _SettingsPanelWidgetState extends ConsumerState<SettingsPanelWidget> {
                 SecretKeys.geminiApiKey, ctrl.text.trim());
               // Invalidate the provider so aiServiceProvider picks up the new key
               ref.invalidate(geminiApiKeyProvider);
+              if (!ctx.mounted) return;
               Navigator.pop(ctx);
-              if (mounted) {
-                ScaffoldMessenger.of(context)
-                    .showSnackBar(const SnackBar(content: Text('API Key saved securely')));
-              }
+              if (!mounted) return;
+              ScaffoldMessenger.of(context)
+                  .showSnackBar(const SnackBar(content: Text('API Key saved securely')));
             },
             child: Text('Save',
                 style: GoogleFonts.spaceGrotesk(color: _accent)),
@@ -662,13 +834,237 @@ class _SettingsPanelWidgetState extends ConsumerState<SettingsPanelWidget> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: ${googleDriveService.lastError ?? e}')),
+        ErrorHandler.showErrorSnackBar(
+          context: context,
+          error: googleDriveService.lastError ?? e,
+          actionLabel: 'Retry',
+          onAction: _archiveData,
         );
       }
     } finally {
       if (mounted) setState(() => _isUploading = false);
     }
+  }
+
+  Future<void> _importCsv() async {
+    try {
+      final result = await FilePicker.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['csv', 'txt'],
+        withData: true,
+      );
+
+      if (result == null || result.files.isEmpty) return;
+
+      final file = result.files.first;
+      String csvString = '';
+      if (file.bytes != null) {
+        csvString = utf8.decode(file.bytes!);
+      } else if (file.path != null) {
+        csvString = await File(file.path!).readAsString();
+      }
+
+      if (csvString.trim().isEmpty) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Selected CSV file is empty')),
+          );
+        }
+        return;
+      }
+
+      final parser = ref.read(csvParserServiceProvider);
+      final importResult = await ref.read(receiptListProvider.notifier).importCsvTransactions(csvString, parser);
+
+      if (!mounted) return;
+
+      await importResult.fold(
+        (failure) async {
+          await ErrorHandler.showErrorDialog(
+            context: context,
+            error: failure,
+            title: 'CSV Import Failed',
+          );
+        },
+        (report) async {
+          await _showCsvReportDialog(report);
+        },
+      );
+    } catch (e) {
+      if (mounted) {
+        await ErrorHandler.showErrorDialog(
+          context: context,
+          error: e,
+          title: 'CSV Import Error',
+        );
+      }
+    }
+  }
+
+  Future<void> _showCsvReportDialog(CsvImportReport report) async {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final fgCol = isDark ? Colors.white : const Color(0xFF1A1A1A);
+    final muted = isDark ? const Color(0xFF8E8E93) : const Color(0xFF737373);
+    final cardBg = isDark ? const Color(0xFF1E1E1E) : const Color(0xFFF7F7F8);
+
+    await showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: isDark ? const Color(0xFF141414) : Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Row(
+          children: [
+            Icon(
+              report.hasErrors
+                  ? (report.successCount > 0 ? Icons.info_outline : Icons.error_outline)
+                  : Icons.check_circle_outline,
+              color: report.hasErrors
+                  ? (report.successCount > 0 ? const Color(0xFF002FA7) : const Color(0xFFD4183D))
+                  : const Color(0xFF16A34A),
+              size: 24,
+            ),
+            const SizedBox(width: 10),
+            Text(
+              'CSV Import Summary',
+              style: GoogleFonts.spaceGrotesk(fontSize: 18, fontWeight: FontWeight.w600, color: fgCol),
+            ),
+          ],
+        ),
+        content: SizedBox(
+          width: 480,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: cardBg,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceAround,
+                  children: [
+                    _buildStatItem('Processed', report.totalRows.toString(), fgCol, muted),
+                    _buildStatItem('Imported', report.successCount.toString(), const Color(0xFF16A34A), muted),
+                    _buildStatItem(
+                      'Skipped',
+                      report.failureCount.toString(),
+                      report.failureCount > 0 ? const Color(0xFFD4183D) : muted,
+                      muted,
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
+              if (report.hasErrors) ...[
+                Text(
+                  'Failed Rows (${report.failedRows.length})',
+                  style: GoogleFonts.spaceGrotesk(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: const Color(0xFFD4183D),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                ConstrainedBox(
+                  constraints: const BoxConstraints(maxHeight: 200),
+                  child: ListView.separated(
+                    shrinkWrap: true,
+                    itemCount: report.failedRows.length,
+                    separatorBuilder: (_, _) => const Divider(height: 12),
+                    itemBuilder: (ctx, idx) {
+                      final error = report.failedRows[idx];
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFD4183D).withAlpha(30),
+                                  borderRadius: BorderRadius.circular(6),
+                                ),
+                                child: Text(
+                                  'Line ${error.lineNumber}',
+                                  style: GoogleFonts.jetBrainsMono(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.bold,
+                                    color: const Color(0xFFD4183D),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  error.reason,
+                                  style: GoogleFonts.spaceGrotesk(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w500,
+                                    color: fgCol,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            error.rawRow,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: GoogleFonts.jetBrainsMono(
+                              fontSize: 10,
+                              color: muted,
+                            ),
+                          ),
+                        ],
+                      );
+                    },
+                  ),
+                ),
+              ] else ...[
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 8.0),
+                  child: Text(
+                    'All ${report.successCount} transactions were parsed and imported successfully.',
+                    style: GoogleFonts.spaceGrotesk(fontSize: 13, color: muted),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: Text(
+              'Done',
+              style: GoogleFonts.spaceGrotesk(
+                fontWeight: FontWeight.bold,
+                color: _accent,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStatItem(String label, String value, Color valueCol, Color muted) {
+    return Column(
+      children: [
+        Text(
+          value,
+          style: GoogleFonts.jetBrainsMono(fontSize: 18, fontWeight: FontWeight.bold, color: valueCol),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          label,
+          style: GoogleFonts.spaceGrotesk(fontSize: 11, color: muted),
+        ),
+      ],
+    );
   }
 }
 

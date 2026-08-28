@@ -5,7 +5,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>T Aidy</string>
+	<string>tAIdy</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -13,7 +13,7 @@
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
-	<string>t_aidy</string>
+	<string>tAIdy</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
@@ -45,5 +45,11 @@
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+	<key>NSCameraUsageDescription</key>
+	<string>tAIdy needs camera access to scan your receipts</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>tAIdy needs photo library access to import receipt images</string>
+	<key>NSFaceIDUsageDescription</key>
+	<string>tAIdy needs Face ID to secure your expense and financial data</string>
 </dict>
 </plist>

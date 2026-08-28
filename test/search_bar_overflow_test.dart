@@ -70,6 +70,9 @@ void main() {
     await tester.tap(searchIcon);
     await tester.pump(const Duration(seconds: 1));
 
+    await tester.pumpWidget(const SizedBox());
+    await tester.pump(const Duration(seconds: 2));
+
     tester.view.resetPhysicalSize();
     tester.view.resetDevicePixelRatio();
   });

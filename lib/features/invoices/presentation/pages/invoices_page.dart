@@ -5,6 +5,7 @@ import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:intl/intl.dart';
 
+import '../../../../core/theme/app_theme.dart';
 import '../../data/models/invoice_model.dart';
 import '../../data/providers/invoices_provider.dart';
 import '../widgets/create_invoice_sheet.dart';
@@ -43,12 +44,14 @@ class _InvoicesPageState extends ConsumerState<InvoicesPage> {
     final invoices = ref.watch(invoicesProvider);
     final notifier = ref.watch(invoicesProvider.notifier);
 
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final bg = isDark ? const Color(0xFF0A0A0A) : const Color(0xFFFAFAFA);
-    final textCol = isDark ? const Color(0xFFF5F5F5) : const Color(0xFF1A1A1A);
-    final cardBg = isDark ? const Color(0xFF0F0F0F) : const Color(0xFFFFFFFF);
-    final borderCol = isDark ? Colors.white.withOpacity(0.06) : Colors.black.withOpacity(0.04);
-    final accent = const Color(0xFF002FA7);
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final bg = theme.scaffoldBackgroundColor;
+    final textCol = colorScheme.onSurface;
+    final mutedTextCol = colorScheme.onSurfaceVariant;
+    final cardBg = colorScheme.surface;
+    final borderCol = colorScheme.outline;
+    final accent = colorScheme.primary;
 
     // Filter invoices
     final filtered = invoices.where((i) {
@@ -75,7 +78,10 @@ class _InvoicesPageState extends ConsumerState<InvoicesPage> {
           children: [
             if (_showBetaBanner)
               Container(
-                color: Colors.amber,
+                decoration: BoxDecoration(
+                  color: colorScheme.surfaceContainerHighest,
+                  border: Border(bottom: BorderSide(color: borderCol)),
+                ),
                 padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
                 child: Row(
                   children: [
@@ -84,12 +90,12 @@ class _InvoicesPageState extends ConsumerState<InvoicesPage> {
                     Expanded(
                       child: Text(
                         'BETA FEATURE — Invoice tracking is in beta. Data is stored locally only. Cloud sync coming soon.',
-                        style: GoogleFonts.spaceGrotesk(color: const Color(0xFF1A1A1A), fontSize: 13, fontWeight: FontWeight.w500),
+                        style: GoogleFonts.spaceGrotesk(color: textCol, fontSize: 13, fontWeight: FontWeight.w500),
                       ),
                     ),
                     TextButton(
                       onPressed: () => setState(() => _showBetaBanner = false),
-                      child: Text('Dismiss', style: GoogleFonts.spaceGrotesk(color: const Color(0xFF1A1A1A), fontWeight: FontWeight.bold)),
+                      child: Text('Dismiss', style: GoogleFonts.spaceGrotesk(color: accent, fontWeight: FontWeight.bold)),
                     ),
                   ],
                 ),
@@ -129,7 +135,7 @@ class _InvoicesPageState extends ConsumerState<InvoicesPage> {
                     label: const Text('New Invoice'),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: accent,
-                      foregroundColor: Colors.white,
+                      foregroundColor: colorScheme.onPrimary,
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                       textStyle: GoogleFonts.spaceGrotesk(fontWeight: FontWeight.bold),
@@ -157,7 +163,7 @@ class _InvoicesPageState extends ConsumerState<InvoicesPage> {
                                 Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    Text('Outstanding Balance', style: GoogleFonts.spaceGrotesk(color: isDark ? Colors.white70 : Colors.black87, fontSize: 14)),
+                                    Text('Outstanding Balance', style: GoogleFonts.spaceGrotesk(color: mutedTextCol, fontSize: 14)),
                                     const SizedBox(height: 8),
                                     Text(
                                       NumberFormat.currency(symbol: '\$').format(totalOutstanding),
@@ -182,9 +188,9 @@ class _InvoicesPageState extends ConsumerState<InvoicesPage> {
                                     child: _buildCard(cardBg, borderCol, Column(
                                       crossAxisAlignment: CrossAxisAlignment.start,
                                       children: [
-                                        Text('Overdue', style: GoogleFonts.spaceGrotesk(color: isDark ? Colors.white70 : Colors.black87, fontSize: 12)),
+                                        Text('Overdue', style: GoogleFonts.spaceGrotesk(color: mutedTextCol, fontSize: 12)),
                                         const SizedBox(height: 4),
-                                        Text(NumberFormat.currency(symbol: '\$').format(totalOverdue), style: GoogleFonts.jetBrainsMono(color: const Color(0xFFD4183D), fontSize: 18, fontWeight: FontWeight.bold)),
+                                        Text(NumberFormat.currency(symbol: '\$').format(totalOverdue), style: GoogleFonts.jetBrainsMono(color: colorScheme.error, fontSize: 18, fontWeight: FontWeight.bold)),
                                       ],
                                     )),
                                   ),
@@ -193,7 +199,7 @@ class _InvoicesPageState extends ConsumerState<InvoicesPage> {
                                     child: _buildCard(cardBg, borderCol, Column(
                                       crossAxisAlignment: CrossAxisAlignment.start,
                                       children: [
-                                        Text('Drafts', style: GoogleFonts.spaceGrotesk(color: isDark ? Colors.white70 : Colors.black87, fontSize: 12)),
+                                        Text('Drafts', style: GoogleFonts.spaceGrotesk(color: mutedTextCol, fontSize: 12)),
                                         const SizedBox(height: 4),
                                         Text(NumberFormat.currency(symbol: '\$').format(totalDraft), style: GoogleFonts.jetBrainsMono(color: textCol, fontSize: 18, fontWeight: FontWeight.bold)),
                                       ],
@@ -213,13 +219,13 @@ class _InvoicesPageState extends ConsumerState<InvoicesPage> {
                                 const SizedBox(height: 16),
                                 SizedBox(
                                   height: 150,
-                                  child: _buildChart(invoices, isDark, accent),
+                                  child: _buildChart(invoices, colorScheme, accent),
                                 ),
                                 const SizedBox(height: 8),
                                 Row(
                                   mainAxisAlignment: MainAxisAlignment.center,
                                   children: [
-                                    Container(width: 12, height: 12, color: Colors.grey),
+                                    Container(width: 12, height: 12, color: colorScheme.outline),
                                     const SizedBox(width: 4),
                                     Text('Invoiced', style: GoogleFonts.spaceGrotesk(fontSize: 12, color: textCol)),
                                     const SizedBox(width: 16),
@@ -270,8 +276,8 @@ class _InvoicesPageState extends ConsumerState<InvoicesPage> {
                                   onChanged: (v) => setState(() => _searchQuery = v),
                                   decoration: InputDecoration(
                                     hintText: 'Search invoices...',
-                                    hintStyle: GoogleFonts.spaceGrotesk(color: isDark ? Colors.white54 : Colors.black54),
-                                    prefixIcon: Icon(Icons.search, color: isDark ? Colors.white54 : Colors.black54),
+                                    hintStyle: GoogleFonts.spaceGrotesk(color: mutedTextCol),
+                                    prefixIcon: Icon(Icons.search, color: mutedTextCol),
                                     suffixIcon: _searchQuery.isNotEmpty 
                                         ? IconButton(
                                             icon: const Icon(Icons.clear), 
@@ -311,7 +317,7 @@ class _InvoicesPageState extends ConsumerState<InvoicesPage> {
                                     selectedColor: accent,
                                     backgroundColor: cardBg,
                                     labelStyle: GoogleFonts.spaceGrotesk(
-                                      color: isSelected ? Colors.white : textCol,
+                                      color: isSelected ? colorScheme.onPrimary : textCol,
                                       fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
                                     ),
                                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: BorderSide(color: borderCol)),
@@ -333,7 +339,7 @@ class _InvoicesPageState extends ConsumerState<InvoicesPage> {
                             child: Column(
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
-                                Icon(Icons.insert_drive_file_outlined, size: 64, color: isDark ? Colors.white24 : Colors.black26),
+                                Icon(Icons.insert_drive_file_outlined, size: 64, color: mutedTextCol.withOpacity(0.4)),
                                 const SizedBox(height: 16),
                                 Text('No invoices found', style: GoogleFonts.spaceGrotesk(color: textCol, fontSize: 16, fontWeight: FontWeight.w500)),
                               ],
@@ -346,7 +352,7 @@ class _InvoicesPageState extends ConsumerState<InvoicesPage> {
                             delegate: SliverChildBuilderDelegate(
                               (context, index) {
                                 final inv = filtered[index];
-                                return _buildInvoiceRow(inv, isDark, cardBg, borderCol, textCol)
+                                return _buildInvoiceRow(inv, cardBg, borderCol, textCol, mutedTextCol)
                                     .animate()
                                     .fadeIn(duration: 300.ms)
                                     .slideY(begin: 0.2, duration: 300.ms);
@@ -367,7 +373,7 @@ class _InvoicesPageState extends ConsumerState<InvoicesPage> {
         onPressed: () {},
         backgroundColor: accent,
         shape: const CircleBorder(),
-        child: const Icon(Icons.camera_alt, color: Colors.white),
+        child: Icon(Icons.camera_alt, color: colorScheme.onPrimary),
       ),
       floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
     );
@@ -385,7 +391,7 @@ class _InvoicesPageState extends ConsumerState<InvoicesPage> {
     );
   }
 
-  Widget _buildChart(List<InvoiceModel> invoices, bool isDark, Color accent) {
+  Widget _buildChart(List<InvoiceModel> invoices, ColorScheme colorScheme, Color accent) {
     final now = DateTime.now();
     final months = List.generate(6, (i) => DateTime(now.year, now.month - 5 + i));
 
@@ -412,7 +418,7 @@ class _InvoicesPageState extends ConsumerState<InvoicesPage> {
           barRods: [
             BarChartRodData(
               toY: invoiced,
-              color: Colors.grey.withOpacity(0.5),
+              color: colorScheme.outline.withOpacity(0.5),
               width: 12,
               borderRadius: BorderRadius.circular(4),
             ),
@@ -442,7 +448,7 @@ class _InvoicesPageState extends ConsumerState<InvoicesPage> {
               getTitlesWidget: (val, meta) {
                 if (val < 0 || val >= 6) return const SizedBox.shrink();
                 final date = months[val.toInt()];
-                return Text(DateFormat.MMM().format(date), style: GoogleFonts.spaceGrotesk(fontSize: 10, color: isDark ? Colors.white54 : Colors.black54));
+                return Text(DateFormat.MMM().format(date), style: GoogleFonts.spaceGrotesk(fontSize: 10, color: colorScheme.onSurfaceVariant));
               },
               reservedSize: 22,
             ),
@@ -458,29 +464,30 @@ class _InvoicesPageState extends ConsumerState<InvoicesPage> {
     );
   }
 
-  Widget _buildInvoiceRow(InvoiceModel inv, bool isDark, Color cardBg, Color borderCol, Color textCol) {
+  Widget _buildInvoiceRow(InvoiceModel inv, Color cardBg, Color borderCol, Color textCol, Color mutedTextCol) {
+    final colorScheme = Theme.of(context).colorScheme;
     Color statusBg, statusText;
     IconData statusIcon;
 
     switch (inv.status) {
       case InvoiceStatus.sent:
-        statusBg = const Color(0xFF002FA7).withOpacity(0.1);
-        statusText = const Color(0xFF002FA7);
+        statusBg = colorScheme.primary.withOpacity(0.1);
+        statusText = colorScheme.primary;
         statusIcon = Icons.access_time;
         break;
       case InvoiceStatus.settled:
-        statusBg = isDark ? Colors.white.withOpacity(0.1) : Colors.black.withOpacity(0.1);
-        statusText = isDark ? Colors.white.withOpacity(0.8) : const Color(0xFF1A1A1A);
+        statusBg = colorScheme.surfaceContainerHighest;
+        statusText = colorScheme.onSurface;
         statusIcon = Icons.check_circle_outline;
         break;
       case InvoiceStatus.overdue:
-        statusBg = const Color(0xFFD4183D).withOpacity(0.1);
-        statusText = const Color(0xFFD4183D);
+        statusBg = colorScheme.error.withOpacity(0.1);
+        statusText = colorScheme.error;
         statusIcon = Icons.error_outline;
         break;
       default: // draft
-        statusBg = const Color(0xFF737373).withOpacity(0.1);
-        statusText = const Color(0xFF737373);
+        statusBg = colorScheme.onSurfaceVariant.withOpacity(0.1);
+        statusText = colorScheme.onSurfaceVariant;
         statusIcon = Icons.insert_drive_file_outlined;
     }
 
@@ -501,7 +508,7 @@ class _InvoicesPageState extends ConsumerState<InvoicesPage> {
               children: [
                 Text(inv.clientName, style: GoogleFonts.spaceGrotesk(color: textCol, fontWeight: FontWeight.bold, fontSize: 16)),
                 const SizedBox(height: 4),
-                Text(inv.invoiceNumber, style: GoogleFonts.jetBrainsMono(color: isDark ? Colors.white54 : Colors.black54, fontSize: 12)),
+                Text(inv.invoiceNumber, style: GoogleFonts.jetBrainsMono(color: mutedTextCol, fontSize: 12)),
               ],
             ),
           ),
@@ -532,18 +539,18 @@ class _InvoicesPageState extends ConsumerState<InvoicesPage> {
               children: [
                 Text(NumberFormat.currency(symbol: '\$').format(inv.amount), style: GoogleFonts.jetBrainsMono(color: textCol, fontWeight: FontWeight.bold, fontSize: 16)),
                 const SizedBox(height: 4),
-                Text('Issued: ${DateFormat.yMd().format(inv.issuedDate)}', style: GoogleFonts.spaceGrotesk(color: isDark ? Colors.white54 : Colors.black54, fontSize: 12)),
+                Text('Issued: ${DateFormat.yMd().format(inv.issuedDate)}', style: GoogleFonts.spaceGrotesk(color: mutedTextCol, fontSize: 12)),
               ],
             ),
           ),
           const SizedBox(width: 16),
           PopupMenuButton<String>(
-            icon: Icon(Icons.more_horiz, color: isDark ? Colors.white54 : Colors.black54),
+            icon: Icon(Icons.more_horiz, color: mutedTextCol),
             color: cardBg,
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
             onSelected: (val) {
               if (val == 'delete') {
-                ref.read(invoicesProvider.notifier).delete(inv.id);
+                _confirmDeleteInvoice(inv.id);
               } else if (val == 'mark_sent') {
                 ref.read(invoicesProvider.notifier).updateStatus(inv.id, InvoiceStatus.sent);
               } else if (val == 'mark_settled') {
@@ -555,11 +562,28 @@ class _InvoicesPageState extends ConsumerState<InvoicesPage> {
                 const PopupMenuItem(value: 'mark_sent', child: Text('Mark as Sent')),
               if (inv.status == InvoiceStatus.sent || inv.status == InvoiceStatus.overdue)
                 const PopupMenuItem(value: 'mark_settled', child: Text('Mark as Settled')),
-              const PopupMenuItem(value: 'delete', child: Text('Delete', style: TextStyle(color: Colors.red))),
+              PopupMenuItem(value: 'delete', child: Text('Delete', style: TextStyle(color: colorScheme.error))),
             ],
           ),
         ],
       ),
     );
+  }
+
+  Future<void> _confirmDeleteInvoice(String invoiceId) async {
+    final confirmed = await showDestructiveConfirmationDialog(
+      context: context,
+      title: 'Delete Invoice?',
+      message: 'Are you sure? This action cannot be undone.',
+      confirmLabel: 'Delete',
+    );
+
+    if (confirmed && mounted) {
+      await ref.read(invoicesProvider.notifier).delete(invoiceId);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Invoice deleted')),
+      );
+    }
   }
 }

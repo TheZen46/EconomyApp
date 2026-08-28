@@ -10,7 +10,7 @@ import '../../data/models/box_model.dart';
 import '../widgets/box_creator_sheet.dart';
 
 class BoxesPage extends ConsumerStatefulWidget {
-  const BoxesPage({Key? key}) : super(key: key);
+  const BoxesPage({super.key});
 
   @override
   ConsumerState<BoxesPage> createState() => _BoxesPageState();
@@ -134,7 +134,7 @@ class _BoxesPageState extends ConsumerState<BoxesPage> {
   Widget _buildBoxList(BuildContext context, List<BoxModel> boxes, String activeId, bool isDark) {
     return ListView.separated(
       itemCount: boxes.length,
-      separatorBuilder: (_, __) => const SizedBox(height: 16),
+      separatorBuilder: (ctx, idx) => const SizedBox(height: 16),
       itemBuilder: (context, index) {
         final box = boxes[index];
         final isSelected = box.id == _selectedBoxId;

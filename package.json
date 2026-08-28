@@ -1,4 +1,6 @@
 {
+  "name": "t_aidy",
+  "version": "0.0.3",
   "dependencies": {
     "puppeteer": "^25.3.0"
   }

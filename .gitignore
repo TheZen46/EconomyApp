@@ -42,6 +42,7 @@ app.*.map.json
 # Android Studio will place build artifacts here
 /android/app/debug
 /android/app/profile
+
 /android/app/release
 
 assets/credentials.json
@@ -52,6 +53,13 @@ assets/credentials.json
 .env
 .env.*
 !.env.example
+
+# Android signing keys
+android/key.properties
+key.properties
+**/key.properties
+*.jks
+*.keystore
 
 # Scratch test files with secrets
 test_supabase.dart

@@ -54,11 +54,13 @@ class _CreateInvoiceSheetState extends ConsumerState<CreateInvoiceSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final bg = isDark ? const Color(0xFF0F0F0F) : const Color(0xFFFFFFFF);
-    final borderCol = isDark ? Colors.white.withOpacity(0.06) : Colors.black.withOpacity(0.04);
-    final textCol = isDark ? const Color(0xFFF5F5F5) : const Color(0xFF1A1A1A);
-    final accent = const Color(0xFF002FA7);
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final bg = colorScheme.surface;
+    final borderCol = colorScheme.outline;
+    final textCol = colorScheme.onSurface;
+    final mutedTextCol = colorScheme.onSurfaceVariant;
+    final accent = colorScheme.primary;
 
     return Container(
       decoration: BoxDecoration(
@@ -92,7 +94,7 @@ class _CreateInvoiceSheetState extends ConsumerState<CreateInvoiceSheet> {
                 'Invoice number auto-generated on save',
                 style: GoogleFonts.spaceGrotesk(
                   fontSize: 14,
-                  color: isDark ? Colors.white54 : Colors.black54,
+                  color: mutedTextCol,
                 ),
               ),
               const SizedBox(height: 24),
@@ -102,7 +104,7 @@ class _CreateInvoiceSheetState extends ConsumerState<CreateInvoiceSheet> {
                 style: GoogleFonts.spaceGrotesk(color: textCol),
                 decoration: InputDecoration(
                   labelText: 'Client Name',
-                  labelStyle: GoogleFonts.spaceGrotesk(color: isDark ? Colors.white54 : Colors.black54),
+                  labelStyle: GoogleFonts.spaceGrotesk(color: mutedTextCol),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
                     borderSide: BorderSide(color: borderCol),
@@ -126,7 +128,7 @@ class _CreateInvoiceSheetState extends ConsumerState<CreateInvoiceSheet> {
                       keyboardType: const TextInputType.numberWithOptions(decimal: true),
                       decoration: InputDecoration(
                         labelText: 'Amount',
-                        labelStyle: GoogleFonts.spaceGrotesk(color: isDark ? Colors.white54 : Colors.black54),
+                        labelStyle: GoogleFonts.spaceGrotesk(color: mutedTextCol),
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(12),
                           borderSide: BorderSide(color: borderCol),
@@ -148,7 +150,7 @@ class _CreateInvoiceSheetState extends ConsumerState<CreateInvoiceSheet> {
                       style: GoogleFonts.spaceGrotesk(color: textCol),
                       decoration: InputDecoration(
                         labelText: 'Currency',
-                        labelStyle: GoogleFonts.spaceGrotesk(color: isDark ? Colors.white54 : Colors.black54),
+                        labelStyle: GoogleFonts.spaceGrotesk(color: mutedTextCol),
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(12),
                           borderSide: BorderSide(color: borderCol),
@@ -189,7 +191,7 @@ class _CreateInvoiceSheetState extends ConsumerState<CreateInvoiceSheet> {
                           child: Text(
                             'Draft',
                             style: GoogleFonts.spaceGrotesk(
-                              color: _status == InvoiceStatus.draft ? Colors.white : textCol,
+                              color: _status == InvoiceStatus.draft ? colorScheme.onPrimary : textCol,
                               fontWeight: FontWeight.w600,
                             ),
                           ),
@@ -209,7 +211,7 @@ class _CreateInvoiceSheetState extends ConsumerState<CreateInvoiceSheet> {
                           child: Text(
                             'Sent',
                             style: GoogleFonts.spaceGrotesk(
-                              color: _status == InvoiceStatus.sent ? Colors.white : textCol,
+                              color: _status == InvoiceStatus.sent ? colorScheme.onPrimary : textCol,
                               fontWeight: FontWeight.w600,
                             ),
                           ),
@@ -237,7 +239,7 @@ class _CreateInvoiceSheetState extends ConsumerState<CreateInvoiceSheet> {
                       child: InputDecorator(
                         decoration: InputDecoration(
                           labelText: 'Issue Date',
-                          labelStyle: GoogleFonts.spaceGrotesk(color: isDark ? Colors.white54 : Colors.black54),
+                          labelStyle: GoogleFonts.spaceGrotesk(color: mutedTextCol),
                           border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(12),
                             borderSide: BorderSide(color: borderCol),
@@ -269,7 +271,7 @@ class _CreateInvoiceSheetState extends ConsumerState<CreateInvoiceSheet> {
                       child: InputDecorator(
                         decoration: InputDecoration(
                           labelText: 'Due Date',
-                          labelStyle: GoogleFonts.spaceGrotesk(color: isDark ? Colors.white54 : Colors.black54),
+                          labelStyle: GoogleFonts.spaceGrotesk(color: mutedTextCol),
                           border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(12),
                             borderSide: BorderSide(color: borderCol),
@@ -281,7 +283,7 @@ class _CreateInvoiceSheetState extends ConsumerState<CreateInvoiceSheet> {
                         ),
                         child: Text(
                           _dueDate != null ? DateFormat.yMd().format(_dueDate!) : 'Optional',
-                          style: GoogleFonts.jetBrainsMono(color: _dueDate != null ? textCol : (isDark ? Colors.white54 : Colors.black54)),
+                          style: GoogleFonts.jetBrainsMono(color: _dueDate != null ? textCol : mutedTextCol),
                         ),
                       ),
                     ),
@@ -296,7 +298,7 @@ class _CreateInvoiceSheetState extends ConsumerState<CreateInvoiceSheet> {
                 maxLines: 3,
                 decoration: InputDecoration(
                   labelText: 'Notes (Optional)',
-                  labelStyle: GoogleFonts.spaceGrotesk(color: isDark ? Colors.white54 : Colors.black54),
+                  labelStyle: GoogleFonts.spaceGrotesk(color: mutedTextCol),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
                     borderSide: BorderSide(color: borderCol),
@@ -313,7 +315,7 @@ class _CreateInvoiceSheetState extends ConsumerState<CreateInvoiceSheet> {
                 onPressed: _save,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: accent,
-                  foregroundColor: Colors.white,
+                  foregroundColor: colorScheme.onPrimary,
                   padding: const EdgeInsets.symmetric(vertical: 16),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                 ),

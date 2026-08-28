@@ -1,4 +1,3 @@
-// ignore_for_file: deprecated_member_use, deprecated_member_use_from_same_package, unused_local_variable, unnecessary_underscores, invalid_annotation_target, unused_element, non_constant_identifier_names, use_build_context_synchronously
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hive/hive.dart';
 import 'receipt_provider.dart';
@@ -8,19 +7,23 @@ import '../../../../core/constants/app_constants.dart';
 const String _kCustomCategoriesKey = 'custom_categories';
 
 final categoryListProvider = StateNotifierProvider<CategoryNotifier, List<String>>((ref) {
-  final box = ref.watch(settingsBoxProvider);
-  return CategoryNotifier(box);
+  try {
+    final box = ref.watch(settingsBoxProvider);
+    return CategoryNotifier(box);
+  } catch (_) {
+    return CategoryNotifier(null);
+  }
 });
 
 class CategoryNotifier extends StateNotifier<List<String>> {
-  final Box _box;
+  final Box? _box;
 
-  CategoryNotifier(this._box) : super([]) {
+  CategoryNotifier([this._box]) : super([]) {
     _loadCategories();
   }
 
   void _loadCategories() {
-    final List<dynamic>? saved = _box.get(_kCustomCategoriesKey);
+    final List<dynamic>? saved = _box?.get(_kCustomCategoriesKey);
     if (saved != null && saved.isNotEmpty) {
       state = saved.cast<String>();
     } else {
@@ -31,7 +34,7 @@ class CategoryNotifier extends StateNotifier<List<String>> {
   }
 
   Future<void> _saveToBox(List<String> list) async {
-    await _box.put(_kCustomCategoriesKey, list);
+    await _box?.put(_kCustomCategoriesKey, list);
   }
 
   Future<void> addCategory(String category) async {
