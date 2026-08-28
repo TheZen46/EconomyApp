@@ -77,3 +77,60 @@ GitHub's built in "Secret Scanning" mechanism detected that a file tracked by gi
 **Verification:**
 *The terminal will bypass the security checkpoint and register the tree updates:*
 > `* [new branch] main -> main`
+
+---
+
+#### **[Supabase Storage RLS 403 / Unauthorized Upload]**
+
+**Symptom:**
+*When synchronizing local receipts with Supabase Storage, the console reports:*
+> `Supabase upload failed: StorageException(message: new row violates row-level security policy, statusCode: 403, error: Unauthorized)`
+
+**Root Cause:**
+The `receipts` storage bucket has Row-Level Security (RLS) enabled, but lacks an `INSERT`/`SELECT` policy permitting authenticated users to write to their isolated path prefix (`training_data/<userId>/` or `<userId>/`).
+
+**Resolution:**
+Execute the following SQL in your Supabase SQL Editor to grant authenticated users access to their user directory:
+```sql
+CREATE POLICY "Allow authenticated user folder access"
+ON storage.objects
+FOR ALL
+TO authenticated
+USING (bucket_id = 'receipts' AND (auth.uid()::text = (storage.foldername(name))[2] OR auth.uid()::text = (storage.foldername(name))[1]))
+WITH CHECK (bucket_id = 'receipts' AND (auth.uid()::text = (storage.foldername(name))[2] OR auth.uid()::text = (storage.foldername(name))[1]));
+```
+
+---
+
+#### **[Postgrest PGRST204 Schema Cache Notice]**
+
+**Symptom:**
+*During receipt synchronization, the terminal logs:*
+> `Supabase database receipts table upsert notice: PostgrestException(message: Could not find the 'image_path' column of 'receipts' in the schema cache, code: PGRST204)`
+
+**Root Cause:**
+The remote PostgreSQL `receipts` table does not yet have the `image_path` column defined, or PostgREST's schema cache has not reloaded.
+
+**Resolution:**
+1. `SyncService` is built to gracefully capture this notice and proceed without interrupting receipt syncing.
+2. To link image paths permanently in PostgreSQL, execute:
+```sql
+ALTER TABLE receipts ADD COLUMN IF NOT EXISTS image_path TEXT;
+NOTIFY pgrst, 'reload schema';
+```
+
+---
+
+#### **[Sync Interruption & Network Drop]**
+
+**Symptom:**
+*The kinetic replication bar displays `Retrying in X.Xs` or stays on `Stage: interruptedRetrying`.*
+
+**Root Cause:**
+Transient network loss or cellular signal drop during delta binary asset downloads.
+
+**Resolution:**
+1. **Auto-Recovery**: `SyncEngine` listens to `connectivity_plus` and will automatically resume once internet connectivity returns.
+2. **Offline Fallback**: Tap **Continue in Offline Mode** on the bottom of `/sync_progress` to immediately enter the dashboard with existing local caches.
+3. **Manual Retry**: In **Settings** $\rightarrow$ **Sync Center**, tap **Replicate Cloud Data** once network stability is restored.
+

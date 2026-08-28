@@ -23,6 +23,9 @@ import 'features/boxes/data/providers/boxes_provider.dart';
 import 'features/invoices/data/models/invoice_model.dart';
 import 'features/invoices/data/providers/invoices_provider.dart';
 import 'features/auth/presentation/widgets/biometric_guard.dart';
+import 'core/sync/models/sync_outbox_item.dart';
+import 'core/sync/sync_providers.dart';
+import 'features/settings/data/models/user_profile_model.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -92,6 +95,8 @@ void main() async {
   Hive.registerAdapter(AssetModelAdapter());
   Hive.registerAdapter(BoxModelAdapter());
   Hive.registerAdapter(InvoiceModelAdapter());
+  Hive.registerAdapter(SyncOutboxItemAdapter());
+  Hive.registerAdapter(UserProfileModelAdapter());
 
   // ── 4. Open Settings Box & Execute Structured Migrations ───────────────
   // HiveMigrationService.openBoxSafe() will:
@@ -115,6 +120,7 @@ void main() async {
   late final Box<AssetModel> assetsBox;
   late final Box<BoxModel> boxesBox;
   late final Box<InvoiceModel> invoicesBox;
+  late final Box<SyncOutboxItem> outboxBox;
 
   try {
     receiptsBox = await HiveMigrationService.openBoxSafe<ReceiptModel>(
@@ -135,6 +141,10 @@ void main() async {
     );
     invoicesBox = await HiveMigrationService.openBoxSafe<InvoiceModel>(
       'invoices',
+      encryptionCipher: cipher,
+    );
+    outboxBox = await HiveMigrationService.openBoxSafe<SyncOutboxItem>(
+      'sync_outbox',
       encryptionCipher: cipher,
     );
   } on SchemaCorruptionException catch (e) {
@@ -158,6 +168,7 @@ void main() async {
         assetsBoxProvider.overrideWithValue(assetsBox),
         boxesHiveBoxProvider.overrideWithValue(boxesBox),
         invoicesHiveBoxProvider.overrideWithValue(invoicesBox),
+        outboxHiveBoxProvider.overrideWithValue(outboxBox),
         themeProvider.overrideWith((ref) => ThemeNotifier(settingsBox)),
       ],
       child: const TAIdyApp(),

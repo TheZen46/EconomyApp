@@ -1,13 +1,12 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter_animate/flutter_animate.dart';
-import 'package:flutter/foundation.dart';
 
 import '../../../../core/theme/app_theme.dart';
 import '../providers/asset_provider.dart';
+import '../../../receipt_scanning/presentation/widgets/universal_receipt_image.dart';
 
 class VaultPage extends ConsumerStatefulWidget {
   const VaultPage({super.key});
@@ -532,20 +531,12 @@ class _AssetCardWidgetState extends State<_AssetCardWidget> {
                   child: Stack(
                     fit: StackFit.expand,
                     children: [
-                      if (widget.asset.receiptImagePath.isNotEmpty)
-                        kIsWeb
-                          ? Image.network(
-                              widget.asset.receiptImagePath,
-                              fit: BoxFit.cover,
-                              errorBuilder: (ctx, err, stack) => _buildFallbackImage(),
-                            )
-                          : Image.file(
-                              File(widget.asset.receiptImagePath),
-                              fit: BoxFit.cover,
-                              errorBuilder: (ctx, err, stack) => _buildFallbackImage(),
-                            )
-                      else
-                        _buildFallbackImage(),
+                      UniversalReceiptImage(
+                        imagePath: widget.asset.receiptImagePath,
+                        receiptId: widget.asset.id,
+                        fit: BoxFit.cover,
+                        errorBuilder: (ctx, err, stack) => _buildFallbackImage(),
+                      ),
                       
                       // Gradient Overlay
                       Positioned(

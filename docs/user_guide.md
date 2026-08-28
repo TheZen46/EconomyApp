@@ -28,3 +28,19 @@ When tax season comes around, you do not want to hunt for receipts.
 2. Select your timeframe (e.g., Q1 2026).
 3. Tap **Export CSV**.
 4. The system will bundle your scanned expenses into a beautifully structured spreadsheet, ready for external accounting software like Excel, QuickBooks, or directly to your accountant.
+
+## Step 5: Cross-Device Cloud Synchronization & Parity
+When switching devices, signing in on a new phone, or launching the desktop app:
+1. **Initial Full Replication**: Immediately after logging in, tAIdy presents the **Kinetic Replication Screen** (`/sync_progress`).
+2. **Real-Time Telemetry**:
+   - **Data Replicated**: Live transferred volume vs. total cloud backup size.
+   - **Delta Objects**: Tracks new receipts, boxes, invoices, and eVault assets being hydrated into your encrypted local storage.
+   - **Bandwidth**: Real-time throughput (e.g., `3.5 MB/s`).
+   - **Estimated Time**: Live completion countdown.
+3. **Deep Link Retention**: If you opened a specific invoice link (e.g., `/invoices` or `/vault`), tAIdy preserves your destination and seamlessly opens it once synchronization completes.
+4. **On-Demand Replication**: Open **Settings** (⚙️) $\rightarrow$ **Sync Center** $\rightarrow$ tap **Replicate Cloud Data** anytime to pull cross-device updates manually.
+5. **Offline Mode**: If you are traveling or have no cellular reception, tap **Continue in Offline Mode** on the replication screen to immediately access cached receipts and local records without delay.
+
+## Step 6: Activity Contexts (Boxes) & Invoices
+- **Boxes (`/boxes`)**: Group receipts into specific activity contexts (e.g., *Business Travel*, *Home Renovation*, *Office Supplies*). View spending velocity and pace against customized budget caps.
+- **Invoices (`/invoices`)**: Track client receivables with status tracking (*Draft*, *Sent*, *Settled*, *Overdue*), revenue velocity charts, and local data persistence.

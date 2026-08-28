@@ -1,3 +1,4 @@
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -6,6 +7,11 @@ import 'package:supabase_flutter/supabase_flutter.dart' as supabase show AuthSta
 import 'package:t_aidy/core/routes/app_router.dart';
 import 'package:t_aidy/features/auth/domain/repositories/auth_repository.dart';
 import 'package:t_aidy/features/auth/presentation/providers/auth_provider.dart';
+import 'package:t_aidy/features/sync/presentation/providers/sync_provider.dart';
+import 'package:t_aidy/features/sync/data/datasources/remote_replica_data_source.dart';
+import 'package:t_aidy/features/receipt_scanning/data/datasources/hive_receipt_data_source.dart';
+import 'package:t_aidy/features/receipt_scanning/data/models/receipt_model.dart';
+import 'package:t_aidy/features/receipt_scanning/presentation/providers/receipt_provider.dart';
 import 'package:dartz/dartz.dart';
 import 'package:t_aidy/core/error/failures.dart';
 import 'dart:async';
@@ -68,6 +74,43 @@ class FakeAuthRepository implements AuthRepository {
     user = null;
     session = null;
   }
+}
+
+class FakeRemoteReplicaDataSource implements RemoteReplicaDataSource {
+  @override
+  Future<List<RemoteFileEntry>> listRemoteFiles(String userId) async => [];
+
+  @override
+  Future<Uint8List> downloadFile(String path) async => Uint8List(0);
+
+  @override
+  Future<List<Map<String, dynamic>>> fetchReceipts(String userId) async => [];
+
+  @override
+  Future<List<Map<String, dynamic>>> fetchBoxes(String userId) async => [];
+
+  @override
+  Future<List<Map<String, dynamic>>> fetchAssets(String userId) async => [];
+
+  @override
+  Future<List<Map<String, dynamic>>> fetchInvoices(String userId) async => [];
+
+  @override
+  Future<List<Map<String, dynamic>>> fetchTaxonomies(String userId) async => [];
+}
+
+class FakeLocalReceiptDataSource implements LocalReceiptDataSource {
+  @override
+  Future<List<ReceiptModel>> getReceipts() async => [];
+
+  @override
+  Future<void> saveReceipt(ReceiptModel receipt) async {}
+
+  @override
+  Future<void> clearAll() async {}
+
+  @override
+  Future<void> deleteReceipt(String id) async {}
 }
 
 void main() {
@@ -161,7 +204,7 @@ void main() {
       }
     });
 
-    testWidgets('authenticated user is redirected from /login to /home or preserved deep link', (tester) async {
+    testWidgets('authenticated user is redirected to /sync_progress preserving deep link until sync completes', (tester) async {
       final fakeRepo = FakeAuthRepository();
       final authNotifier = AuthNotifier(fakeRepo);
 
@@ -169,6 +212,9 @@ void main() {
         overrides: [
           authRepositoryProvider.overrideWithValue(fakeRepo),
           authProvider.overrideWith((ref) => authNotifier),
+          initialSyncCompletedProvider.overrideWith((ref) => false),
+          remoteReplicaDataSourceProvider.overrideWithValue(FakeRemoteReplicaDataSource()),
+          localDataSourceProvider.overrideWithValue(FakeLocalReceiptDataSource()),
         ],
       );
       addTearDown(container.dispose);
@@ -191,13 +237,21 @@ void main() {
       expect(router.state.matchedLocation, AppRoutes.login);
       expect(router.state.uri.queryParameters['from'], '/vault');
 
-      // Now authenticate
+      // Now authenticate -> blocks on /sync_progress preserving deep link
       await authNotifier.signInWithEmailPassword('user@taidy.io', 'Password123!');
-      await tester.pump(const Duration(milliseconds: 100));
-      await tester.pumpAndSettle();
+      await tester.pump(const Duration(milliseconds: 200));
 
-      // Should automatically redirect to preserved deep link (/vault)
+      expect(router.state.matchedLocation, AppRoutes.syncProgress);
+      expect(router.state.uri.queryParameters['from'], '/vault');
+
+      // Now complete sync
+      container.read(initialSyncCompletedProvider.notifier).state = true;
+      await tester.pump(const Duration(milliseconds: 200));
+
       expect(router.state.matchedLocation, AppRoutes.vault);
+
+      // Drain remaining entrance delay timers
+      await tester.pump(const Duration(seconds: 2));
     });
   });
 }

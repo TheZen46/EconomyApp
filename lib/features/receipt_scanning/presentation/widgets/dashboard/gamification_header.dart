@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter_animate/flutter_animate.dart';
@@ -40,30 +40,30 @@ class GamificationHeader extends ConsumerWidget {
     final streakDays = receipts.isEmpty ? 0 : (streakAchievement.isUnlocked ? 3 : 1);
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       decoration: BoxDecoration(
         color: colorScheme.surfaceContainer,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(14),
         border: Border.all(color: colorScheme.outline.withAlpha(50)),
       ),
       child: Row(
         children: [
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
             decoration: BoxDecoration(
               color: accent,
-              borderRadius: BorderRadius.circular(10),
+              borderRadius: BorderRadius.circular(8),
             ),
             child: Text(
               'LVL $currentLevel',
               style: GoogleFonts.spaceGrotesk(
-                fontSize: 12,
+                fontSize: 11,
                 fontWeight: FontWeight.bold,
                 color: colorScheme.onPrimary,
               ),
             ),
           ),
-          const SizedBox(width: 14),
+          const SizedBox(width: 8),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -72,19 +72,28 @@ class GamificationHeader extends ConsumerWidget {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text(
-                      'XP Progress',
-                      style: GoogleFonts.spaceGrotesk(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600,
-                        color: fgCol,
+                    Flexible(
+                      child: Text(
+                        'XP Progress',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: GoogleFonts.spaceGrotesk(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: fgCol,
+                        ),
                       ),
                     ),
-                    Text(
-                      '$xpInCurrentLevel / $xpPerLevel XP',
-                      style: GoogleFonts.jetBrainsMono(
-                        fontSize: 10,
-                        color: muted,
+                    const SizedBox(width: 4),
+                    Flexible(
+                      child: Text(
+                        '$xpInCurrentLevel / $xpPerLevel XP',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: GoogleFonts.jetBrainsMono(
+                          fontSize: 10,
+                          color: muted,
+                        ),
                       ),
                     ),
                   ],
@@ -102,14 +111,14 @@ class GamificationHeader extends ConsumerWidget {
               ],
             ),
           ),
-          const SizedBox(width: 14),
+          const SizedBox(width: 8),
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
             decoration: BoxDecoration(
               color: isStreakActive
                   ? Colors.orange.withAlpha(30)
                   : colorScheme.surfaceContainerHighest,
-              borderRadius: BorderRadius.circular(10),
+              borderRadius: BorderRadius.circular(8),
               border: Border.all(
                 color: isStreakActive ? Colors.orange : colorScheme.outline.withAlpha(50),
               ),
@@ -122,11 +131,11 @@ class GamificationHeader extends ConsumerWidget {
                   size: 14,
                   color: isStreakActive ? Colors.orange : muted,
                 ),
-                const SizedBox(width: 4),
+                const SizedBox(width: 3),
                 Text(
                   '$streakDays d',
                   style: GoogleFonts.jetBrainsMono(
-                    fontSize: 11,
+                    fontSize: 10,
                     fontWeight: FontWeight.bold,
                     color: isStreakActive ? Colors.orange : muted,
                   ),

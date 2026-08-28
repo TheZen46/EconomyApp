@@ -15,12 +15,15 @@ import '../../features/evault/presentation/pages/vault_page.dart';
 import '../../features/settings/presentation/pages/model_manager_page.dart';
 import '../../features/boxes/presentation/pages/boxes_page.dart';
 import '../../features/invoices/presentation/pages/invoices_page.dart';
+import '../../features/sync/presentation/pages/sync_progress_page.dart';
+import '../../features/sync/presentation/providers/sync_provider.dart';
 
 // ── Route Path Constants ────────────────────────────────────────────────────
 abstract class AppRoutes {
   static const root = '/';
   static const login = '/login';
   static const signup = '/signup';
+  static const syncProgress = '/sync_progress';
   static const home = '/home';
   static const settings = '/settings';
   static const priceWatch = '/price_watch';
@@ -59,6 +62,8 @@ final routerProvider = Provider<GoRouter>((ref) {
           loc == AppRoutes.signup ||
           loc == AppRoutes.root;
       final isAuthenticated = authState.user != null || authState.isAuthenticated;
+      final initialSyncDone = ref.read(initialSyncCompletedProvider);
+      final isSyncing = loc == AppRoutes.syncProgress;
 
       // 1. Unauthenticated → redirect to /login and preserve deep-link target
       if (!isAuthenticated && !isLoggingIn) {
@@ -66,26 +71,46 @@ final routerProvider = Provider<GoRouter>((ref) {
         if (uri.isNotEmpty &&
             uri != AppRoutes.root &&
             uri != AppRoutes.login &&
-            uri != AppRoutes.signup) {
+            uri != AppRoutes.signup &&
+            uri != AppRoutes.syncProgress) {
           return '${AppRoutes.login}?from=${Uri.encodeComponent(uri)}';
         }
         return AppRoutes.login;
       }
 
-      // 2. Authenticated on login/signup/root → redirect to intended target or /home
-      if (isAuthenticated && isLoggingIn) {
+      // 2. Authenticated but initial sync not yet completed → redirect to /sync_progress
+      if (isAuthenticated && !initialSyncDone && !isSyncing) {
+        final from = state.uri.queryParameters['from'];
+        if (from != null && from.isNotEmpty) {
+          return '${AppRoutes.syncProgress}?from=${Uri.encodeComponent(from)}';
+        }
+        final uri = state.uri.toString();
+        if (uri.isNotEmpty &&
+            uri != AppRoutes.root &&
+            uri != AppRoutes.login &&
+            uri != AppRoutes.signup &&
+            uri != AppRoutes.syncProgress &&
+            uri != AppRoutes.home) {
+          return '${AppRoutes.syncProgress}?from=${Uri.encodeComponent(uri)}';
+        }
+        return AppRoutes.syncProgress;
+      }
+
+      // 3. Authenticated on login/signup/root/syncProgress when sync is completed → redirect to intended target or /home
+      if (isAuthenticated && (isLoggingIn || (isSyncing && initialSyncDone))) {
         final from = state.uri.queryParameters['from'];
         if (from != null &&
             from.isNotEmpty &&
             from != AppRoutes.login &&
             from != AppRoutes.signup &&
-            from != AppRoutes.root) {
+            from != AppRoutes.root &&
+            from != AppRoutes.syncProgress) {
           return from;
         }
         return AppRoutes.home;
       }
 
-      // 3. Authenticated navigating to protected route → allow through
+      // 4. Authenticated navigating to protected route → allow through
       return null;
     },
 
@@ -102,6 +127,16 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: AppRoutes.signup,
         builder: (context, state) => const LoginPage(),
+      ),
+      GoRoute(
+        path: AppRoutes.syncProgress,
+        pageBuilder: (context, state) => CustomTransitionPage(
+          key: state.pageKey,
+          child: const SyncProgressPage(),
+          transitionsBuilder: (context, animation, secondaryAnimation, child) {
+            return FadeTransition(opacity: animation, child: child);
+          },
+        ),
       ),
       GoRoute(
         path: AppRoutes.home,

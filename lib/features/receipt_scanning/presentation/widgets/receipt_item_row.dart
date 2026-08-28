@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:google_fonts/google_fonts.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../domain/entities/receipt.dart';
 import '../../../../core/constants/taxonomy_constants.dart';
 import '../../../../core/utils/string_utils.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../settings/presentation/providers/taxonomy_provider.dart';
 
 class ReceiptItemRow extends ConsumerWidget {
@@ -76,18 +77,44 @@ class ReceiptItemRow extends ConsumerWidget {
                 ),
               ),
 
-              // Quantity (Neon Green)
-              SizedBox(
-                width: 30,
+              // Quantity Badge Input (Spacious, legible, and high-contrast)
+              Container(
+                width: 52,
+                height: 32,
+                alignment: Alignment.center,
+                padding: const EdgeInsets.symmetric(horizontal: 4),
+                decoration: BoxDecoration(
+                  color: AppColors.accent.withAlpha(25),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                    color: AppColors.accent.withAlpha(60),
+                    width: 1,
+                  ),
+                ),
                 child: TextFormField(
-                  initialValue: '${item.quantity}x',
-                  style: const TextStyle(color: AppTheme.secondary, fontWeight: FontWeight.bold, fontSize: 13),
-                  decoration: const InputDecoration(border: InputBorder.none, isDense: true),
+                  initialValue: '${item.quantity}',
+                  textAlign: TextAlign.center,
+                  style: GoogleFonts.jetBrainsMono(
+                    color: AppColors.accent,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 13,
+                  ),
+                  decoration: InputDecoration(
+                    border: InputBorder.none,
+                    isDense: true,
+                    contentPadding: EdgeInsets.zero,
+                    suffixText: '×',
+                    suffixStyle: GoogleFonts.jetBrainsMono(
+                      color: AppColors.accent.withAlpha(180),
+                      fontSize: 11,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
                   keyboardType: TextInputType.number,
-                  onChanged: (val) => onQuantityChanged(val.replaceAll('x', '')),
+                  onChanged: (val) => onQuantityChanged(val.replaceAll(RegExp(r'[^0-9]'), '')),
                 ),
               ),
-              const SizedBox(width: 8),
+              const SizedBox(width: 10),
               
               // Description & Taxonomy Subtitle
               Expanded(

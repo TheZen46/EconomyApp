@@ -153,6 +153,10 @@ class HiveMigrationService {
   /// backup file inside `getApplicationDocumentsDirectory()/hive_backups/`.
   /// Returns the backup path, or null if the original file does not exist.
   static Future<String?> backupBoxFile(String boxName) async {
+    if (kIsWeb) {
+      debugPrint('HiveMigrationService: Web uses IndexedDB; skipping filesystem backup.');
+      return null;
+    }
     try {
       final baseDir = await getHiveDirectory();
       final sourceFile = File('${baseDir.path}/$boxName.hive');
@@ -190,6 +194,7 @@ class HiveMigrationService {
 
   /// Lists all automated backups stored in `hive_backups/`.
   static Future<List<File>> listBackups() async {
+    if (kIsWeb) return [];
     try {
       final backupDir = await getBackupDirectory();
       if (!await backupDir.exists()) return [];
@@ -203,6 +208,9 @@ class HiveMigrationService {
 
   /// Returns the directory where Hive stores its primary database files.
   static Future<Directory> getHiveDirectory() async {
+    if (kIsWeb) {
+      throw UnsupportedError('FileSystem directory not supported on web.');
+    }
     if (Platform.isWindows || Platform.isMacOS || Platform.isLinux) {
       return await getApplicationSupportDirectory();
     }
@@ -211,6 +219,9 @@ class HiveMigrationService {
 
   /// Returns the dedicated `hive_backups/` directory, creating it if needed.
   static Future<Directory> getBackupDirectory() async {
+    if (kIsWeb) {
+      throw UnsupportedError('Backup directory not supported on web.');
+    }
     final baseDir = await getHiveDirectory();
     final backupDir = Directory('${baseDir.path}/hive_backups');
     if (!await backupDir.exists()) {

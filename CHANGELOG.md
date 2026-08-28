@@ -1,3 +1,37 @@
+# Release 0.0.4 Documentation
+
+## Overview
+Release 0.0.4 introduces the **Cross-Device File Synchronization Engine**, full **Kinetic Synchronization UI** (`/sync_progress`), state-blocking post-login router guards with deep link preservation, cross-device entity rehydration across Hive encrypted boxes, and universal Web/Mobile byte uploading.
+
+---
+
+## Technical Changelog
+
+### Cross-Device Synchronization Engine
+* Built `SyncEngine` with mutex-locking serialization (`Lock()`), ensuring thread-safe reads and writes to encrypted local Hive storage.
+* Implemented client-side delta synchronization comparing remote entity hashes, timestamps, and storage metadata (`training_data/<userId>/`) against local caches to download only modified chunks.
+* Implemented structured multi-table schema rehydration for `receipts`, `boxes`, `assets`, `invoices`, and `taxonomies`.
+* Integrated network monitoring via `connectivity_plus` with automatic pause/resume, exponential backoff with randomized jitter (`2^n + jitter`), and an offline continuation fallback mode (`continueOffline()`).
+* Universal binary uploading via `XFile.readAsBytes()` + `uploadBinary` across Web and Native platforms.
+* Added graceful degradation for Supabase schema notices (such as `PGRST204` missing `image_path` column).
+
+### Kinetic UI and Visual Feedback
+* Engineered `KineticSyncProgressBar` featuring dynamic gradient energy wave shaders, glowing leading edge auras, orbital geometric accents, and Space Grotesk / JetBrains Mono typography.
+* Developed `SyncProgressPage` (`/sync_progress`) with dynamic rotating context-aware status messaging and a 4-card live telemetry grid (*Data Replicated*, *Delta Objects*, *Bandwidth*, and *Estimated Time*).
+* Added manual "Replicate Cloud Data" trigger to the Sync Center in `SettingsPage`.
+
+### Authentication and Reactive Routing
+* Added `/sync_progress` route with centralized post-login state blocking in `app_router.dart`.
+* Preserved target deep links (`?from=...`) across authentication and replication flows, automatically routing to the target page upon sync completion.
+* Subscribed `RouterNotifier` reactively to `initialSyncCompletedProvider`.
+
+### Testing and Documentation
+* Added dedicated test suites for `SyncEngine` (`test/features/sync/sync_engine_test.dart`), `KineticSyncProgressBar` (`test/features/sync/sync_progress_page_test.dart`), and router guardrails (`test/core/routes/app_router_test.dart`).
+* Maintained 100% test pass rate across 188 automated tests.
+* Updated `docs/architecture.md`, `docs/api_reference.md`, `docs/user_guide.md`, `docs/troubleshooting.md`, `PROJECT.md`, and `README.md`.
+
+---
+
 # Release 0.0.3 Documentation
 
 ## Overview

@@ -12,14 +12,15 @@ The architecture of tAIdy strictly adheres to the principle of Separation of Con
 
 The system pipeline is structured into three primary layers:
 
-- **Presentation Layer (UI)**: Manages UI rendering and user interactions. Contains zero business or calculation logic; it reactively observes state exposed by Riverpod providers and responds to lifecycle updates.
-- **Domain & Application Logic Layer**: Serves as the core computational engine. It processes transactions, executes deterministic data transformations, and orchestrates AI-assisted optical character recognition (OCR) pipelines. This layer is entirely decoupled from the UI framework, ensuring comprehensive unit testability.
-- **Data Persistence Layer**: Governs storage, retrieval, and synchronization via a hybrid persistence strategy:
-  - **Hive (NoSQL)**: Provides local, encrypted persistence (via the eVault subsystem) delivering low-latency, offline-first operations.
+- **Presentation Layer (UI)**: Manages UI rendering and user interactions adhering to the International Klein Blue (IKB) design system with Space Grotesk typography. Features custom shader-painted kinetic visualizers (`KineticSyncProgressBar`), modular customizable widget grids, and zero embedded calculation logic.
+- **Domain & Application Logic Layer**: Serves as the core computational engine. It processes transactions, executes deterministic data transformations, orchestrates AI-assisted optical character recognition (OCR) pipelines, and runs the mutex-locked `SyncEngine` for delta replication.
+- **Data Persistence & Cross-Device Replication Layer**: Governs storage, retrieval, and multi-device parity via a hybrid persistence strategy:
+  - **Hive (NoSQL)**: Provides local, AES-256 encrypted persistence (via the eVault subsystem) delivering low-latency, offline-first operations.
+  - **Cross-Device Sync Engine (`SyncEngine`)**: Downloads a bit-for-bit replica of user files and database entities upon login with delta parity checking, chunk streaming, and exponential backoff retry.
   - **Supabase**: Handles remote cloud synchronization, multi-device state consistency, and remote backup persistence.
 - **AI & Machine Learning Subsystem**: Dedicated edge inference engine supporting local on-device language models (`llama.cpp`) for privacy-first receipt ingestion, with optional fallback routing to remote inference APIs (e.g., Gemini) when computational constraints require.
 
-The standard execution pipeline follows: `User Input -> Domain Logic -> Persistence -> Aggregation & Analytics -> Reactive UI State`.
+The standard execution pipeline follows: `User Input / Login -> Router Guard (/sync_progress) -> Delta Sync -> Persistence -> Aggregation & Analytics -> Reactive UI State`.
 
 For an in-depth breakdown of individual components, cryptographic lifecycle management, schema corruption recovery, and Architecture Decision Records (ADRs), refer to the [Detailed Architecture Documentation](docs/architecture.md).
 
@@ -87,8 +88,9 @@ Future<void> addTransaction(WidgetRef ref, double amount, String category) async
 *Code Overview*: A deterministic unique identifier is generated from the timestamp to prevent entity collision. The `Transaction` object is persisted asynchronously via `storageService`. Through Riverpod's reactive graph, UI consumers observing this state update automatically upon write completion without requiring manual screen invalidation.
 
 ## Advanced Architecture & Subsystems
-tAIdy incorporates specialized subsystems to handle critical privacy and runtime performance requirements:
+tAIdy incorporates specialized subsystems to handle critical privacy, synchronization, and runtime performance requirements:
 
+- **Cross-Device File Replication Engine**: Downloads a bit-for-bit mirror of the user's remote files upon login. Uses delta hashing to download only modified chunks, mutex locks to prevent write races, and provides a full-screen kinetic telemetry visualizer with offline continuation fallback.
 - **Data Privacy Isolation Mode**: Enforces strict local execution. When enabled, all outbound network I/O to cloud endpoints (such as Supabase) is blocked, confining read and write operations strictly to local encrypted Hive boxes.
 - **Graceful Degradation for AI Inference**: Edge OCR receipt parsing leverages on-device inference (`llama.cpp`). When battery levels or available host memory reach critical thresholds, the inference subsystem automatically re-routes parsing payloads to cloud endpoints (e.g., Gemini / Groq), preventing out-of-memory terminates and conserving battery life.
 

@@ -261,32 +261,22 @@ class _CustomizableMetricsGridState extends ConsumerState<CustomizableMetricsGri
 
         return SingleChildScrollView(
           padding: const EdgeInsets.fromLTRB(pad, pad, pad, 120),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              GamificationHeader(
-                receipts: widget.receipts,
-                isDark: widget.isDark,
-              ),
-              const SizedBox(height: 20),
-              Wrap(
-                spacing: gap,
-                runSpacing: gap,
-                children: visibleItems.map((item) {
-                  int span = _widgetSpans[item.type] ?? 1;
-                  if (span > maxCols) span = maxCols;
-                  double itemWidth = (colWidth * span) + (gap * (span - 1));
+          child: Wrap(
+            spacing: gap,
+            runSpacing: gap,
+            children: visibleItems.map((item) {
+              int span = _widgetSpans[item.type] ?? 1;
+              if (span > maxCols) span = maxCols;
+              double itemWidth = (colWidth * span) + (gap * (span - 1));
 
-                  return SizedBox(
-                    width: itemWidth,
-                    child: HoverCardWrapper(
-                      isDark: widget.isDark,
-                      child: _buildWidgetContent(item, filteredReceipts),
-                    ).animate().fadeIn().slideY(begin: 0.1, curve: Curves.easeOut),
-                  );
-                }).toList(),
-              ),
-            ],
+              return SizedBox(
+                width: itemWidth,
+                child: HoverCardWrapper(
+                  isDark: widget.isDark,
+                  child: _buildWidgetContent(item, filteredReceipts),
+                ).animate().fadeIn().slideY(begin: 0.1, curve: Curves.easeOut),
+              );
+            }).toList(),
           ),
         );
       },
@@ -390,13 +380,13 @@ class _CustomizableMetricsGridState extends ConsumerState<CustomizableMetricsGri
     final muted = colorScheme.onSurfaceVariant;
     final accent = colorScheme.primary;
 
-    final now = DateTime.now();
-    final monthlyBurn = receipts.where((r) => r.date.year == now.year && r.date.month == now.month).fold(0.0, (sum, r) => sum + r.totalAmount);
     final boxes = ref.watch(boxesProvider);
     final activeId = ref.watch(activeBoxIdProvider);
     final activeBox = activeId == 'main' || boxes.isEmpty
         ? (boxes.isNotEmpty ? boxes.first : BoxModel(id: 'main', name: 'Main', budget: 0, spent: 0, currency: 'USD', color: 0))
         : boxes.firstWhere((b) => b.id == activeId, orElse: () => boxes.isNotEmpty ? boxes.first : BoxModel(id: 'main', name: 'Main', budget: 0, spent: 0, currency: 'USD', color: 0));
+    final now = DateTime.now();
+    final monthlyBurn = receipts.where((r) => r.date.year == now.year && r.date.month == now.month).fold(0.0, (sum, r) => sum + r.totalAmount);
 
     final ytdTotal = receipts.fold(0.0, (sum, r) => sum + r.totalAmount);
     final stashed = ytdTotal * 0.22;
@@ -418,7 +408,7 @@ class _CustomizableMetricsGridState extends ConsumerState<CustomizableMetricsGri
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text('MILESTONES', style: GoogleFonts.spaceGrotesk(fontSize: 11, letterSpacing: 1.2, color: muted)),
+            Text('MILESTONES & XP', style: GoogleFonts.spaceGrotesk(fontSize: 11, letterSpacing: 1.2, color: muted)),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
               decoration: BoxDecoration(
@@ -429,7 +419,12 @@ class _CustomizableMetricsGridState extends ConsumerState<CustomizableMetricsGri
             ),
           ],
         ),
-        const SizedBox(height: 24),
+        const SizedBox(height: 14),
+        GamificationHeader(
+          receipts: receipts,
+          isDark: widget.isDark,
+        ),
+        const SizedBox(height: 18),
         ...achievements.map((a) {
           final active = a['active'] as bool;
           return Padding(

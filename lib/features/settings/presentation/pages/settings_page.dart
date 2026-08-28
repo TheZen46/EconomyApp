@@ -16,6 +16,8 @@ import '../../../receipt_scanning/data/models/sync_item_model.dart';
 import '../../../../core/services/google_drive_service.dart';
 import '../../../../core/services/biometric_service.dart';
 import '../../../../core/utils/error_handler.dart';
+import '../../../../core/routes/app_router.dart';
+import '../../../sync/presentation/providers/sync_provider.dart';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const _accent = Color(0xFF002FA7);
@@ -480,6 +482,18 @@ class _SettingsPanelWidgetState extends ConsumerState<SettingsPanelWidget> {
                                     ),
                                   ],
                                 ),
+                              ),
+                              Divider(color: divider, height: 1, indent: 20, endIndent: 20),
+                              _row(
+                                label: 'Replicate Cloud Data',
+                                fgCol: fgCol,
+                                muted: muted,
+                                trailing: _chip('Sync Now', _accent, divider),
+                                onTap: () {
+                                  Navigator.of(context).pop();
+                                  ref.read(initialSyncCompletedProvider.notifier).state = false;
+                                  context.push(AppRoutes.syncProgress);
+                                },
                               ),
                               if (failedItems.isNotEmpty) ...[
                                 Divider(color: divider, height: 1, indent: 20, endIndent: 20),

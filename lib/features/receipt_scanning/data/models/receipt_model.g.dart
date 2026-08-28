@@ -1,10 +1,6 @@
-// GENERATED CODE - DO NOT MODIFY BY HAND
+﻿// GENERATED CODE - MANUAL HIVE ADAPTER
 
 part of 'receipt_model.dart';
-
-// **************************************************************************
-// TypeAdapterGenerator
-// **************************************************************************
 
 class ReceiptModelAdapter extends TypeAdapter<ReceiptModel> {
   @override
@@ -20,21 +16,26 @@ class ReceiptModelAdapter extends TypeAdapter<ReceiptModel> {
       id: fields[0] as String,
       merchantName: fields[1] as String,
       date: fields[2] as DateTime,
-      totalAmount: fields[3] as double,
+      totalAmount: (fields[3] as num).toDouble(),
       currency: fields[4] as String,
       items: (fields[5] as List).cast<ReceiptItemModel>(),
       imagePath: fields[7] as String?,
-      vatNumber: fields[8] as String,
-      merchantAddress: fields[9] as String,
-      time: fields[10] as String,
-      boxId: fields[11] as String?,
+      vatNumber: fields[8] as String? ?? '',
+      merchantAddress: fields[9] as String? ?? '',
+      time: fields[10] as String? ?? '',
+      boxId: fields[11] as String? ?? 'main',
+      userId: fields[12] as String?,
+      createdAt: fields[13] as DateTime?,
+      updatedAt: fields[14] as DateTime?,
+      deletedAt: fields[15] as DateTime?,
+      version: (fields[16] as num?)?.toInt() ?? 1,
     );
   }
 
   @override
   void write(BinaryWriter writer, ReceiptModel obj) {
     writer
-      ..writeByte(11)
+      ..writeByte(16)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -56,7 +57,17 @@ class ReceiptModelAdapter extends TypeAdapter<ReceiptModel> {
       ..writeByte(10)
       ..write(obj.time)
       ..writeByte(11)
-      ..write(obj.boxId);
+      ..write(obj.boxId)
+      ..writeByte(12)
+      ..write(obj.userId)
+      ..writeByte(13)
+      ..write(obj.createdAt)
+      ..writeByte(14)
+      ..write(obj.updatedAt)
+      ..writeByte(15)
+      ..write(obj.deletedAt)
+      ..writeByte(16)
+      ..write(obj.version);
   }
 
   @override
@@ -82,22 +93,26 @@ class ReceiptItemModelAdapter extends TypeAdapter<ReceiptItemModel> {
     };
     return ReceiptItemModel(
       description: fields[0] as String,
-      unitPrice: fields[1] as double,
-      quantity: fields[2] as int,
-      totalPrice: fields[3] as double?,
+      unitPrice: (fields[1] as num).toDouble(),
+      quantity: (fields[2] as num).toInt(),
+      totalPrice: (fields[3] as num?)?.toDouble(),
       category: fields[4] as String?,
-      necessity: fields[5] as String?,
+      necessity: fields[5] as String? ?? 'unknown',
       mainCategory: fields[6] as String?,
       subCategory: fields[7] as String?,
-      isAsset: fields[8] as bool?,
-      boxId: fields[9] as String?,
+      isAsset: fields[8] as bool? ?? false,
+      boxId: fields[9] as String? ?? 'main',
+      isUserCorrected: fields[10] as bool? ?? false,
+      confidenceScore: (fields[11] as num?)?.toDouble() ?? 1.0,
+      deletedAt: fields[12] as DateTime?,
+      version: (fields[13] as num?)?.toInt() ?? 1,
     );
   }
 
   @override
   void write(BinaryWriter writer, ReceiptItemModel obj) {
     writer
-      ..writeByte(10)
+      ..writeByte(14)
       ..writeByte(0)
       ..write(obj.description)
       ..writeByte(1)
@@ -117,7 +132,15 @@ class ReceiptItemModelAdapter extends TypeAdapter<ReceiptItemModel> {
       ..writeByte(8)
       ..write(obj.isAsset)
       ..writeByte(9)
-      ..write(obj.boxId);
+      ..write(obj.boxId)
+      ..writeByte(10)
+      ..write(obj.isUserCorrected)
+      ..writeByte(11)
+      ..write(obj.confidenceScore)
+      ..writeByte(12)
+      ..write(obj.deletedAt)
+      ..writeByte(13)
+      ..write(obj.version);
   }
 
   @override
@@ -130,66 +153,3 @@ class ReceiptItemModelAdapter extends TypeAdapter<ReceiptItemModel> {
           runtimeType == other.runtimeType &&
           typeId == other.typeId;
 }
-
-// **************************************************************************
-// JsonSerializableGenerator
-// **************************************************************************
-
-ReceiptModel _$ReceiptModelFromJson(Map<String, dynamic> json) => ReceiptModel(
-      id: json['id'] as String,
-      merchantName: json['merchant_name'] as String,
-      date: DateTime.parse(json['date'] as String),
-      totalAmount: (json['total_amount'] as num).toDouble(),
-      currency: json['currency'] as String,
-      items: (json['items'] as List<dynamic>)
-          .map((e) => ReceiptItemModel.fromJson(e as Map<String, dynamic>))
-          .toList(),
-      imagePath: json['imagePath'] as String?,
-      vatNumber: json['vatNumber'] as String? ?? '',
-      merchantAddress: json['merchantAddress'] as String? ?? '',
-      time: json['time'] as String? ?? '',
-      boxId: json['box_id'] as String? ?? 'main',
-    );
-
-Map<String, dynamic> _$ReceiptModelToJson(ReceiptModel instance) =>
-    <String, dynamic>{
-      'id': instance.id,
-      'merchant_name': instance.merchantName,
-      'date': instance.date.toIso8601String(),
-      'total_amount': instance.totalAmount,
-      'currency': instance.currency,
-      'items': instance.items.map((e) => e.toJson()).toList(),
-      'imagePath': instance.imagePath,
-      'vatNumber': instance.vatNumber,
-      'merchantAddress': instance.merchantAddress,
-      'time': instance.time,
-      'box_id': instance.boxId,
-    };
-
-ReceiptItemModel _$ReceiptItemModelFromJson(Map<String, dynamic> json) =>
-    ReceiptItemModel(
-      description: json['description'] as String,
-      unitPrice: (json['unit_price'] as num).toDouble(),
-      quantity: json['quantity'] as int,
-      totalPrice: (json['total_price'] as num?)?.toDouble(),
-      category: json['category'] as String?,
-      necessity: json['necessity'] as String? ?? 'unknown',
-      mainCategory: json['main_category'] as String?,
-      subCategory: json['sub_category'] as String?,
-      isAsset: json['is_asset'] as bool? ?? false,
-      boxId: json['box_id'] as String? ?? 'main',
-    );
-
-Map<String, dynamic> _$ReceiptItemModelToJson(ReceiptItemModel instance) =>
-    <String, dynamic>{
-      'description': instance.description,
-      'unit_price': instance.unitPrice,
-      'quantity': instance.quantity,
-      'total_price': instance.totalPrice,
-      'category': instance.category,
-      'necessity': instance.necessity,
-      'main_category': instance.mainCategory,
-      'sub_category': instance.subCategory,
-      'is_asset': instance.isAsset,
-      'box_id': instance.boxId,
-    };

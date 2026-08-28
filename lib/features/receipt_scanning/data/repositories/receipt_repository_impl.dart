@@ -62,10 +62,8 @@ class ReceiptRepositoryImpl implements ReceiptRepository {
       await localDataSource.saveReceipt(model);
 
       // 2. Schedule Background Upload (Auto-Retry)
-      if (receipt.imagePath != null) {
-        // Fire and forget, SyncService handles the rest
-        unawaited(syncService.scheduleUpload(receipt.id, receipt.imagePath!));
-      }
+      // Fire and forget, SyncService handles upload of image (if present) and receipt data to Supabase
+      unawaited(syncService.scheduleUpload(receipt.id, receipt.imagePath ?? ''));
 
       // 3. Trigger Webhook (Fire & Forget)
       // We don't await this to keep UI snappy

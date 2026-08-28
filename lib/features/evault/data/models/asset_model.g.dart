@@ -1,10 +1,6 @@
-// GENERATED CODE - DO NOT MODIFY BY HAND
+﻿// GENERATED CODE - MANUAL HIVE ADAPTER
 
 part of 'asset_model.dart';
-
-// **************************************************************************
-// TypeAdapterGenerator
-// **************************************************************************
 
 class AssetModelAdapter extends TypeAdapter<AssetModel> {
   @override
@@ -20,18 +16,24 @@ class AssetModelAdapter extends TypeAdapter<AssetModel> {
       id: fields[0] as String,
       name: fields[1] as String,
       purchaseDate: fields[2] as DateTime,
-      warrantyMonths: fields[3] as int,
-      price: fields[4] as double,
-      receiptImagePath: fields[5] as String,
-      merchantName: fields[6] as String,
+      warrantyMonths: (fields[3] as num).toInt(),
+      price: (fields[4] as num).toDouble(),
+      receiptImagePath: fields[5] as String? ?? '',
+      merchantName: fields[6] as String? ?? '',
       receiptId: fields[7] as String?,
+      userId: fields[8] as String?,
+      documentPath: fields[9] as String? ?? '',
+      createdAt: fields[10] as DateTime?,
+      updatedAt: fields[11] as DateTime?,
+      deletedAt: fields[12] as DateTime?,
+      version: (fields[13] as num?)?.toInt() ?? 1,
     );
   }
 
   @override
   void write(BinaryWriter writer, AssetModel obj) {
     writer
-      ..writeByte(8)
+      ..writeByte(14)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -47,7 +49,19 @@ class AssetModelAdapter extends TypeAdapter<AssetModel> {
       ..writeByte(6)
       ..write(obj.merchantName)
       ..writeByte(7)
-      ..write(obj.receiptId);
+      ..write(obj.receiptId)
+      ..writeByte(8)
+      ..write(obj.userId)
+      ..writeByte(9)
+      ..write(obj.documentPath)
+      ..writeByte(10)
+      ..write(obj.createdAt)
+      ..writeByte(11)
+      ..write(obj.updatedAt)
+      ..writeByte(12)
+      ..write(obj.deletedAt)
+      ..writeByte(13)
+      ..write(obj.version);
   }
 
   @override

@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'package:image_picker/image_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../domain/entities/receipt.dart';
@@ -49,40 +50,76 @@ class SupabaseDataSourceImpl implements SupabaseDataSource {
 
   /// Builds the deterministic storage path for an image.
   /// This must match between upload and delete — single source of truth.
-  static String _imagePath(String receiptId, String imagePath) {
+  static String _imagePath(String receiptId, String imagePath, {String? userId}) {
     final ext = _safeExtension(imagePath);
+    if (userId != null && userId.isNotEmpty) {
+      return '$userId/images/$receiptId$ext';
+    }
     return 'images/$receiptId$ext';
   }
 
   /// Builds the deterministic storage path for a label JSON.
-  static String _labelPath(String receiptId) {
+  static String _labelPath(String receiptId, {String? userId}) {
+    if (userId != null && userId.isNotEmpty) {
+      return '$userId/labels/$receiptId.json';
+    }
     return 'labels/$receiptId.json';
+  }
+
+  /// Safe helper to read the current user ID without crashing if auth is unmocked or offline.
+  String? get _currentUserId {
+    try {
+      return client.auth.currentUser?.id;
+    } catch (_) {
+      return null;
+    }
   }
 
   @override
   Future<void> uploadTrainingData(Receipt receipt, String imagePath) async {
-    try {
-      // 1. Upload Image -> training_data/images/{uuid}.ext
-      final storagePathImage = _imagePath(receipt.id, imagePath);
+    final userId = _currentUserId;
 
-      if (!kIsWeb) {
-        final file = File(imagePath);
-        if (file.existsSync()) {
-          await client.storage.from('training_data').upload(
+    try {
+      String? publicImageUrl;
+      final storagePathImage = _imagePath(receipt.id, imagePath, userId: userId);
+
+      // 1. Upload Image -> training_data/{userId}/images/{uuid}.ext (Web + Native)
+      if (imagePath.isNotEmpty) {
+        Uint8List? imageBytes;
+        try {
+          if (!kIsWeb) {
+            final file = File(imagePath);
+            if (file.existsSync()) {
+              imageBytes = await file.readAsBytes();
+            }
+          }
+          if (imageBytes == null || imageBytes.isEmpty) {
+            final xfile = XFile(imagePath);
+            imageBytes = await xfile.readAsBytes();
+          }
+        } catch (e) {
+          debugPrint('Supabase upload: Could not read image bytes from "$imagePath": $e');
+        }
+
+        if (imageBytes != null && imageBytes.isNotEmpty) {
+          await client.storage.from('training_data').uploadBinary(
             storagePathImage,
-            file,
+            imageBytes,
             fileOptions: const FileOptions(cacheControl: '3600', upsert: true),
           );
+          publicImageUrl = client.storage.from('training_data').getPublicUrl(storagePathImage);
+          debugPrint('Supabase upload: Image successfully uploaded to $storagePathImage');
         } else {
-          debugPrint('Supabase upload: Image file missing, skipping image upload but proceeding with JSON.');
+          debugPrint('Supabase upload: Image file empty or not found at "$imagePath", proceeding with metadata.');
         }
-      } else {
-        debugPrint('Supabase upload: Running on Web, skipping direct File upload. Proceeding with JSON.');
       }
 
-      // 2. Create and Upload Label JSON -> training_data/labels/{uuid}.json
+      // 2. Create and Upload Label JSON -> training_data/{userId}/labels/{uuid}.json
       final labelJson = {
         "image_id": receipt.id,
+        "image_path": storagePathImage,
+        if (publicImageUrl != null) "image_url": publicImageUrl,
+        if (userId != null) "user_id": userId,
         "timestamp": DateTime.now().toIso8601String(),
         "ground_truth": {
           "merchant": receipt.merchantName,
@@ -95,6 +132,8 @@ class SupabaseDataSourceImpl implements SupabaseDataSource {
             "quantity": e.quantity,
             "total_price": e.totalPrice,
             "category": e.category,
+            "necessity": e.necessity.name,
+            "is_asset": e.isAsset,
           }).toList(),
           "category": receipt.category
         },
@@ -105,13 +144,52 @@ class SupabaseDataSourceImpl implements SupabaseDataSource {
       };
 
       final jsonString = jsonEncode(labelJson);
-      final storagePathLabel = _labelPath(receipt.id);
+      final storagePathLabel = _labelPath(receipt.id, userId: userId);
 
       await client.storage.from('training_data').uploadBinary(
         storagePathLabel,
         Uint8List.fromList(utf8.encode(jsonString)),
         fileOptions: const FileOptions(cacheControl: '3600', upsert: true),
       );
+
+      // 3. Upsert into Supabase database 'receipts' table if configured
+      try {
+        final receiptRow = {
+          'id': receipt.id,
+          'merchant_name': receipt.merchantName,
+          'total_amount': receipt.totalAmount,
+          'currency': receipt.currency,
+          'date': receipt.date.toIso8601String(),
+          'box_id': receipt.boxId,
+          'image_path': storagePathImage,
+          'image_url': publicImageUrl ?? client.storage.from('training_data').getPublicUrl(storagePathImage),
+          if (userId != null) 'user_id': userId,
+          'items': receipt.items.map((e) => {
+            'description': e.description,
+            'unit_price': e.unitPrice,
+            'quantity': e.quantity,
+            'total_price': e.totalPrice,
+            'category': e.category,
+            'necessity': e.necessity.name,
+            'is_asset': e.isAsset,
+          }).toList(),
+        };
+        try {
+          await client.from('receipts').upsert(receiptRow);
+        } on PostgrestException catch (pgrst) {
+          // If table schema lacks image_path/image_url (PGRST204), fallback to base schema
+          if (pgrst.code == 'PGRST204') {
+            final fallbackRow = Map<String, dynamic>.from(receiptRow)
+              ..remove('image_path')
+              ..remove('image_url');
+            await client.from('receipts').upsert(fallbackRow);
+          } else {
+            rethrow;
+          }
+        }
+      } catch (dbError) {
+        debugPrint('Supabase database receipts table upsert notice: $dbError');
+      }
 
     } catch (e) {
       debugPrint('Supabase upload failed: $e');
@@ -122,8 +200,12 @@ class SupabaseDataSourceImpl implements SupabaseDataSource {
   @override
   Future<int> getStorageUsage() async {
     try {
-      final images = await client.storage.from('training_data').list(path: 'images');
-      final labels = await client.storage.from('training_data').list(path: 'labels');
+      final userId = _currentUserId;
+      final imagePath = userId != null ? '$userId/images' : 'images';
+      final labelPath = userId != null ? '$userId/labels' : 'labels';
+
+      final images = await client.storage.from('training_data').list(path: imagePath);
+      final labels = await client.storage.from('training_data').list(path: labelPath);
 
       int totalBytes = 0;
       for (var file in images) {
@@ -146,6 +228,7 @@ class SupabaseDataSourceImpl implements SupabaseDataSource {
   Future<void> deleteData(List<String> ids, {List<String>? imagePaths}) async {
     if (ids.isEmpty) return;
 
+    final userId = _currentUserId;
     final pathsToDelete = <String>[];
 
     for (int i = 0; i < ids.length; i++) {
@@ -153,8 +236,8 @@ class SupabaseDataSourceImpl implements SupabaseDataSource {
       final imgPath = (imagePaths != null && i < imagePaths.length)
           ? imagePaths[i]
           : '$id.jpg';
-      pathsToDelete.add(_imagePath(id, imgPath));
-      pathsToDelete.add(_labelPath(id));
+      pathsToDelete.add(_imagePath(id, imgPath, userId: userId));
+      pathsToDelete.add(_labelPath(id, userId: userId));
     }
 
     try {

@@ -4,14 +4,13 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:uuid/uuid.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter_animate/flutter_animate.dart';
-import 'dart:io';
 
 
 import '../../domain/entities/receipt.dart';
 import '../providers/receipt_provider.dart';
 import '../widgets/receipt_item_row.dart';
+import '../widgets/universal_receipt_image.dart';
 import '../../../../features/boxes/data/providers/boxes_provider.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../core/theme/theme_notifier.dart';
@@ -203,33 +202,23 @@ class _ReviewPageState extends ConsumerState<ReviewPage> {
       body: Stack(
         children: [
           Positioned.fill(
-            child: widget.receipt.imagePath != null
-                ? kIsWeb
-                    ? Image.network(
-                        widget.receipt.imagePath!,
-                        fit: BoxFit.cover,
-                        alignment: Alignment.topCenter,
-                        color: Colors.black.withOpacity(0.5),
-                        colorBlendMode: BlendMode.darken,
-                        errorBuilder: (context, error, stackTrace) => Container(
-                          color: _getBgColor(context),
-                          alignment: Alignment.center,
-                          child: Icon(Icons.broken_image, size: 48, color: _getMutedColor(context).withOpacity(0.3)),
-                        ),
-                      )
-                    : Image.file(
-                        File(widget.receipt.imagePath!),
-                        fit: BoxFit.cover,
-                        alignment: Alignment.topCenter,
-                        color: Colors.black.withOpacity(0.5),
-                        colorBlendMode: BlendMode.darken,
-                        errorBuilder: (context, error, stackTrace) => Container(
-                          color: _getBgColor(context),
-                          alignment: Alignment.center,
-                          child: Icon(Icons.broken_image, size: 48, color: _getMutedColor(context).withOpacity(0.3)),
-                        ),
-                      )
-                : Container(color: _getBgColor(context)),
+            child: UniversalReceiptImage(
+              imagePath: widget.receipt.imagePath,
+              receiptId: widget.receipt.id,
+              fit: BoxFit.cover,
+              alignment: Alignment.topCenter,
+              color: Colors.black.withOpacity(0.5),
+              colorBlendMode: BlendMode.darken,
+              errorBuilder: (context, error, stackTrace) => Container(
+                color: _getBgColor(context),
+                alignment: Alignment.center,
+                child: Icon(
+                  Icons.receipt_long_outlined,
+                  size: 64,
+                  color: _getMutedColor(context).withOpacity(0.25),
+                ),
+              ),
+            ),
           ),
 
           DraggableScrollableSheet(

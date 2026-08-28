@@ -5,6 +5,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../../core/services/secure_storage_service.dart';
 import '../../domain/repositories/auth_repository.dart';
 import '../../data/repositories/auth_repository_impl.dart';
+import '../../../sync/presentation/providers/sync_provider.dart';
 
 // ── Auth State ────────────────────────────────────────────────────────────────
 
@@ -330,6 +331,11 @@ class RouterNotifier extends ChangeNotifier {
     // Also re-run notifyListeners every time the auth stream emits
     ref.listen<AsyncValue<AuthChangeEvent>>(
       authStateStreamProvider,
+      (prev, next) => notifyListeners(),
+    );
+    // Re-run notifyListeners when initial synchronization state changes
+    ref.listen<bool>(
+      initialSyncCompletedProvider,
       (prev, next) => notifyListeners(),
     );
   }
