@@ -85,13 +85,19 @@ final geminiApiKeyProvider = FutureProvider<String>((ref) async {
 });
 
 final aiServiceProvider = Provider<AIService>((ref) {
-  // 1. Check Local LLM
+  // 1. Check Next-Gen On-Device VLM Engine
+  final isVlmReady = ref.watch(isVlmReadyProvider);
+  if (isVlmReady) {
+    return ref.watch(vlmEngineServiceProvider);
+  }
+
+  // 2. Check Legacy Local LLM
   final isLlmReady = ref.watch(isLlmLoadedProvider);
   if (isLlmReady) {
     return ref.watch(llmServiceProvider);
   }
 
-  // 2. Check Cloud Gemini — read key from async provider (empty string while loading)
+  // 3. Check Cloud Gemini — read key from async provider (empty string while loading)
   final box = ref.watch(settingsBoxProvider);
   final isEnabled = box.get('enable_gemini_ai', defaultValue: false) as bool;
   final apiKeyAsync = ref.watch(geminiApiKeyProvider);
@@ -101,7 +107,7 @@ final aiServiceProvider = Provider<AIService>((ref) {
     return GeminiAIService(apiKey);
   }
 
-  // 3. Fallback
+  // 4. Fallback
   return MockAIService();
 });
 

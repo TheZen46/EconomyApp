@@ -1,3 +1,41 @@
+# Release 0.1.3 Documentation
+
+## Overview
+Release 0.1.3 introduces the on-device **Vision-Language Model (VLM) Subsystem** with native C++ bindings, the **Conflict-Free Replicated Data Types (CRDT)** synchronization engine, fixed-point **Financial & Tax Compliance Engine**, **Bank Reconciliation**, interactive **Spatial Box Overlays**, and comprehensive system telemetry.
+
+---
+
+## Technical Changelog
+
+### Machine Learning & Vision-Language Models (VLM)
+* Integrated native C++ multimodal inference engine (`native/receipt_engine.cpp`) with cross-platform CMake and CocoaPods integration.
+* Added `VlmEngineService` with isolated background worker (`VlmWorkerIsolate`) preventing UI thread contention.
+* Implemented dynamic GBNF grammar compilation (`GrammarGenerator`) enforcing strict JSON schema adherence.
+* Built on-device episodic memory with `EpisodicMemoryService`, `HnswIndex` vector graph search, and subword semantic embeddings.
+* Added dataset contribution service and annotation tooling in `tool/vlm_pipeline/`.
+
+### Distributed Synchronization & CRDT Engine
+* Implemented `HybridLogicalClock` (HLC), `VectorClock`, and `LwwRegister` (Last-Write-Wins) for conflict-free state convergence.
+* Added `ReceiptCrdt` entity wrapper enabling multi-master concurrent mutations without locking or merge conflicts.
+* Enhanced `CrdtSyncEngine` for minimal delta payload generation and atomic state vector reconciliation.
+
+### Financial Mathematics & Tax Intelligence
+* Implemented fixed-point `Money` and `CurrencyRatio` arithmetic library eliminating floating-point rounding errors.
+* Added `TaxComplianceService`, `TaxEngine`, and `TaxReportService` for automated VAT/sales tax classification and deduction tracking.
+* Built `BankReconciliationService` for automated statement cross-matching with multi-parameter fuzzy scoring.
+* Added financial burn rate velocity calculation in Boxes domain (`BurnRateCalculator`).
+
+### User Interface & Spatial Components
+* Implemented `SpatialBoxOverlay` for interactive bounding box manipulation over receipt images.
+* Added `TheTaxNestWidget`, `NeedsVsWantsWidget`, `AchievementsMilestonesWidget`, and `ProjectCardsWidget`.
+* Integrated `PulseWidget` for real-time financial velocity visualization.
+
+### Telemetry & Diagnostics
+* Built `TelemetryService` for real-time performance tracking (inference latency, UI frame rate, memory footprint).
+* Added release build automation script `tool/build_release.ps1`.
+
+---
+
 # Release 0.0.4 Documentation
 
 ## Overview

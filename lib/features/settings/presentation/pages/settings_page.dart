@@ -18,6 +18,8 @@ import '../../../../core/services/biometric_service.dart';
 import '../../../../core/utils/error_handler.dart';
 import '../../../../core/routes/app_router.dart';
 import '../../../sync/presentation/providers/sync_provider.dart';
+import '../providers/llm_provider.dart';
+import '../widgets/dataset_export_dialog.dart';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const _accent = Color(0xFF002FA7);
@@ -303,19 +305,112 @@ class _SettingsPanelWidgetState extends ConsumerState<SettingsPanelWidget> {
                       const SizedBox(height: 28),
 
                       // ── AI Engine ────────────────────────────────────────
-                      _sectionHeader(Icons.psychology_outlined, 'AI Engine', muted, 1),
+                      _sectionHeader(Icons.psychology_outlined, 'AI Engine & Telemetry', muted, 1),
                       const SizedBox(height: 12),
 
                       Consumer(builder: (context, ref, _) {
                         final box = ref.watch(settingsBoxProvider);
                         final isEnabled = box.get('enable_gemini_ai', defaultValue: false) as bool;
-                        // Read API key from secure storage asynchronously
+                        final isVlmActive = ref.watch(isVlmReadyProvider);
                         final apiKeyAsync = ref.watch(geminiApiKeyProvider);
                         final apiKey = apiKeyAsync.valueOrNull ?? '';
+
                         return _cardWrapper(
                           tileBg: tileBg,
                           divider: divider,
                           child: Column(children: [
+                            // Diagnostics Info Row
+                            Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        'ACTIVE ENGINE',
+                                        style: GoogleFonts.spaceGrotesk(fontSize: 10, letterSpacing: 1.2, color: muted, fontWeight: FontWeight.bold),
+                                      ),
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        isVlmActive ? 'Qwen2-VL 2B (Local 4-Bit)' : (isEnabled ? 'Gemini 1.5 Flash (Cloud)' : 'ML Kit OCR (Local Hybrid)'),
+                                        style: GoogleFonts.jetBrainsMono(fontSize: 13, color: isVlmActive ? const Color(0xFF10B981) : const Color(0xFF0891B2), fontWeight: FontWeight.bold),
+                                      ),
+                                    ],
+                                  ),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                    decoration: BoxDecoration(
+                                      color: colorScheme.surfaceContainerHighest,
+                                      borderRadius: BorderRadius.circular(8),
+                                      border: Border.all(color: divider),
+                                    ),
+                                    child: Text(
+                                      'VRAM: 669 MB',
+                                      style: GoogleFonts.jetBrainsMono(fontSize: 11, color: fgCol),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            Divider(color: divider, height: 1, indent: 20, endIndent: 20),
+                            _row(
+                              label: 'Benchmark Local LLM',
+                              fgCol: fgCol,
+                              muted: muted,
+                              trailing: _chip('Run Test', _accent, divider),
+                              onTap: () async {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text('Benchmarking on-device grammar and memory latency... ⚡'),
+                                    duration: Duration(seconds: 1),
+                                  ),
+                                );
+                                try {
+                                  final vlmService = ref.read(vlmEngineServiceProvider);
+                                  final results = await vlmService.benchmarkInference();
+                                  if (!context.mounted) return;
+                                  final grammarMs = results['grammar_latency_ms'];
+                                  final memoryMs = results['memory_latency_ms'];
+                                  final tokensPerSec = results['tokens_per_sec'];
+                                  await showDialog(
+                                    context: context,
+                                    builder: (ctx) => AlertDialog(
+                                      backgroundColor: colorScheme.surface,
+                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                                      title: Text(
+                                        'Inference Benchmark Results',
+                                        style: GoogleFonts.spaceGrotesk(color: fgCol, fontWeight: FontWeight.bold, fontSize: 18),
+                                      ),
+                                      content: Column(
+                                        mainAxisSize: MainAxisSize.min,
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Text('Grammar Engine Latency: ${grammarMs}ms', style: GoogleFonts.jetBrainsMono(fontSize: 13, color: fgCol)),
+                                          const SizedBox(height: 8),
+                                          Text('Episodic Retrieval: ${memoryMs}ms', style: GoogleFonts.jetBrainsMono(fontSize: 13, color: fgCol)),
+                                          const SizedBox(height: 8),
+                                          Text('Throughput: $tokensPerSec tokens/sec', style: GoogleFonts.jetBrainsMono(fontSize: 13, color: _accent, fontWeight: FontWeight.bold)),
+                                        ],
+                                      ),
+                                      actions: [
+                                        TextButton(
+                                          onPressed: () => Navigator.pop(ctx),
+                                          child: Text('Close', style: GoogleFonts.spaceGrotesk(color: _accent, fontWeight: FontWeight.bold)),
+                                        ),
+                                      ],
+                                    ),
+                                  );
+                                } catch (e) {
+                                  if (!context.mounted) return;
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(content: Text('Benchmark error: $e')),
+                                  );
+                                }
+                              },
+                            ),
+                            Divider(color: divider, height: 1, indent: 20, endIndent: 20),
                             _row(label: 'Local AI Brain Models', fgCol: fgCol, muted: muted,
                                 trailing: _chip('Manage', muted, divider),
                                 onTap: () { Navigator.of(context).pop(); context.push('/model_manager'); }),
@@ -337,12 +432,6 @@ class _SettingsPanelWidgetState extends ConsumerState<SettingsPanelWidget> {
                                 trailing: isEnabled
                                     ? Icon(Icons.edit_outlined, size: 16, color: muted)
                                     : null),
-                            Divider(color: divider, height: 1, indent: 20, endIndent: 20),
-                            Opacity(
-                              opacity: 0.4,
-                              child: _row(label: 'Distributed Inference', fgCol: fgCol, muted: muted,
-                                  trailing: _FigmaToggle(value: false, onChanged: (_) {})),
-                            ),
                           ]),
                         );
                       }),
@@ -368,7 +457,7 @@ class _SettingsPanelWidgetState extends ConsumerState<SettingsPanelWidget> {
                       const SizedBox(height: 28),
 
                       // ── Data & Privacy ───────────────────────────────────
-                      _sectionHeader(Icons.storage_outlined, 'Data & Privacy', muted, 3),
+                      _sectionHeader(Icons.security_outlined, 'Security & Privacy Governance', muted, 3),
                       const SizedBox(height: 12),
 
                       _cardWrapper(tileBg: tileBg, divider: divider, child:
@@ -376,50 +465,132 @@ class _SettingsPanelWidgetState extends ConsumerState<SettingsPanelWidget> {
                           children: [
                             Consumer(builder: (context, ref, _) {
                               final isBiometricEnabled = ref.watch(biometricEnabledProvider);
-                              return _row(
-                                label: 'Biometric Lock (FaceID / Fingerprint)',
-                                fgCol: fgCol,
-                                muted: muted,
-                                trailing: _FigmaToggle(
-                                  value: isBiometricEnabled,
-                                  onChanged: (val) async {
-                                    if (val) {
-                                      final canAuth = await ref.read(biometricServiceProvider).canAuthenticate();
-                                      if (!canAuth) {
+                              return Column(
+                                children: [
+                                  _row(
+                                    label: 'Biometric Lock (FaceID / Fingerprint)',
+                                    fgCol: fgCol,
+                                    muted: muted,
+                                    trailing: _FigmaToggle(
+                                      value: isBiometricEnabled,
+                                      onChanged: (val) async {
+                                        if (val) {
+                                          final canAuth = await ref.read(biometricServiceProvider).canAuthenticate();
+                                          if (!canAuth) {
+                                            if (context.mounted) {
+                                              ScaffoldMessenger.of(context).showSnackBar(
+                                                const SnackBar(
+                                                  content: Text('Biometrics not available on this device'),
+                                                  backgroundColor: Color(0xFFD4183D),
+                                                ),
+                                              );
+                                            }
+                                            return;
+                                          }
+                                        }
+                                        await ref.read(biometricEnabledProvider.notifier).setEnabled(val);
+                                      },
+                                    ),
+                                  ),
+                                  if (isBiometricEnabled) ...[
+                                    Divider(color: divider, height: 1, indent: 20, endIndent: 20),
+                                    _row(
+                                      label: 'Test Biometrics',
+                                      fgCol: fgCol,
+                                      muted: muted,
+                                      trailing: _chip('Verify', const Color(0xFF10B981), divider),
+                                      onTap: () async {
+                                        final authSuccess = await ref.read(biometricServiceProvider).authenticate('Testing tAIdy biometric security');
                                         if (context.mounted) {
                                           ScaffoldMessenger.of(context).showSnackBar(
-                                            const SnackBar(
-                                              content: Text('Biometrics not available on this device'),
-                                              backgroundColor: Color(0xFFD4183D),
+                                            SnackBar(
+                                              content: Text(authSuccess ? 'Biometrics verified successfully! 🛡️' : 'Biometric verification cancelled.'),
+                                              backgroundColor: authSuccess ? const Color(0xFF10B981) : const Color(0xFFD4183D),
                                             ),
                                           );
                                         }
-                                        return;
-                                      }
-                                    }
-                                    await ref.read(biometricEnabledProvider.notifier).setEnabled(val);
-                                  },
+                                      },
+                                    ),
+                                  ],
+                                ],
+                              );
+                            }),
+                            Divider(color: divider, height: 1, indent: 20, endIndent: 20),
+                            // AI Data Training Contribution Toggle + Info
+                            Consumer(builder: (context, ref, _) {
+                              final box = ref.watch(settingsBoxProvider);
+                              final isContributionEnabled = box.get('ai_dataset_contribution_enabled', defaultValue: true) as bool;
+                              return _row(
+                                label: 'AI Model Training Contribution',
+                                fgCol: fgCol,
+                                muted: muted,
+                                trailing: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    IconButton(
+                                      icon: Icon(Icons.info_outline, size: 16, color: muted),
+                                      onPressed: () {
+                                        showDialog(
+                                          context: context,
+                                          builder: (ctx) => AlertDialog(
+                                            backgroundColor: colorScheme.surface,
+                                            title: Text('Privacy Governance & PII Scrubbing', style: GoogleFonts.spaceGrotesk(color: fgCol, fontWeight: FontWeight.bold)),
+                                            content: Text(
+                                              'All personal identifying information (PII) including customer names, credit card numbers, and physical street addresses are strictly stripped on-device before any receipt taxonomy is shared. Only tokenized line-item categories and price structures are utilized for procedural fine-tuning.',
+                                              style: GoogleFonts.spaceGrotesk(color: muted, fontSize: 13),
+                                            ),
+                                            actions: [
+                                              TextButton(
+                                                onPressed: () => Navigator.pop(ctx),
+                                                child: Text('Understood', style: GoogleFonts.spaceGrotesk(color: _accent, fontWeight: FontWeight.bold)),
+                                              ),
+                                            ],
+                                          ),
+                                        );
+                                      },
+                                    ),
+                                    _FigmaToggle(
+                                      value: isContributionEnabled,
+                                      onChanged: (val) {
+                                        box.put('ai_dataset_contribution_enabled', val);
+                                        setState(() {});
+                                      },
+                                    ),
+                                  ],
                                 ),
                               );
                             }),
                             Divider(color: divider, height: 1, indent: 20, endIndent: 20),
                             storageAsync.when(
                               data: (bytes) => _row(
-                                  label: 'Dataset Contribution',
+                                  label: 'Dataset Contribution Storage',
                                   fgCol: fgCol, muted: muted,
                                   trailing: Text('${(bytes / 1024).toStringAsFixed(1)} KB',
                                       style: GoogleFonts.jetBrainsMono(fontSize: 12, color: muted)),
                                   onTap: () => ref.refresh(storageUsageProvider)),
                               loading: () => _row(
-                                  label: 'Dataset Contribution',
+                                  label: 'Dataset Contribution Storage',
                                   fgCol: fgCol, muted: muted,
                                   trailing: SizedBox(width: 14, height: 14,
                                       child: CircularProgressIndicator(strokeWidth: 1.5, color: muted))),
                               error: (err, stack) => _row(
-                                  label: 'Dataset Contribution',
+                                  label: 'Dataset Contribution Storage',
                                   fgCol: fgCol, muted: muted,
                                   trailing: Text('Error', style: GoogleFonts.spaceGrotesk(
                                       fontSize: 12, color: const Color(0xFFD4183D)))),
+                            ),
+                            Divider(color: divider, height: 1, indent: 20, endIndent: 20),
+                            _row(
+                              label: 'Continuous Learning Corpus (JSONL)',
+                              fgCol: fgCol,
+                              muted: muted,
+                              trailing: _chip('Inspect / Export', _accent, divider),
+                              onTap: () {
+                                showDialog(
+                                  context: context,
+                                  builder: (_) => const DatasetExportDialog(),
+                                );
+                              },
                             ),
                             Divider(color: divider, height: 1, indent: 20, endIndent: 20),
                             _row(

@@ -3,28 +3,40 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter_animate/flutter_animate.dart';
-import 'package:intl/intl.dart';
-import 'package:fl_chart/fl_chart.dart';
 
 import '../../../domain/entities/receipt.dart';
 import '../../../data/models/dashboard_config.dart';
 import '../../providers/dashboard_provider.dart';
 import '../../../../boxes/data/providers/boxes_provider.dart';
 import '../../../../boxes/data/models/box_model.dart';
-import '../../../../invoices/data/providers/invoices_provider.dart';
 import '../interactive_hover.dart';
-import 'gamification_header.dart';
 import 'dashboard_summary_card.dart';
 import 'pulse_widget.dart';
 import 'density_heatmap_widget.dart';
 import 'recent_receipts_list.dart';
+import 'the_tax_nest_widget.dart';
+import 'achievements_milestones_widget.dart';
+import 'needs_vs_wants_widget.dart';
+import 'project_cards_widget.dart';
 
+/// Customizable grid layout for displaying modular dashboard widgets.
+///
+/// Supports dynamic reordering, column span adjustments, widget visibility toggling,
+/// and responsive reflow across mobile, tablet, and desktop breakpoints.
 class CustomizableMetricsGrid extends ConsumerStatefulWidget {
+  /// All user receipts passed down for aggregation and metrics computation.
   final List<Receipt> receipts;
+
+  /// Whether the UI is currently rendered in dark mode.
   final bool isDark;
+
+  /// Whether the grid is in customization / edit mode.
   final bool isEditMode;
+
+  /// Active search query filter applied to receipts.
   final String searchQuery;
 
+  /// Creates a new [CustomizableMetricsGrid] instance.
   const CustomizableMetricsGrid({
     super.key,
     required this.receipts,
@@ -38,8 +50,6 @@ class CustomizableMetricsGrid extends ConsumerStatefulWidget {
 }
 
 class _CustomizableMetricsGridState extends ConsumerState<CustomizableMetricsGrid> {
-  bool _showNeedsAmounts = false;
-
   final Map<DashboardWidgetType, int> _widgetSpans = {
     DashboardWidgetType.summary: 2,
     DashboardWidgetType.chart: 3,
@@ -294,15 +304,15 @@ class _CustomizableMetricsGridState extends ConsumerState<CustomizableMetricsGri
       case DashboardWidgetType.heatmap:
         return DensityHeatmapWidget(receipts: widget.receipts, isDark: widget.isDark);
       case DashboardWidgetType.achievements:
-        return _buildAchievements(widget.receipts);
+        return AchievementsMilestonesWidget(receipts: widget.receipts, isDark: widget.isDark);
       case DashboardWidgetType.necessityBreakdown:
-        return _buildNeedsVsWants(widget.receipts);
+        return NeedsVsWantsWidget(receipts: widget.receipts, isDark: widget.isDark);
       case DashboardWidgetType.recentTransactions:
         return RecentReceiptsList(receipts: filteredReceipts, isDark: widget.isDark);
       case DashboardWidgetType.taxNest:
-        return _buildTaxNest(widget.receipts);
+        return TheTaxNestWidget(receipts: widget.receipts, isDark: widget.isDark);
       case DashboardWidgetType.projects:
-        return _buildProjectCards();
+        return ProjectCardsWidget(isDark: widget.isDark);
     }
   }
 
@@ -363,7 +373,7 @@ class _CustomizableMetricsGridState extends ConsumerState<CustomizableMetricsGri
           if (budget > 0) ...[
             const SizedBox(height: 16),
             LinearProgressIndicator(
-              value: (spent / budget).clamp(0.0, 1.0),
+              value: budget > 0 ? (spent / budget).clamp(0.0, 1.0) : 0.0,
               backgroundColor: colorScheme.outline,
               valueColor: AlwaysStoppedAnimation<Color>(colorScheme.primary),
               borderRadius: BorderRadius.circular(4),
@@ -371,347 +381,6 @@ class _CustomizableMetricsGridState extends ConsumerState<CustomizableMetricsGri
           ]
         ],
       ),
-    );
-  }
-
-  Widget _buildAchievements(List<Receipt> receipts) {
-    final colorScheme = Theme.of(context).colorScheme;
-    final fgCol = colorScheme.onSurface;
-    final muted = colorScheme.onSurfaceVariant;
-    final accent = colorScheme.primary;
-
-    final boxes = ref.watch(boxesProvider);
-    final activeId = ref.watch(activeBoxIdProvider);
-    final activeBox = activeId == 'main' || boxes.isEmpty
-        ? (boxes.isNotEmpty ? boxes.first : BoxModel(id: 'main', name: 'Main', budget: 0, spent: 0, currency: 'USD', color: 0))
-        : boxes.firstWhere((b) => b.id == activeId, orElse: () => boxes.isNotEmpty ? boxes.first : BoxModel(id: 'main', name: 'Main', budget: 0, spent: 0, currency: 'USD', color: 0));
-    final now = DateTime.now();
-    final monthlyBurn = receipts.where((r) => r.date.year == now.year && r.date.month == now.month).fold(0.0, (sum, r) => sum + r.totalAmount);
-
-    final ytdTotal = receipts.fold(0.0, (sum, r) => sum + r.totalAmount);
-    final stashed = ytdTotal * 0.22;
-
-    final hasReceipts = receipts.isNotEmpty;
-    final isUnderBudget = (monthlyBurn < activeBox.budget) && (activeBox.budget > 0);
-    final hasStash = stashed > 0;
-
-    final achievements = [
-      {'title': 'First Scan', 'status': hasReceipts ? 'Achieved' : 'Pending', 'date': hasReceipts ? DateFormat('dd MMM').format(receipts.last.date) : '--', 'active': hasReceipts},
-      {'title': 'Under Budget', 'status': isUnderBudget ? 'Achieved' : 'In Progress', 'date': isUnderBudget ? DateFormat('MMM yyyy').format(now) : '--', 'active': isUnderBudget},
-      {'title': 'Tax Prep Started', 'status': hasStash ? 'Achieved' : 'Pending', 'date': hasStash ? DateFormat('dd MMM').format(now) : '--', 'active': hasStash},
-    ];
-    final achievedCount = achievements.where((a) => a['active'] == true).length;
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text('MILESTONES & XP', style: GoogleFonts.spaceGrotesk(fontSize: 11, letterSpacing: 1.2, color: muted)),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-              decoration: BoxDecoration(
-                color: colorScheme.surfaceContainer,
-                borderRadius: BorderRadius.circular(4),
-              ),
-              child: Text('$achievedCount/3', style: GoogleFonts.jetBrainsMono(fontSize: 11, color: muted)),
-            ),
-          ],
-        ),
-        const SizedBox(height: 14),
-        GamificationHeader(
-          receipts: receipts,
-          isDark: widget.isDark,
-        ),
-        const SizedBox(height: 18),
-        ...achievements.map((a) {
-          final active = a['active'] as bool;
-          return Padding(
-            padding: const EdgeInsets.only(bottom: 20),
-            child: Row(
-              children: [
-                Container(
-                  width: 3,
-                  height: 12,
-                  decoration: BoxDecoration(
-                    color: active ? accent : colorScheme.outline,
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(a['title'] as String, style: GoogleFonts.spaceGrotesk(fontSize: 13, fontWeight: FontWeight.w400, color: fgCol)),
-                      const SizedBox(height: 2),
-                      Text(a['status'] as String, style: GoogleFonts.spaceGrotesk(fontSize: 11, color: muted)),
-                    ],
-                  ),
-                ),
-                Text(a['date'] as String, style: GoogleFonts.jetBrainsMono(fontSize: 12, color: muted)),
-              ],
-            ),
-          );
-        }),
-      ],
-    );
-  }
-
-  Widget _buildNeedsVsWants(List<Receipt> receipts) {
-    final colorScheme = Theme.of(context).colorScheme;
-    final fgCol = colorScheme.onSurface;
-    final muted = colorScheme.onSurfaceVariant;
-    final accent = colorScheme.primary;
-
-    final needsTotal = receipts.fold(0.0, (sum, r) => sum + r.essentialTotal);
-    final wantsTotal = receipts.fold(0.0, (sum, r) => sum + (r.totalAmount - r.essentialTotal));
-    final total = needsTotal + wantsTotal;
-
-    final needsPercent = total > 0 ? (needsTotal / total * 100).round() : 0;
-    final wantsPercent = total > 0 ? (wantsTotal / total * 100).round() : 0;
-
-    final needsFlex = total > 0 ? (needsTotal / total * 100).round() : 50;
-    final wantsFlex = total > 0 ? (wantsTotal / total * 100).round() : 50;
-
-    final int safeNeedsFlex = needsFlex > 0 ? needsFlex : 1;
-    final int safeWantsFlex = wantsFlex > 0 ? wantsFlex : 1;
-
-    return InteractiveHover(
-      onTap: () => setState(() => _showNeedsAmounts = !_showNeedsAmounts),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text('NEEDS VS WANTS', style: GoogleFonts.spaceGrotesk(fontSize: 11, letterSpacing: 1.2, color: muted)),
-          const SizedBox(height: 24),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(100),
-            child: Row(
-              children: [
-                if (needsFlex > 0) Expanded(flex: safeNeedsFlex, child: Container(height: 16, color: accent)),
-                if (needsFlex > 0 && wantsFlex > 0) const SizedBox(width: 8),
-                if (wantsFlex > 0) Expanded(flex: safeWantsFlex, child: Container(height: 16, color: colorScheme.surfaceContainerHighest)),
-              ],
-            ),
-          ),
-          const SizedBox(height: 16),
-          SizedBox(
-            height: 40,
-            child: AnimatedCrossFade(
-              firstChild: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text('Needs: $needsPercent%', style: GoogleFonts.spaceGrotesk(fontSize: 12, color: muted)),
-                  Text('Wants: $wantsPercent%', style: GoogleFonts.spaceGrotesk(fontSize: 12, color: muted)),
-                ],
-              ),
-              secondChild: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text('\$${needsTotal.toStringAsFixed(0)}', style: GoogleFonts.jetBrainsMono(fontSize: 12, color: fgCol)),
-                  Text('\$${wantsTotal.toStringAsFixed(0)}', style: GoogleFonts.jetBrainsMono(fontSize: 12, color: fgCol)),
-                ],
-              ),
-              crossFadeState: _showNeedsAmounts ? CrossFadeState.showSecond : CrossFadeState.showFirst,
-              duration: const Duration(milliseconds: 300),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildTaxNest(List<Receipt> receipts) {
-    final colorScheme = Theme.of(context).colorScheme;
-    final fgCol = colorScheme.onSurface;
-    final muted = colorScheme.onSurfaceVariant;
-    final accent = colorScheme.primary;
-
-    final ytdTotal = receipts.fold(0.0, (sum, r) => sum + r.totalAmount);
-    final stashed = ytdTotal * 0.22;
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            Icon(Icons.shield_outlined, color: accent, size: 16),
-            const SizedBox(width: 8),
-            Text('THE TAX NEST', style: GoogleFonts.spaceGrotesk(fontSize: 11, letterSpacing: 1.2, color: muted)),
-          ],
-        ),
-        const SizedBox(height: 24),
-        GestureDetector(
-          onTap: () => ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Tax Nest Goal: \$12,000 (${(stashed / 12000 * 100).clamp(0, 100).toStringAsFixed(0)}% achieved)')),
-          ),
-          child: Text(
-            '\$${stashed.toStringAsFixed(2)}',
-            style: GoogleFonts.jetBrainsMono(fontSize: 40, fontWeight: FontWeight.w300, color: fgCol),
-          ),
-        ),
-        const SizedBox(height: 4),
-        Text('Stashed for Q2 ${DateTime.now().year}', style: GoogleFonts.spaceGrotesk(fontSize: 13, color: muted, fontWeight: FontWeight.w300)),
-        const SizedBox(height: 24),
-        SizedBox(
-          height: 60,
-          child: BarChart(
-            BarChartData(
-              alignment: BarChartAlignment.spaceAround,
-              barTouchData: BarTouchData(enabled: false),
-              titlesData: const FlTitlesData(show: false),
-              gridData: const FlGridData(show: false),
-              borderData: FlBorderData(show: false),
-              maxY: 10000,
-              barGroups: List.generate(6, (i) {
-                final values = [2400.0, 3200.0, 4100.0, 5800.0, 7200.0, 8950.0];
-                return BarChartGroupData(x: i, barRods: [
-                  BarChartRodData(
-                    toY: values[i],
-                    color: accent.withAlpha(51 + i * 30),
-                    width: 8,
-                    borderRadius: BorderRadius.circular(2),
-                  )
-                ]);
-              }),
-            ),
-          ),
-        ),
-        const SizedBox(height: 16),
-        SizedBox(
-          width: double.infinity,
-          child: OutlinedButton(
-            style: OutlinedButton.styleFrom(
-              foregroundColor: muted,
-              side: BorderSide(color: colorScheme.outline),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-              padding: const EdgeInsets.symmetric(vertical: 14),
-            ),
-            onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Auto-stash configuration opened.')),
-            ),
-            child: Text('Auto-stash settings', style: GoogleFonts.spaceGrotesk(fontWeight: FontWeight.w400)),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildProjectCards() {
-    final colorScheme = Theme.of(context).colorScheme;
-    final fgCol = colorScheme.onSurface;
-    final muted = colorScheme.onSurfaceVariant;
-    final accent = colorScheme.primary;
-
-    final invoices = ref.watch(invoicesProvider).take(4).toList();
-
-    Color statusColor(String s) {
-      switch (s.toLowerCase()) {
-        case 'settled': return widget.isDark ? Colors.white70 : Colors.black87;
-        case 'sent': return accent;
-        case 'overdue': return colorScheme.error;
-        default: return muted;
-      }
-    }
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text('ACTIVE INVOICES', style: GoogleFonts.spaceGrotesk(fontSize: 11, letterSpacing: 1.2, color: muted)),
-            GestureDetector(
-              onTap: () => context.push('/invoices'),
-              child: Row(
-                children: [
-                  Text('View all', style: GoogleFonts.spaceGrotesk(fontSize: 11, color: muted, letterSpacing: 1.0)),
-                  Icon(Icons.arrow_outward, size: 12, color: muted),
-                ],
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 16),
-        if (invoices.isEmpty)
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 24),
-            child: Center(
-              child: Text('No active invoices', style: GoogleFonts.spaceGrotesk(color: muted)),
-            ),
-          )
-        else
-          ...invoices.map((inv) {
-            final statusStr = inv.status;
-            final status = statusStr.substring(0, 1).toUpperCase() + statusStr.substring(1);
-            final amount = inv.amount;
-            return Column(
-              children: [
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                  child: Row(
-                    children: [
-                      Container(
-                        width: 3, height: 16,
-                        decoration: BoxDecoration(color: statusColor(status), borderRadius: BorderRadius.circular(2)),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(children: [
-                              Expanded(
-                                child: Text(inv.clientName, style: GoogleFonts.spaceGrotesk(fontSize: 13, color: fgCol, fontWeight: FontWeight.w400)),
-                              ),
-                              const SizedBox(width: 8),
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                decoration: BoxDecoration(
-                                  color: statusColor(status).withAlpha(26),
-                                  borderRadius: BorderRadius.circular(4),
-                                ),
-                                child: Text(status, style: GoogleFonts.spaceGrotesk(fontSize: 10, color: statusColor(status), fontWeight: FontWeight.w500)),
-                              ),
-                            ]),
-                            const SizedBox(height: 4),
-                            Row(children: [
-                              Text(inv.invoiceNumber, style: GoogleFonts.jetBrainsMono(fontSize: 11, color: muted)),
-                              Container(
-                                margin: const EdgeInsets.symmetric(horizontal: 6),
-                                width: 3, height: 3,
-                                decoration: BoxDecoration(shape: BoxShape.circle, color: muted),
-                              ),
-                              Text(DateFormat('MMM dd').format(inv.issuedDate), style: GoogleFonts.spaceGrotesk(fontSize: 11, color: muted)),
-                            ]),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(width: 16),
-                      Text('\$${amount.toStringAsFixed(2)}', style: GoogleFonts.jetBrainsMono(fontSize: 13, color: fgCol, fontWeight: FontWeight.w500)),
-                    ],
-                  ),
-                ),
-                Divider(height: 1, color: colorScheme.outline),
-              ],
-            );
-          }),
-        const SizedBox(height: 16),
-        SizedBox(
-          width: double.infinity,
-          child: OutlinedButton(
-            style: OutlinedButton.styleFrom(
-              foregroundColor: muted,
-              side: BorderSide(color: colorScheme.outline),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-              padding: const EdgeInsets.symmetric(vertical: 14),
-            ),
-            onPressed: () => context.push('/invoices'),
-            child: Text('Create New Invoice', style: GoogleFonts.spaceGrotesk(fontSize: 12, letterSpacing: 1.0, fontWeight: FontWeight.w400)),
-          ),
-        ),
-      ],
     );
   }
 }

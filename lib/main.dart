@@ -1,4 +1,3 @@
-import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -23,6 +22,7 @@ import 'features/boxes/data/providers/boxes_provider.dart';
 import 'features/invoices/data/models/invoice_model.dart';
 import 'features/invoices/data/providers/invoices_provider.dart';
 import 'features/auth/presentation/widgets/biometric_guard.dart';
+import 'core/services/telemetry_service.dart';
 import 'core/sync/models/sync_outbox_item.dart';
 import 'core/sync/sync_providers.dart';
 import 'features/settings/data/models/user_profile_model.dart';
@@ -30,27 +30,9 @@ import 'features/settings/data/models/user_profile_model.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // ── 0. Global Error Boundary ───────────────────────────────────────────
-  // Intercept uncaught Flutter framework errors (layout, rendering, etc.)
-  FlutterError.onError = (FlutterErrorDetails details) {
-    debugPrint('┌── FlutterError ──────────────────────────────────────');
-    debugPrint('│ Exception: ${details.exceptionAsString()}');
-    debugPrint('│ Library: ${details.library}');
-    debugPrint('│ Context: ${details.context?.toStringDeep() ?? 'none'}');
-    debugPrint('└─────────────────────────────────────────────────────');
-    // In production, forward to a crash reporting service (e.g. Sentry/Firebase)
-  };
-
-  // Intercept uncaught async errors that escape the Dart event loop.
-  // Returning true prevents the runtime from terminating the isolate.
-  PlatformDispatcher.instance.onError = (Object error, StackTrace stack) {
-    debugPrint('┌── Uncaught Async Error ──────────────────────────────');
-    debugPrint('│ Error: $error');
-    debugPrint('│ Stack: ${stack.toString().split('\n').take(5).join('\n│        ')}');
-    debugPrint('└─────────────────────────────────────────────────────');
-    // In production, forward to a crash reporting service (e.g. Sentry/Firebase)
-    return true; // Handled — don't crash the isolate
-  };
+  // ── 0. Global Telemetry & Error Boundary ────────────────────────────────
+  await TelemetryService.instance.initialize();
+  TelemetryService.instance.setupGlobalErrorHandlers();
 
   // ── 1. Load environment variables from .env ────────────────────────────
   try {

@@ -34,6 +34,33 @@ android {
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+
+        ndk {
+            abiFilters.addAll(listOf("arm64-v8a", "armeabi-v7a", "x86_64"))
+        }
+
+        externalNativeBuild {
+            cmake {
+                cppFlags("-std=c++17", "-frtti", "-fexceptions", "-fopenmp")
+                arguments(
+                    "-DANDROID_STL=c++_shared",
+                    "-DGGML_USE_OPENMP=ON",
+                    "-DGGML_USE_VULKAN=ON"
+                )
+            }
+        }
+    }
+
+    externalNativeBuild {
+        cmake {
+            path = file("src/main/cpp/CMakeLists.txt")
+        }
+    }
+
+    sourceSets {
+        getByName("main") {
+            jniLibs.srcDirs("src/main/jniLibs")
+        }
     }
 
     signingConfigs {

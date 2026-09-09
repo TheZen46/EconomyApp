@@ -28,13 +28,42 @@ class PulseWidget extends StatelessWidget {
     final List<double> data = List.filled(12, 0.0);
     final List<String> months = List.filled(12, '');
     
+    double essentialSpend = 0.0;
+    double discretionalSpend = 0.0;
+    double junkSpend = 0.0;
+
     for (int i = 0; i < 12; i++) {
       final targetDate = DateTime(now.year, now.month - 11 + i);
       final monthReceipts = receipts.where((r) => r.date.year == targetDate.year && r.date.month == targetDate.month);
       data[i] = monthReceipts.fold(0.0, (sum, r) => sum + r.totalAmount);
       months[i] = DateFormat('MMM').format(targetDate);
     }
+
+    // Tally 3-tier necessity taxonomy
+    for (final receipt in receipts) {
+      for (final item in receipt.items) {
+        switch (item.necessity) {
+          case ItemNecessity.essential:
+            essentialSpend += item.totalPrice;
+            break;
+          case ItemNecessity.discretional:
+            discretionalSpend += item.totalPrice;
+            break;
+          case ItemNecessity.junk:
+            junkSpend += item.totalPrice;
+            break;
+          case ItemNecessity.unknown:
+            discretionalSpend += item.totalPrice;
+            break;
+        }
+      }
+    }
     
+    final totalNecessity = (essentialSpend + discretionalSpend + junkSpend);
+    final essentialPct = totalNecessity > 0 ? (essentialSpend / totalNecessity) : 0.0;
+    final discretionalPct = totalNecessity > 0 ? (discretionalSpend / totalNecessity) : 0.0;
+    final junkPct = totalNecessity > 0 ? (junkSpend / totalNecessity) : 0.0;
+
     final spots = data.asMap().entries.map((e) => FlSpot(e.key.toDouble(), e.value)).toList();
     final average = data.isNotEmpty ? (data.reduce((a, b) => a + b) / 12) : 0.0;
     final peak = data.isNotEmpty ? data.reduce((a, b) => a > b ? a : b) : 0.0;
@@ -80,9 +109,68 @@ class PulseWidget extends StatelessWidget {
             ),
           ],
         ),
-        const SizedBox(height: 32),
+        const SizedBox(height: 24),
+        
+        // ─── 3-Tier Necessity Taxonomy Telemetry HUD ────────────────────────
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          decoration: BoxDecoration(
+            color: colorScheme.surfaceContainer.withOpacity(0.5),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: colorScheme.outline.withOpacity(0.4)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text('AI NECESSITY BREAKDOWN', style: GoogleFonts.spaceGrotesk(fontSize: 10, letterSpacing: 1.1, color: muted, fontWeight: FontWeight.w600)),
+                  Text('${(essentialPct * 100).toStringAsFixed(0)}% Essential', style: GoogleFonts.jetBrainsMono(fontSize: 10, color: const Color(0xFF10B981), fontWeight: FontWeight.bold)),
+                ],
+              ),
+              const SizedBox(height: 8),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(6),
+                child: SizedBox(
+                  height: 6,
+                  child: Row(
+                    children: [
+                      if (essentialPct > 0)
+                        Expanded(
+                          flex: (essentialPct * 100).toInt().clamp(1, 100),
+                          child: Container(color: const Color(0xFF10B981)),
+                        ),
+                      if (discretionalPct > 0)
+                        Expanded(
+                          flex: (discretionalPct * 100).toInt().clamp(1, 100),
+                          child: Container(color: const Color(0xFF0891B2)),
+                        ),
+                      if (junkPct > 0)
+                        Expanded(
+                          flex: (junkPct * 100).toInt().clamp(1, 100),
+                          child: Container(color: const Color(0xFFEC4899)),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 8),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  _necessityBadge('Essential', '\$${essentialSpend.toStringAsFixed(0)}', const Color(0xFF10B981)),
+                  _necessityBadge('Discretional', '\$${discretionalSpend.toStringAsFixed(0)}', const Color(0xFF0891B2)),
+                  _necessityBadge('Junk', '\$${junkSpend.toStringAsFixed(0)}', const Color(0xFFEC4899)),
+                ],
+              ),
+            ],
+          ),
+        ),
+        
+        const SizedBox(height: 24),
         SizedBox(
-          height: 240,
+          height: 200,
           child: LineChart(
             LineChartData(
               gridData: const FlGridData(show: false),
@@ -96,7 +184,7 @@ class PulseWidget extends StatelessWidget {
                     reservedSize: 30,
                     interval: 1,
                     getTitlesWidget: (value, meta) {
-                      if (value.toInt() % 2 != 0) return const SizedBox(); // Prevent overcrowding and right overflow
+                      if (value.toInt() % 2 != 0) return const SizedBox();
                       if (value.toInt() >= 0 && value.toInt() < months.length) {
                         return Padding(
                           padding: const EdgeInsets.only(top: 8.0),
@@ -130,13 +218,13 @@ class PulseWidget extends StatelessWidget {
                   spots: spots,
                   isCurved: true,
                   color: accent,
-                  barWidth: 1.5,
+                  barWidth: 2.0,
                   isStrokeCapRound: true,
                   dotData: const FlDotData(show: false),
                   belowBarData: BarAreaData(
                     show: true,
                     gradient: LinearGradient(
-                      colors: [accent.withOpacity(0.15), accent.withOpacity(0.0)],
+                      colors: [accent.withOpacity(0.20), accent.withOpacity(0.0)],
                       begin: Alignment.topCenter,
                       end: Alignment.bottomCenter,
                     ),
@@ -165,10 +253,10 @@ class PulseWidget extends StatelessWidget {
             ),
           ),
         ),
-        const SizedBox(height: 24),
+        const SizedBox(height: 16),
         Container(
           width: double.infinity,
-          padding: const EdgeInsets.only(top: 24),
+          padding: const EdgeInsets.only(top: 16),
           decoration: BoxDecoration(border: Border(top: BorderSide(color: colorScheme.outline))),
           child: Center(
             child: Row(
@@ -176,8 +264,8 @@ class PulseWidget extends StatelessWidget {
               children: [
                 Flexible(
                   child: Text(
-                    'Monthly project income — Trailing 12 months', 
-                    style: GoogleFonts.spaceGrotesk(fontSize: 13, color: muted),
+                    'Monthly project burn & income — Trailing 12 months', 
+                    style: GoogleFonts.spaceGrotesk(fontSize: 12, color: muted),
                     textAlign: TextAlign.center,
                   ),
                 ),
@@ -187,6 +275,17 @@ class PulseWidget extends StatelessWidget {
             ),
           ),
         ),
+      ],
+    );
+  }
+
+  Widget _necessityBadge(String label, String value, Color color) {
+    return Row(
+      children: [
+        Container(width: 6, height: 6, decoration: BoxDecoration(shape: BoxShape.circle, color: color)),
+        const SizedBox(width: 4),
+        Text('$label: ', style: GoogleFonts.spaceGrotesk(fontSize: 10, color: Colors.grey)),
+        Text(value, style: GoogleFonts.jetBrainsMono(fontSize: 10, fontWeight: FontWeight.bold, color: color)),
       ],
     );
   }

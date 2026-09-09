@@ -54,6 +54,9 @@ add_subdirectory(${FLUTTER_MANAGED_DIR})
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(GTK REQUIRED IMPORTED_TARGET gtk+-3.0)
 
+# Native VLM Engine Subproject
+add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../native" "${CMAKE_CURRENT_BINARY_DIR}/native_engine")
+
 # Application build; see runner/CMakeLists.txt.
 add_subdirectory("runner")
 

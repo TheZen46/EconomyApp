@@ -32,14 +32,17 @@ class DensityHeatmapWidget extends StatelessWidget {
 
     final now = DateTime.now();
     final densityData = List.filled(28, 0);
+
     for (int i = 0; i < 28; i++) {
       final targetDate = now.subtract(Duration(days: 27 - i));
-      final count = receipts
+      final dayReceipts = receipts
           .where((r) =>
               r.date.year == targetDate.year &&
               r.date.month == targetDate.month &&
               r.date.day == targetDate.day)
-          .length;
+          .toList();
+      
+      final count = dayReceipts.length;
       if (count == 0) {
         densityData[i] = 0;
       } else if (count <= 1) {
@@ -56,15 +59,15 @@ class DensityHeatmapWidget extends StatelessWidget {
     Color getIntensityColor(int level) {
       switch (level) {
         case 1:
-          return accent.withOpacity(0.2);
+          return accent.withOpacity(0.25);
         case 2:
-          return accent.withOpacity(0.4);
+          return accent.withOpacity(0.5);
         case 3:
-          return accent.withOpacity(0.7);
+          return accent.withOpacity(0.75);
         case 4:
           return accent;
         default:
-          return colorScheme.surfaceContainerHighest;
+          return colorScheme.surfaceContainerHighest.withOpacity(0.4);
       }
     }
 
@@ -94,7 +97,7 @@ class DensityHeatmapWidget extends StatelessWidget {
                 style: GoogleFonts.jetBrainsMono(fontSize: 11, color: muted)),
           ],
         ),
-        const SizedBox(height: 24),
+        const SizedBox(height: 20),
         GridView.builder(
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
@@ -115,7 +118,7 @@ class DensityHeatmapWidget extends StatelessWidget {
             }
             final level = densityData[i - 7];
             return Tooltip(
-              message: 'Day ${i - 6}: ${['0', '2', '5', '12', '24'][level]}',
+              message: 'Day ${i - 6}: ${['0', '1-2', '3-4', '5-6', '7+'][level]} transactions',
               textStyle: GoogleFonts.spaceGrotesk(
                   fontSize: 10,
                   color: colorScheme.surface,
@@ -129,7 +132,7 @@ class DensityHeatmapWidget extends StatelessWidget {
                 child: Container(
                   decoration: BoxDecoration(
                     color: getIntensityColor(level),
-                    borderRadius: BorderRadius.circular(2),
+                    borderRadius: BorderRadius.circular(3),
                   ),
                 ),
               ),
@@ -138,11 +141,11 @@ class DensityHeatmapWidget extends StatelessWidget {
         ),
         const SizedBox(height: 16),
         Container(
-          padding: const EdgeInsets.only(top: 16),
+          padding: const EdgeInsets.only(top: 14),
           decoration: BoxDecoration(
               border: Border(
                   top: BorderSide(
-                      color: colorScheme.outline))),
+                      color: colorScheme.outline.withOpacity(0.5)))),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [

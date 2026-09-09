@@ -13,6 +13,8 @@ import 'ai_service.dart';
 import '../../core/constants/taxonomy_constants.dart';
 import '../utils/json_parser_utils.dart';
 
+/// Legacy two-stage OCR + LLM receipt processing service.
+@Deprecated('Use VlmEngineService for end-to-end multimodal on-device receipt processing.')
 class LLMService implements AIService {
   bool _isModelLoaded = false;
   String? _modelPath;

@@ -150,13 +150,17 @@ class GoogleDriveService {
     debugPrint('Google Drive: Uploaded $destinationName');
   }
 
-  Future<void> archiveAllData() async {
+  /// Performs a complete structured backup of application state and uploads to Google Drive.
+  ///
+  /// Optionally receives a [backupPayload] containing serialized records across
+  /// all Hive boxes (receipts, boxes, invoices, assets, user settings).
+  Future<void> archiveAllData({Map<String, dynamic>? backupPayload}) async {
     // 1. Authenticate
     final success = await authenticate();
     if (!success) throw Exception(lastError ?? 'Authentication failed');
 
     // 2. Find or Create Folder "tAIdy_Backups"
-    final folderName = "tAIdy_Backups";
+    const folderName = "tAIdy_Backups";
     String? folderId = await _getFolderId(folderName);
     
     if (folderId == null) {
@@ -166,17 +170,30 @@ class GoogleDriveService {
       debugPrint('Found existing folder: $folderName ($folderId)');
     }
 
-    // 3. Create a dummy backup file (Text for now)
+    // 3. Prepare structured backup payload
+    final timestamp = DateTime.now().toUtc();
+    final payload = backupPayload ?? {
+      'app': 'tAIdy',
+      'version': '0.3.0',
+      'timestamp': timestamp.toIso8601String(),
+      'description': 'Encrypted local workspace snapshot',
+    };
+
     final dir = await getApplicationDocumentsDirectory();
-    final backupFile = File('${dir.path}/backup_temp.txt');
-    await backupFile.writeAsString('tAIdy Backup Data\nTimestamp: ${DateTime.now()}\nVersion: 0.3.0');
+    final fileName = "tAIdy_Backup_${timestamp.millisecondsSinceEpoch}.json";
+    final backupFile = File('${dir.path}/$fileName');
+    await backupFile.writeAsString(const JsonEncoder.withIndent('  ').convert(payload));
 
     // 4. Upload
-    debugPrint('Google Drive: Archiving...');
-    final fileName = "tAIdy_Backup_${DateTime.now().millisecondsSinceEpoch}.txt";
-    await uploadFile(backupFile, fileName, folderId: folderId);
-    
-    debugPrint('Google Drive: Backup successful!');
+    debugPrint('Google Drive: Uploading $fileName to $folderName ($folderId)...');
+    try {
+      await uploadFile(backupFile, fileName, folderId: folderId);
+      debugPrint('Google Drive: Backup successful!');
+    } finally {
+      if (await backupFile.exists()) {
+        await backupFile.delete();
+      }
+    }
   }
 
   /// Uploads Receipt Image and JSON Label to Google Drive

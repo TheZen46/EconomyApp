@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -11,7 +12,9 @@ import '../../domain/entities/receipt.dart';
 import '../providers/receipt_provider.dart';
 import '../widgets/receipt_item_row.dart';
 import '../widgets/universal_receipt_image.dart';
+import '../widgets/spatial_box_overlay.dart';
 import '../../../../features/boxes/data/providers/boxes_provider.dart';
+import '../../../../features/settings/presentation/providers/llm_provider.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../core/theme/theme_notifier.dart';
 import '../../../../core/utils/error_handler.dart';
@@ -32,6 +35,8 @@ class _ReviewPageState extends ConsumerState<ReviewPage> {
   
   bool _isTotalLocked = true;
   bool _isSaving = false;
+  bool _hasUserEdits = false;
+  bool _autoDetectedAssets = false;
   
   String _selectedCurrency = 'USD';
   String _selectedBoxId = 'main';
@@ -48,6 +53,11 @@ class _ReviewPageState extends ConsumerState<ReviewPage> {
   void initState() {
     super.initState();
     _merchantController = TextEditingController(text: widget.receipt.merchantName);
+    _merchantController.addListener(() {
+      if (!_hasUserEdits && _merchantController.text != widget.receipt.merchantName) {
+        setState(() => _hasUserEdits = true);
+      }
+    });
     _currentDate = widget.receipt.date;
     _items = widget.receipt.items.map((i) => _UiReceiptItem(const Uuid().v4(), i)).toList();
     _selectedCurrency = widget.receipt.currency;
@@ -55,6 +65,11 @@ class _ReviewPageState extends ConsumerState<ReviewPage> {
     _selectedBoxId = widget.receipt.boxId ?? ref.read(activeBoxIdProvider);
     
     _totalController = TextEditingController(text: widget.receipt.totalAmount.toStringAsFixed(2));
+    _totalController.addListener(() {
+      if (!_hasUserEdits) setState(() => _hasUserEdits = true);
+    });
+
+    _checkHardwareAssets();
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(isBalatroThemeProvider.notifier).checkTrigger(widget.receipt.totalAmount);
@@ -63,6 +78,17 @@ class _ReviewPageState extends ConsumerState<ReviewPage> {
         ref.read(isBalatroThemeProvider.notifier).checkTrigger(item.totalPrice);
       }
     });
+  }
+
+  void _checkHardwareAssets() {
+    const hardwareKeywords = ['phone', 'laptop', 'macbook', 'ipad', 'monitor', 'tv', 'camera', 'watch', 'airpods', 'sony', 'dell', 'samsung', 'apple', 'console', 'gpu'];
+    for (final wrapper in _items) {
+      final desc = wrapper.item.description.toLowerCase();
+      if (hardwareKeywords.any((k) => desc.contains(k))) {
+        _autoDetectedAssets = true;
+        break;
+      }
+    }
   }
 
   void _calculateTotal() {
@@ -75,6 +101,7 @@ class _ReviewPageState extends ConsumerState<ReviewPage> {
   }
 
   void _updateItem(int index, ReceiptItem newItem) {
+    _hasUserEdits = true;
     final triggeredPrice = ref.read(isBalatroThemeProvider.notifier).checkTrigger(newItem.unitPrice) ||
                            ref.read(isBalatroThemeProvider.notifier).checkTrigger(newItem.totalPrice) ||
                            ref.read(isBalatroThemeProvider.notifier).checkTrigger(newItem.description);
@@ -100,8 +127,8 @@ class _ReviewPageState extends ConsumerState<ReviewPage> {
     }
   }
 
-  
   void _deleteItem(int index) {
+    _hasUserEdits = true;
     setState(() {
       _items.removeAt(index);
       _calculateTotal();
@@ -109,6 +136,7 @@ class _ReviewPageState extends ConsumerState<ReviewPage> {
   }
 
   void _addItem() {
+    _hasUserEdits = true;
     setState(() {
       _items.add(_UiReceiptItem(const Uuid().v4(), const ReceiptItem(
         description: '',
@@ -117,6 +145,178 @@ class _ReviewPageState extends ConsumerState<ReviewPage> {
         totalPrice: 0.0,
       )));
     });
+  }
+
+  List<SpatialBox> _generateSpatialBoxes() {
+    final boxes = <SpatialBox>[];
+
+    // Merchant header box
+    boxes.add(SpatialBox(
+      label: 'MERCHANT',
+      category: 'Header',
+      ymin: 0.05,
+      xmin: 0.15,
+      ymax: 0.16,
+      xmax: 0.85,
+      color: const Color(0xFF8B5CF6),
+      value: _merchantController.text,
+    ));
+
+    // Line items boxes
+    final itemCount = _items.length;
+    if (itemCount > 0) {
+      const startY = 0.20;
+      const endY = 0.70;
+      final step = (endY - startY) / itemCount;
+
+      for (int i = 0; i < itemCount; i++) {
+        final item = _items[i].item;
+        final y1 = startY + (i * step);
+        final y2 = (y1 + step * 0.85).clamp(0.0, 0.95);
+
+        boxes.add(SpatialBox(
+          label: 'ITEM ${i + 1}',
+          category: item.mainCategory ?? 'Item',
+          ymin: y1,
+          xmin: 0.10,
+          ymax: y2,
+          xmax: 0.90,
+          color: item.isAsset ? const Color(0xFF38BDF8) : const Color(0xFFF59E0B),
+          value: '${item.description} - $_selectedCurrency ${item.totalPrice.toStringAsFixed(2)}',
+        ));
+      }
+    }
+
+    // Tax / VAT box
+    boxes.add(const SpatialBox(
+      label: 'TAX / VAT',
+      category: 'Tax',
+      ymin: 0.73,
+      xmin: 0.15,
+      ymax: 0.80,
+      xmax: 0.85,
+      color: Color(0xFF0891B2),
+    ));
+
+    // Total amount box
+    boxes.add(SpatialBox(
+      label: 'TOTAL',
+      category: 'Total',
+      ymin: 0.82,
+      xmin: 0.15,
+      ymax: 0.92,
+      xmax: 0.85,
+      color: const Color(0xFF10B981),
+      value: '$_selectedCurrency ${_totalController.text}',
+    ));
+
+    return boxes;
+  }
+
+  void _showSpatialVisualizerModal() {
+    final boxes = _generateSpatialBoxes();
+    SpatialBox? selected;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            return Container(
+              height: MediaQuery.of(context).size.height * 0.85,
+              decoration: const BoxDecoration(
+                color: Color(0xFF0A0A0E),
+                borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+              ),
+              child: Column(
+                children: [
+                  Container(
+                    margin: const EdgeInsets.only(top: 12, bottom: 8),
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: Colors.white24,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Row(
+                          children: [
+                            const Icon(Icons.crop_free, color: Color(0xFF38BDF8), size: 18),
+                            const SizedBox(width: 8),
+                            Text(
+                              'SPATIAL OCR CROP & ZOOM',
+                              style: GoogleFonts.spaceGrotesk(
+                                color: Colors.white,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 13,
+                                letterSpacing: 1.0,
+                              ),
+                            ),
+                          ],
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.close, color: Colors.white70, size: 20),
+                          onPressed: () => Navigator.pop(ctx),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const Divider(color: Colors.white12, height: 1),
+                  Expanded(
+                    child: SpatialBoxOverlay(
+                      imagePath: widget.receipt.imagePath,
+                      boxes: boxes,
+                      selectedBox: selected,
+                      enableZoom: true,
+                      onBoxSelected: (box) {
+                        setModalState(() {
+                          selected = box;
+                        });
+                      },
+                    ),
+                  ),
+                  if (selected != null)
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      color: const Color(0xFF13131A),
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 12,
+                            height: 12,
+                            decoration: BoxDecoration(
+                              color: selected!.color,
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              selected!.value ?? selected!.label,
+                              style: GoogleFonts.jetBrainsMono(
+                                color: Colors.white,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
   }
 
   Future<void> _saveReceipt() async {
@@ -134,6 +334,31 @@ class _ReviewPageState extends ConsumerState<ReviewPage> {
       );
 
       await ref.read(receiptListProvider.notifier).addReceipt(updatedReceipt);
+
+      // Persist user corrections to episodic memory for continuous local adaptation
+      try {
+        final vlmService = ref.read(vlmEngineServiceProvider);
+        for (final itemWrapper in _items) {
+          final item = itemWrapper.item;
+          if (item.mainCategory != null && item.description.trim().isNotEmpty) {
+            unawaited(vlmService.recordUserCorrection(
+              rawName: item.description,
+              correctedName: item.description,
+              mainCategory: item.mainCategory!,
+              subCategory: item.subCategory ?? '',
+              necessity: item.necessity.name,
+              merchantName: _merchantController.text,
+            ));
+          }
+        }
+
+        // Stage sanitized ground truth sample for local continuous learning
+        final datasetContrib = ref.read(datasetContributionServiceProvider);
+        unawaited(datasetContrib.stageVerifiedReceipt(
+          receipt: updatedReceipt,
+          imagePath: widget.receipt.imagePath,
+        ));
+      } catch (_) {}
 
       if (mounted) {
         context.go('/home');
@@ -202,21 +427,57 @@ class _ReviewPageState extends ConsumerState<ReviewPage> {
       body: Stack(
         children: [
           Positioned.fill(
-            child: UniversalReceiptImage(
-              imagePath: widget.receipt.imagePath,
-              receiptId: widget.receipt.id,
-              fit: BoxFit.cover,
-              alignment: Alignment.topCenter,
-              color: Colors.black.withOpacity(0.5),
-              colorBlendMode: BlendMode.darken,
-              errorBuilder: (context, error, stackTrace) => Container(
-                color: _getBgColor(context),
-                alignment: Alignment.center,
-                child: Icon(
-                  Icons.receipt_long_outlined,
-                  size: 64,
-                  color: _getMutedColor(context).withOpacity(0.25),
-                ),
+            child: GestureDetector(
+              onTap: _showSpatialVisualizerModal,
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  UniversalReceiptImage(
+                    imagePath: widget.receipt.imagePath,
+                    receiptId: widget.receipt.id,
+                    fit: BoxFit.cover,
+                    alignment: Alignment.topCenter,
+                    color: Colors.black.withOpacity(0.5),
+                    colorBlendMode: BlendMode.darken,
+                    errorBuilder: (context, error, stackTrace) => Container(
+                      color: _getBgColor(context),
+                      alignment: Alignment.center,
+                      child: Icon(
+                        Icons.receipt_long_outlined,
+                        size: 64,
+                        color: _getMutedColor(context).withOpacity(0.25),
+                      ),
+                    ),
+                  ),
+                  Positioned(
+                    top: 16,
+                    right: 16,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withOpacity(0.75),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: const Color(0xFF38BDF8).withOpacity(0.5)),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.zoom_in, color: Color(0xFF38BDF8), size: 14),
+                          const SizedBox(width: 4),
+                          Text(
+                            'SPATIAL CROP & ZOOM',
+                            style: GoogleFonts.spaceGrotesk(
+                              color: const Color(0xFF38BDF8),
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                              letterSpacing: 0.8,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
           ),
@@ -349,7 +610,75 @@ class _ReviewPageState extends ConsumerState<ReviewPage> {
                                       ),
                                     ],
                                   ).animate().fadeIn(delay: 100.ms),
-                                  const SizedBox(height: 16),
+                                  const SizedBox(height: 12),
+
+                                  // Ground-Truth Feedback Badge
+                                  if (_hasUserEdits)
+                                    Container(
+                                      margin: const EdgeInsets.only(bottom: 12),
+                                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFF10B981).withOpacity(0.12),
+                                        borderRadius: BorderRadius.circular(10),
+                                        border: Border.all(color: const Color(0xFF10B981).withOpacity(0.4)),
+                                      ),
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          const Icon(Icons.check_circle_outline, color: Color(0xFF10B981), size: 14),
+                                          const SizedBox(width: 6),
+                                          Text(
+                                            '✓ Corrected (Training Ground-Truth Recorded)',
+                                            style: GoogleFonts.jetBrainsMono(
+                                              color: const Color(0xFF10B981),
+                                              fontSize: 11,
+                                              fontWeight: FontWeight.bold,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ).animate().fadeIn().slideY(begin: -0.1),
+
+                                  // Asset / eVault Auto-Detector Alert
+                                  if (_autoDetectedAssets)
+                                    Container(
+                                      margin: const EdgeInsets.only(bottom: 14),
+                                      padding: const EdgeInsets.all(12),
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFF0891B2).withOpacity(0.12),
+                                        borderRadius: BorderRadius.circular(12),
+                                        border: Border.all(color: const Color(0xFF0891B2).withOpacity(0.4)),
+                                      ),
+                                      child: Row(
+                                        children: [
+                                          const Icon(Icons.shield_outlined, color: Color(0xFF0891B2), size: 20),
+                                          const SizedBox(width: 10),
+                                          Expanded(
+                                            child: Column(
+                                              crossAxisAlignment: CrossAxisAlignment.start,
+                                              children: [
+                                                Text(
+                                                  'High-Value Asset Detected',
+                                                  style: GoogleFonts.spaceGrotesk(
+                                                    fontSize: 12,
+                                                    fontWeight: FontWeight.bold,
+                                                    color: _getTextColor(context),
+                                                  ),
+                                                ),
+                                                Text(
+                                                  'Hardware item recognized. Tap "+ Vault" on the item to track in Digital Vault for warranty.',
+                                                  style: GoogleFonts.spaceGrotesk(
+                                                    fontSize: 11,
+                                                    color: _getMutedColor(context),
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ).animate().fadeIn().slideY(begin: -0.1),
+                                  const SizedBox(height: 4),
                                 ],
                               ),
                             ),

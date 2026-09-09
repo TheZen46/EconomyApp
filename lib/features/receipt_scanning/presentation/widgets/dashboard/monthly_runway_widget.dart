@@ -8,10 +8,18 @@ import '../../providers/receipt_provider.dart';
 import '../../../../boxes/data/providers/boxes_provider.dart';
 import '../interactive_hover.dart';
 
+/// Widget that computes and visualizes the user's monthly runway and cash flow health.
+///
+/// Calculates real burn rate from current month's receipts, factors in liquid
+/// balances and projected recurring incomes, and enables interactive scenario forecasting.
 class MonthlyRunwayWidget extends ConsumerWidget {
+  /// The collection of receipts used to compute burn metrics.
   final List<Receipt> receipts;
+
+  /// Whether the UI is currently rendered in dark mode.
   final bool isDark;
 
+  /// Creates a new [MonthlyRunwayWidget] instance.
   const MonthlyRunwayWidget({
     super.key,
     required this.receipts,
@@ -33,13 +41,13 @@ class MonthlyRunwayWidget extends ConsumerWidget {
     final projectedIncome = ref.watch(projectedIncomeProvider);
     
     // Use user-provided balance if available, otherwise sum remaining box budgets
-    double effectiveBalance = currentBalance > 0 
+    final double effectiveBalance = currentBalance > 0 
         ? currentBalance 
         : boxes.fold(0.0, (sum, b) => sum + (b.budget - b.spent));
     
     // Add projected income to runway calculation if monthly burn > income
-    double netBurn = monthlyBurn - projectedIncome;
-    final runwayMonths = netBurn > 0 ? (effectiveBalance / netBurn) : 99.9; // If income > burn, runway is infinite
+    final double netBurn = monthlyBurn - projectedIncome;
+    final double runwayMonths = netBurn > 0 ? (effectiveBalance / netBurn) : 99.9; // If income >= burn, runway is infinite
     
     final fgCol = colorScheme.onSurface;
     final muted = colorScheme.onSurfaceVariant;
@@ -93,9 +101,14 @@ class MonthlyRunwayWidget extends ConsumerWidget {
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                 padding: const EdgeInsets.symmetric(vertical: 16),
               ),
-              onPressed: () {
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Generating forecast...')));
-              },
+              onPressed: () => _showForecastDialog(
+                context,
+                monthlyBurn: monthlyBurn,
+                projectedIncome: projectedIncome,
+                effectiveBalance: effectiveBalance,
+                netBurn: netBurn,
+                runwayMonths: runwayMonths,
+              ),
               child: Text('Generate Forecast', style: GoogleFonts.spaceGrotesk(fontWeight: FontWeight.w600)),
             ),
           ),
@@ -110,6 +123,129 @@ class MonthlyRunwayWidget extends ConsumerWidget {
       children: [
         Text(label, style: GoogleFonts.spaceGrotesk(color: muted)),
         Text(value, style: GoogleFonts.jetBrainsMono(color: fgCol, fontWeight: FontWeight.w500)),
+      ],
+    );
+  }
+
+  void _showForecastDialog(
+    BuildContext context, {
+    required double monthlyBurn,
+    required double projectedIncome,
+    required double effectiveBalance,
+    required double netBurn,
+    required double runwayMonths,
+  }) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final fgCol = colorScheme.onSurface;
+    final muted = colorScheme.onSurfaceVariant;
+
+    final double netMonthlyCashflow = projectedIncome - monthlyBurn;
+    final double balance3M = effectiveBalance + (netMonthlyCashflow * 3);
+    final double balance6M = effectiveBalance + (netMonthlyCashflow * 6);
+    final double balance12M = effectiveBalance + (netMonthlyCashflow * 12);
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: colorScheme.surface,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Row(
+          children: [
+            Icon(Icons.auto_graph_rounded, color: colorScheme.primary, size: 22),
+            const SizedBox(width: 10),
+            Text(
+              'Liquidity & Burn Forecast',
+              style: GoogleFonts.spaceGrotesk(fontSize: 18, fontWeight: FontWeight.bold, color: fgCol),
+            ),
+          ],
+        ),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: netMonthlyCashflow >= 0
+                      ? colorScheme.primary.withValues(alpha: 0.1)
+                      : colorScheme.error.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: netMonthlyCashflow >= 0
+                        ? colorScheme.primary.withValues(alpha: 0.3)
+                        : colorScheme.error.withValues(alpha: 0.3),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      netMonthlyCashflow >= 0 ? Icons.trending_up_rounded : Icons.trending_down_rounded,
+                      color: netMonthlyCashflow >= 0 ? colorScheme.primary : colorScheme.error,
+                      size: 20,
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        netMonthlyCashflow >= 0
+                            ? 'Net Positive Cashflow (+ \$${netMonthlyCashflow.toStringAsFixed(2)}/mo)'
+                            : 'Deficit Burn Rate (- \$${(-netMonthlyCashflow).toStringAsFixed(2)}/mo)',
+                        style: GoogleFonts.spaceGrotesk(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: fgCol,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
+              Text(
+                'PROJECTED LIQUIDITY BALANCES',
+                style: GoogleFonts.spaceGrotesk(fontSize: 10, letterSpacing: 1.2, color: muted, fontWeight: FontWeight.w600),
+              ),
+              const SizedBox(height: 12),
+              _buildForecastRow('3-Month Horizon', balance3M, colorScheme),
+              const Divider(height: 16),
+              _buildForecastRow('6-Month Horizon', balance6M, colorScheme),
+              const Divider(height: 16),
+              _buildForecastRow('12-Month Horizon', balance12M, colorScheme),
+              const SizedBox(height: 16),
+              Text(
+                runwayMonths >= 99.9
+                    ? 'At current rates, liquidity is self-sustaining indefinitely.'
+                    : 'Estimated depletion runway: ${runwayMonths.toStringAsFixed(1)} months remaining.',
+                style: GoogleFonts.spaceGrotesk(fontSize: 12, color: muted, fontStyle: FontStyle.italic),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text('Close', style: GoogleFonts.spaceGrotesk(color: colorScheme.primary, fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildForecastRow(String horizon, double balance, ColorScheme colorScheme) {
+    final bool isPositive = balance >= 0;
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(horizon, style: GoogleFonts.spaceGrotesk(fontSize: 13, color: colorScheme.onSurfaceVariant)),
+        Text(
+          '\$${balance.toStringAsFixed(2)}',
+          style: GoogleFonts.jetBrainsMono(
+            fontSize: 14,
+            fontWeight: FontWeight.bold,
+            color: isPositive ? colorScheme.onSurface : colorScheme.error,
+          ),
+        ),
       ],
     );
   }

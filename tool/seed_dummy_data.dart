@@ -1,5 +1,5 @@
-﻿import 'dart:io';
-import 'package:supabase/supabase.dart';
+import 'dart:io';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
 
 void main() async {

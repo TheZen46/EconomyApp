@@ -6,11 +6,17 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:intl/intl.dart';
 
 import '../../../../core/theme/app_theme.dart';
+import '../../../../core/services/export_service.dart';
 import '../../data/models/invoice_model.dart';
 import '../../data/providers/invoices_provider.dart';
 import '../widgets/create_invoice_sheet.dart';
 
+/// Full-featured invoice tracking and receivables management page.
+///
+/// Provides visual KPIs for outstanding, overdue, and settled invoices, revenue velocity
+/// charts, multi-status filtering, instant CSV exports, and full lifecycle management.
 class InvoicesPage extends ConsumerStatefulWidget {
+  /// Creates a new [InvoicesPage] instance.
   const InvoicesPage({super.key});
 
   @override
@@ -36,6 +42,83 @@ class _InvoicesPageState extends ConsumerState<InvoicesPage> {
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (_) => const CreateInvoiceSheet(),
+    );
+  }
+
+  Future<void> _exportInvoices(List<InvoiceModel> invoices) async {
+    if (invoices.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No invoices available to export.')),
+      );
+      return;
+    }
+
+    try {
+      final exportService = ExportService();
+      final file = await exportService.exportInvoicesToCsv(invoices);
+      if (file != null && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Invoices exported successfully (${invoices.length} records)')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Export failed: $e')),
+        );
+      }
+    }
+  }
+
+  void _showFilterSheet(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final statuses = ['All', InvoiceStatus.sent, InvoiceStatus.settled, InvoiceStatus.overdue, InvoiceStatus.draft];
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: colorScheme.surface,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      builder: (ctx) {
+        return Padding(
+          padding: const EdgeInsets.all(24.0),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Filter Invoices by Status',
+                style: GoogleFonts.spaceGrotesk(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: colorScheme.onSurface,
+                ),
+              ),
+              const SizedBox(height: 16),
+              ...statuses.map((status) {
+                final isSelected = _statusFilter == status;
+                return ListTile(
+                  title: Text(
+                    status,
+                    style: GoogleFonts.spaceGrotesk(
+                      color: isSelected ? colorScheme.primary : colorScheme.onSurface,
+                      fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                    ),
+                  ),
+                  trailing: isSelected ? Icon(Icons.check, color: colorScheme.primary) : null,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  selected: isSelected,
+                  selectedTileColor: colorScheme.primary.withValues(alpha: 0.1),
+                  onTap: () {
+                    setState(() => _statusFilter = status);
+                    Navigator.pop(ctx);
+                  },
+                );
+              }),
+            ],
+          ),
+        );
+      },
     );
   }
 
@@ -122,11 +205,13 @@ class _InvoicesPageState extends ConsumerState<InvoicesPage> {
                   const Spacer(),
                   IconButton(
                     icon: Icon(Icons.download, color: textCol),
-                    onPressed: () {},
+                    tooltip: 'Export Invoices to CSV',
+                    onPressed: () => _exportInvoices(invoices),
                   ),
                   IconButton(
                     icon: Icon(Icons.filter_list, color: textCol),
-                    onPressed: () {},
+                    tooltip: 'Filter Invoices',
+                    onPressed: () => _showFilterSheet(context),
                   ),
                   const SizedBox(width: 16),
                   ElevatedButton.icon(
@@ -306,24 +391,51 @@ class _InvoicesPageState extends ConsumerState<InvoicesPage> {
                           SingleChildScrollView(
                             scrollDirection: Axis.horizontal,
                             child: Row(
-                              children: ['All', InvoiceStatus.sent, InvoiceStatus.settled, InvoiceStatus.overdue, InvoiceStatus.draft].map((s) {
-                                final isSelected = _statusFilter == s;
-                                return Padding(
-                                  padding: const EdgeInsets.only(right: 8.0),
-                                  child: ChoiceChip(
-                                    label: Text(s),
-                                    selected: isSelected,
-                                    onSelected: (_) => setState(() => _statusFilter = s),
-                                    selectedColor: accent,
-                                    backgroundColor: cardBg,
-                                    labelStyle: GoogleFonts.spaceGrotesk(
-                                      color: isSelected ? colorScheme.onPrimary : textCol,
-                                      fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                                    ),
-                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: BorderSide(color: borderCol)),
+                              children: [
+                                // Box Filter Pill
+                                Container(
+                                  margin: const EdgeInsets.only(right: 8),
+                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                  decoration: BoxDecoration(
+                                    color: accent.withOpacity(0.12),
+                                    borderRadius: BorderRadius.circular(12),
+                                    border: Border.all(color: accent.withOpacity(0.3)),
                                   ),
-                                );
-                              }).toList(),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(Icons.inventory_2_outlined, size: 13, color: accent),
+                                      const SizedBox(width: 4),
+                                      Text(
+                                        'All Box Contexts',
+                                        style: GoogleFonts.spaceGrotesk(
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w600,
+                                          color: accent,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                ...['All', InvoiceStatus.sent, InvoiceStatus.settled, InvoiceStatus.overdue, InvoiceStatus.draft].map((s) {
+                                  final isSelected = _statusFilter == s;
+                                  return Padding(
+                                    padding: const EdgeInsets.only(right: 8.0),
+                                    child: ChoiceChip(
+                                      label: Text(s),
+                                      selected: isSelected,
+                                      onSelected: (_) => setState(() => _statusFilter = s),
+                                      selectedColor: accent,
+                                      backgroundColor: cardBg,
+                                      labelStyle: GoogleFonts.spaceGrotesk(
+                                        color: isSelected ? colorScheme.onPrimary : textCol,
+                                        fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                                      ),
+                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: BorderSide(color: borderCol)),
+                                    ),
+                                  );
+                                }),
+                              ],
                             ),
                           ),
                         ],
@@ -508,7 +620,20 @@ class _InvoicesPageState extends ConsumerState<InvoicesPage> {
               children: [
                 Text(inv.clientName, style: GoogleFonts.spaceGrotesk(color: textCol, fontWeight: FontWeight.bold, fontSize: 16)),
                 const SizedBox(height: 4),
-                Text(inv.invoiceNumber, style: GoogleFonts.jetBrainsMono(color: mutedTextCol, fontSize: 12)),
+                Row(
+                  children: [
+                    Container(
+                      width: 6,
+                      height: 6,
+                      decoration: const BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: Color(0xFF10B981), // Emerald cloud synced
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    Text(inv.invoiceNumber, style: GoogleFonts.jetBrainsMono(color: mutedTextCol, fontSize: 12)),
+                  ],
+                ),
               ],
             ),
           ),

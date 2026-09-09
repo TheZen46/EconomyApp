@@ -1,0 +1,33 @@
+﻿# GBNF Grammar for Canonical Receipt Intelligence Extraction
+# Enforces 100% syntactically valid JSON with typed fields and taxonomy constraints
+
+root ::= "{" ws "\"merchant_name\":" ws string "," ws "\"date\":" ws date-iso "," ws "\"currency\":" ws currency-iso "," ws "\"items\":" ws item-array "," ws "\"tax_breakdown\":" ws tax-array "," ws "\"total_amount\":" ws number "," ws "\"confidence_score\":" ws float-unit ws "}"
+
+# --- Line Items Array ---
+item-array ::= "[" ws (item ("," ws item)*)? ws "]"
+
+item ::= "{" ws "\"raw_name\":" ws string "," ws "\"normalized_name\":" ws string "," ws "\"category\":" ws category-string "," ws "\"quantity\":" ws integer "," ws "\"unit_price\":" ws number "," ws "\"total_price\":" ws number ws "}"
+
+# --- Tax Breakdown Array ---
+tax-array ::= "[" ws (tax-entry ("," ws tax-entry)*)? ws "]"
+
+tax-entry ::= "{" ws "\"rate\":" ws number "," ws "\"tax_amount\":" ws number ws "}"
+
+# --- Category Taxonomy Constrained Vocabulary ---
+category-string ::= "\"" ("Groceries" | "Food & Dining" | "Transportation" | "Utilities" | "Electronics" | "Health & Beauty" | "Entertainment" | "Home & Garden" | "Clothing" | "Office Supplies" | "Subscriptions" | "General") "\""
+
+# --- Format Types ---
+date-iso ::= "\"" [0-9] [0-9] [0-9] [0-9] "-" [0-1] [0-9] "-" [0-3] [0-9] "\""
+
+currency-iso ::= "\"" ("USD" | "EUR" | "GBP" | "JPY" | "CAD" | "AUD" | "CHF" | "CNY" | "INR" | "BRL") "\""
+
+# --- Fundamental JSON Primitives ---
+string ::= "\"" ([^"\\] | "\\" (["\\/bfnrt] | "u" [0-9a-fA-F] [0-9a-fA-F] [0-9a-fA-F] [0-9a-fA-F]))* "\""
+
+integer ::= [0-9]+
+
+number ::= ("-"? [0-9]+ ("." [0-9]+)?)
+
+float-unit ::= ("0" ("." [0-9]+)? | "1" ("." "0"+)?)
+
+ws ::= [ \t\n\r]*

@@ -3,13 +3,21 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:fl_chart/fl_chart.dart';
-import 'dart:math';
+import 'package:go_router/go_router.dart';
+import 'package:intl/intl.dart';
 
 import '../../data/providers/boxes_provider.dart';
 import '../../data/models/box_model.dart';
 import '../widgets/box_creator_sheet.dart';
+import '../../../receipt_scanning/domain/entities/receipt.dart';
+import '../../../receipt_scanning/presentation/providers/receipt_provider.dart';
 
+/// Page displaying activity contexts ("Boxes") for compartmentalized expense tracking.
+///
+/// Enables users to switch active spending contexts, configure budgets, visualize
+/// 14-day velocity charts, and inspect box-specific receipt histories.
 class BoxesPage extends ConsumerStatefulWidget {
+  /// Creates a new [BoxesPage] instance.
   const BoxesPage({super.key});
 
   @override
@@ -42,12 +50,11 @@ class _BoxesPageState extends ConsumerState<BoxesPage> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
+    final colorScheme = theme.colorScheme;
     final boxes = ref.watch(boxesProvider);
     final activeId = ref.watch(activeBoxIdProvider);
-
-    final bg = isDark ? const Color(0xFF0A0A0A) : const Color(0xFFFAFAFA);
-    final accent = const Color(0xFF002FA7);
+    final receiptsAsync = ref.watch(receiptListProvider);
+    final allReceipts = receiptsAsync.valueOrNull ?? [];
 
     // Responsive layout
     final isWide = MediaQuery.of(context).size.width > 800;
@@ -58,12 +65,12 @@ class _BoxesPageState extends ConsumerState<BoxesPage> {
             children: [
               Expanded(
                 flex: 1,
-                child: _buildBoxList(context, boxes, activeId, isDark),
+                child: _buildBoxList(context, boxes, activeId, colorScheme),
               ),
               const SizedBox(width: 24),
               Expanded(
                 flex: 2,
-                child: _buildDetailPanel(context, boxes, activeId, isDark),
+                child: _buildDetailPanel(context, boxes, activeId, allReceipts, colorScheme),
               ),
             ],
           )
@@ -71,23 +78,23 @@ class _BoxesPageState extends ConsumerState<BoxesPage> {
             children: [
               Expanded(
                 flex: 2,
-                child: _buildBoxList(context, boxes, activeId, isDark),
+                child: _buildBoxList(context, boxes, activeId, colorScheme),
               ),
               const SizedBox(height: 16),
               Expanded(
                 flex: 3,
-                child: _buildDetailPanel(context, boxes, activeId, isDark),
+                child: _buildDetailPanel(context, boxes, activeId, allReceipts, colorScheme),
               ),
             ],
           );
 
     return Scaffold(
-      backgroundColor: bg,
+      backgroundColor: colorScheme.surface,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
         leading: IconButton(
-          icon: Icon(Icons.arrow_back, color: isDark ? Colors.white : Colors.black),
+          icon: Icon(Icons.arrow_back, color: colorScheme.onSurface),
           onPressed: () => Navigator.of(context).pop(),
         ),
         title: Column(
@@ -96,7 +103,7 @@ class _BoxesPageState extends ConsumerState<BoxesPage> {
             Text(
               'Boxes',
               style: GoogleFonts.spaceGrotesk(
-                color: isDark ? Colors.white : Colors.black,
+                color: colorScheme.onSurface,
                 fontWeight: FontWeight.bold,
                 fontSize: 24,
               ),
@@ -104,7 +111,7 @@ class _BoxesPageState extends ConsumerState<BoxesPage> {
             Text(
               'Activity Contexts',
               style: GoogleFonts.spaceGrotesk(
-                color: isDark ? Colors.white70 : Colors.black54,
+                color: colorScheme.onSurfaceVariant,
                 fontSize: 14,
               ),
             ),
@@ -116,9 +123,9 @@ class _BoxesPageState extends ConsumerState<BoxesPage> {
             child: IconButton(
               onPressed: () => _showBoxCreator(context),
               icon: CircleAvatar(
-                backgroundColor: accent,
+                backgroundColor: colorScheme.primary,
                 radius: 18,
-                child: const Icon(Icons.add, color: Colors.white, size: 20),
+                child: Icon(Icons.add, color: colorScheme.onPrimary, size: 20),
               ),
             ),
           ),
@@ -131,7 +138,7 @@ class _BoxesPageState extends ConsumerState<BoxesPage> {
     );
   }
 
-  Widget _buildBoxList(BuildContext context, List<BoxModel> boxes, String activeId, bool isDark) {
+  Widget _buildBoxList(BuildContext context, List<BoxModel> boxes, String activeId, ColorScheme colorScheme) {
     return ListView.separated(
       itemCount: boxes.length,
       separatorBuilder: (ctx, idx) => const SizedBox(height: 16),
@@ -146,16 +153,16 @@ class _BoxesPageState extends ConsumerState<BoxesPage> {
             duration: const Duration(milliseconds: 300),
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: isDark ? const Color(0xFF121212) : Colors.white,
+              color: colorScheme.surfaceContainer,
               borderRadius: BorderRadius.circular(16),
               border: Border.all(
-                color: isSelected ? const Color(0xFF002FA7).withOpacity(0.5) : (isDark ? Colors.white.withOpacity(0.06) : Colors.black.withOpacity(0.05)),
+                color: isSelected ? colorScheme.primary : colorScheme.outline.withValues(alpha: 0.3),
                 width: isSelected ? 2 : 1,
               ),
               boxShadow: isSelected
                   ? [
                       BoxShadow(
-                        color: const Color(0xFF002FA7).withOpacity(0.2),
+                        color: colorScheme.primary.withValues(alpha: 0.2),
                         blurRadius: 12,
                         offset: const Offset(0, 4),
                       )
@@ -179,7 +186,7 @@ class _BoxesPageState extends ConsumerState<BoxesPage> {
                           Text(
                             box.name,
                             style: GoogleFonts.spaceGrotesk(
-                              color: isDark ? Colors.white : Colors.black,
+                              color: colorScheme.onSurface,
                               fontWeight: FontWeight.w600,
                               fontSize: 16,
                             ),
@@ -187,7 +194,7 @@ class _BoxesPageState extends ConsumerState<BoxesPage> {
                           Text(
                             box.id == 'main' ? 'Default Context' : 'Custom Box',
                             style: GoogleFonts.spaceGrotesk(
-                              color: isDark ? Colors.white54 : Colors.black45,
+                              color: colorScheme.onSurfaceVariant,
                               fontSize: 12,
                             ),
                           ),
@@ -198,13 +205,13 @@ class _BoxesPageState extends ConsumerState<BoxesPage> {
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                         decoration: BoxDecoration(
-                          color: const Color(0xFF002FA7).withOpacity(0.1),
+                          color: colorScheme.primary.withValues(alpha: 0.1),
                           borderRadius: BorderRadius.circular(12),
                         ),
                         child: Text(
                           'Active',
                           style: GoogleFonts.spaceGrotesk(
-                            color: const Color(0xFF002FA7),
+                            color: colorScheme.primary,
                             fontWeight: FontWeight.bold,
                             fontSize: 12,
                           ),
@@ -219,7 +226,7 @@ class _BoxesPageState extends ConsumerState<BoxesPage> {
                     Text(
                       '${box.currency} ${box.spent.toStringAsFixed(2)}',
                       style: GoogleFonts.jetBrainsMono(
-                        color: isDark ? Colors.white : Colors.black,
+                        color: colorScheme.onSurface,
                         fontWeight: FontWeight.bold,
                         fontSize: 14,
                       ),
@@ -227,7 +234,7 @@ class _BoxesPageState extends ConsumerState<BoxesPage> {
                     Text(
                       box.budget > 0 ? '/ ${box.budget.toStringAsFixed(0)}' : '∞',
                       style: GoogleFonts.jetBrainsMono(
-                        color: isDark ? Colors.white54 : Colors.black45,
+                        color: colorScheme.onSurfaceVariant,
                         fontSize: 14,
                       ),
                     ),
@@ -237,9 +244,9 @@ class _BoxesPageState extends ConsumerState<BoxesPage> {
                   const SizedBox(height: 8),
                   LinearProgressIndicator(
                     value: (box.spent / box.budget).clamp(0.0, 1.0),
-                    backgroundColor: isDark ? Colors.white12 : Colors.black12,
+                    backgroundColor: colorScheme.outline.withValues(alpha: 0.2),
                     valueColor: AlwaysStoppedAnimation<Color>(
-                      box.spent > box.budget ? Colors.red : const Color(0xFF002FA7),
+                      box.spent > box.budget ? colorScheme.error : colorScheme.primary,
                     ),
                     borderRadius: BorderRadius.circular(4),
                   ),
@@ -252,13 +259,19 @@ class _BoxesPageState extends ConsumerState<BoxesPage> {
     );
   }
 
-  Widget _buildDetailPanel(BuildContext context, List<BoxModel> boxes, String activeId, bool isDark) {
+  Widget _buildDetailPanel(
+    BuildContext context,
+    List<BoxModel> boxes,
+    String activeId,
+    List<Receipt> allReceipts,
+    ColorScheme colorScheme,
+  ) {
     if (_selectedBoxId == null) {
       return Center(
         child: Text(
           'Select a box to view details',
           style: GoogleFonts.spaceGrotesk(
-            color: isDark ? Colors.white54 : Colors.black54,
+            color: colorScheme.onSurfaceVariant,
             fontSize: 16,
           ),
         ),
@@ -269,6 +282,15 @@ class _BoxesPageState extends ConsumerState<BoxesPage> {
     final isActive = box.id == activeId;
     final remaining = box.budget > 0 ? box.budget - box.spent : 0.0;
     final isOverBudget = box.budget > 0 && box.spent > box.budget;
+
+    // Filter receipts belonging to this box
+    final boxReceipts = allReceipts.where((r) {
+      if (box.id == 'main') {
+        return r.boxId == null || r.boxId == 'main';
+      }
+      return r.boxId == box.id;
+    }).toList()
+      ..sort((a, b) => b.date.compareTo(a.date));
 
     return AnimatedSwitcher(
       duration: const Duration(milliseconds: 300),
@@ -282,10 +304,10 @@ class _BoxesPageState extends ConsumerState<BoxesPage> {
               Container(
                 padding: const EdgeInsets.all(24),
                 decoration: BoxDecoration(
-                  color: isDark ? const Color(0xFF0F0F0F) : Colors.white,
+                  color: colorScheme.surfaceContainer,
                   borderRadius: BorderRadius.circular(24),
                   border: Border.all(
-                    color: isDark ? Colors.white.withOpacity(0.06) : Colors.black.withOpacity(0.04),
+                    color: colorScheme.outline.withValues(alpha: 0.3),
                   ),
                 ),
                 child: Row(
@@ -303,7 +325,7 @@ class _BoxesPageState extends ConsumerState<BoxesPage> {
                           Text(
                             box.name,
                             style: GoogleFonts.spaceGrotesk(
-                              color: isDark ? Colors.white : Colors.black,
+                              color: colorScheme.onSurface,
                               fontWeight: FontWeight.bold,
                               fontSize: 24,
                             ),
@@ -311,7 +333,7 @@ class _BoxesPageState extends ConsumerState<BoxesPage> {
                           Text(
                             box.keywords.isNotEmpty ? box.keywords : 'No keywords',
                             style: GoogleFonts.spaceGrotesk(
-                              color: isDark ? Colors.white54 : Colors.black54,
+                              color: colorScheme.onSurfaceVariant,
                               fontSize: 14,
                             ),
                           ),
@@ -320,7 +342,7 @@ class _BoxesPageState extends ConsumerState<BoxesPage> {
                     ),
                     IconButton(
                       onPressed: () => _showBoxCreator(context, editBoxId: box.id),
-                      icon: Icon(Icons.settings_outlined, color: isDark ? Colors.white : Colors.black),
+                      icon: Icon(Icons.settings_outlined, color: colorScheme.onSurface),
                     ),
                   ],
                 ),
@@ -338,8 +360,8 @@ class _BoxesPageState extends ConsumerState<BoxesPage> {
                           ref.read(activeBoxIdProvider.notifier).state = box.id;
                         },
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF002FA7),
-                    disabledBackgroundColor: isDark ? Colors.white12 : Colors.black12,
+                    backgroundColor: colorScheme.primary,
+                    disabledBackgroundColor: colorScheme.surfaceContainerHighest,
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(16),
                     ),
@@ -347,7 +369,7 @@ class _BoxesPageState extends ConsumerState<BoxesPage> {
                   child: Text(
                     isActive ? 'Currently Active' : 'Activate Box',
                     style: GoogleFonts.spaceGrotesk(
-                      color: isActive ? (isDark ? Colors.white54 : Colors.black54) : Colors.white,
+                      color: isActive ? colorScheme.onSurfaceVariant : colorScheme.onPrimary,
                       fontWeight: FontWeight.bold,
                       fontSize: 16,
                     ),
@@ -365,10 +387,10 @@ class _BoxesPageState extends ConsumerState<BoxesPage> {
                 crossAxisSpacing: 16,
                 childAspectRatio: 2,
                 children: [
-                  _buildKpiCard('Budget', box.budget > 0 ? '${box.currency} ${box.budget.toStringAsFixed(0)}' : '∞', isDark),
-                  _buildKpiCard('Spent', '${box.currency} ${box.spent.toStringAsFixed(2)}', isDark),
-                  _buildKpiCard('Remaining', box.budget > 0 ? '${box.currency} ${remaining.toStringAsFixed(2)}' : '∞', isDark, isOverBudget ? Colors.red : null),
-                  _buildKpiCard('Pace', isOverBudget ? 'Over Budget' : 'On Track', isDark, isOverBudget ? Colors.red : const Color(0xFF16a34a)),
+                  _buildKpiCard('Budget', box.budget > 0 ? '${box.currency} ${box.budget.toStringAsFixed(0)}' : '∞', colorScheme),
+                  _buildKpiCard('Spent', '${box.currency} ${box.spent.toStringAsFixed(2)}', colorScheme),
+                  _buildKpiCard('Remaining', box.budget > 0 ? '${box.currency} ${remaining.toStringAsFixed(2)}' : '∞', colorScheme, isOverBudget ? colorScheme.error : null),
+                  _buildKpiCard('Pace', isOverBudget ? 'Over Budget' : 'On Track', colorScheme, isOverBudget ? colorScheme.error : const Color(0xFF16a34a)),
                 ],
               ),
               const SizedBox(height: 24),
@@ -377,7 +399,7 @@ class _BoxesPageState extends ConsumerState<BoxesPage> {
               Text(
                 'Spending Velocity (14 Days)',
                 style: GoogleFonts.spaceGrotesk(
-                  color: isDark ? Colors.white : Colors.black,
+                  color: colorScheme.onSurface,
                   fontWeight: FontWeight.bold,
                   fontSize: 18,
                 ),
@@ -387,27 +409,37 @@ class _BoxesPageState extends ConsumerState<BoxesPage> {
                 height: 200,
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  color: isDark ? const Color(0xFF0F0F0F) : Colors.white,
+                  color: colorScheme.surfaceContainer,
                   borderRadius: BorderRadius.circular(24),
                   border: Border.all(
-                    color: isDark ? Colors.white.withOpacity(0.06) : Colors.black.withOpacity(0.04),
+                    color: colorScheme.outline.withValues(alpha: 0.3),
                   ),
                 ),
-                child: _buildChart(isDark),
+                child: _buildChart(boxReceipts, colorScheme),
               ),
               const SizedBox(height: 24),
 
               // Recent Receipts
               Text(
-                'Recent Receipts',
+                'Recent Receipts (${boxReceipts.length})',
                 style: GoogleFonts.spaceGrotesk(
-                  color: isDark ? Colors.white : Colors.black,
+                  color: colorScheme.onSurface,
                   fontWeight: FontWeight.bold,
                   fontSize: 18,
                 ),
               ),
               const SizedBox(height: 16),
-              ...List.generate(3, (index) => _buildReceiptRow(index, isDark)),
+              if (boxReceipts.isEmpty)
+                Container(
+                  padding: const EdgeInsets.symmetric(vertical: 32),
+                  alignment: Alignment.center,
+                  child: Text(
+                    'No receipts recorded for this box yet.',
+                    style: GoogleFonts.spaceGrotesk(color: colorScheme.onSurfaceVariant, fontSize: 14),
+                  ),
+                )
+              else
+                ...boxReceipts.take(5).map((r) => _buildReceiptRow(context, r, box.currency, colorScheme)),
             ],
           ),
         ),
@@ -415,14 +447,14 @@ class _BoxesPageState extends ConsumerState<BoxesPage> {
     );
   }
 
-  Widget _buildKpiCard(String title, String value, bool isDark, [Color? valueColor]) {
+  Widget _buildKpiCard(String title, String value, ColorScheme colorScheme, [Color? valueColor]) {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF0F0F0F) : Colors.white,
+        color: colorScheme.surfaceContainer,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: isDark ? Colors.white.withOpacity(0.06) : Colors.black.withOpacity(0.04),
+          color: colorScheme.outline.withValues(alpha: 0.3),
         ),
       ),
       child: Column(
@@ -432,7 +464,7 @@ class _BoxesPageState extends ConsumerState<BoxesPage> {
           Text(
             title,
             style: GoogleFonts.spaceGrotesk(
-              color: isDark ? Colors.white54 : Colors.black54,
+              color: colorScheme.onSurfaceVariant,
               fontSize: 12,
             ),
           ),
@@ -440,7 +472,7 @@ class _BoxesPageState extends ConsumerState<BoxesPage> {
           Text(
             value,
             style: GoogleFonts.jetBrainsMono(
-              color: valueColor ?? (isDark ? Colors.white : Colors.black),
+              color: valueColor ?? colorScheme.onSurface,
               fontWeight: FontWeight.bold,
               fontSize: 16,
             ),
@@ -450,29 +482,45 @@ class _BoxesPageState extends ConsumerState<BoxesPage> {
     );
   }
 
-  Widget _buildChart(bool isDark) {
-    // Mock data for 14 days
-    final random = Random(42);
+  Widget _buildChart(List<Receipt> boxReceipts, ColorScheme colorScheme) {
+    final now = DateTime.now();
     final spots = List.generate(14, (index) {
-      return FlSpot(index.toDouble(), random.nextDouble() * 100 + 20);
+      final targetDate = now.subtract(Duration(days: 13 - index));
+      final daySpend = boxReceipts
+          .where((r) =>
+              r.date.year == targetDate.year &&
+              r.date.month == targetDate.month &&
+              r.date.day == targetDate.day)
+          .fold(0.0, (sum, r) => sum + r.totalAmount);
+      return FlSpot(index.toDouble(), daySpend);
     });
+
+    final maxSpend = spots.fold<double>(0.0, (max, spot) => spot.y > max ? spot.y : max);
+    final effectiveMaxY = maxSpend > 0 ? (maxSpend * 1.2).ceilToDouble() : 100.0;
 
     return LineChart(
       LineChartData(
-        gridData: FlGridData(show: false),
+        minY: 0,
+        maxY: effectiveMaxY,
+        gridData: FlGridData(
+          show: true,
+          drawVerticalLine: false,
+          horizontalInterval: effectiveMaxY / 4 > 0 ? effectiveMaxY / 4 : 25,
+          getDrawingHorizontalLine: (val) => FlLine(color: colorScheme.outline.withValues(alpha: 0.1), strokeWidth: 1),
+        ),
         titlesData: FlTitlesData(
           show: true,
-          rightTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
-          topTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+          rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+          topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
           leftTitles: AxisTitles(
             sideTitles: SideTitles(
               showTitles: true,
-              reservedSize: 40,
+              reservedSize: 42,
               getTitlesWidget: (value, meta) {
                 return Text(
                   value.toInt().toString(),
                   style: GoogleFonts.jetBrainsMono(
-                    color: isDark ? Colors.white54 : Colors.black54,
+                    color: colorScheme.onSurfaceVariant,
                     fontSize: 10,
                   ),
                 );
@@ -483,11 +531,13 @@ class _BoxesPageState extends ConsumerState<BoxesPage> {
             sideTitles: SideTitles(
               showTitles: true,
               getTitlesWidget: (value, meta) {
-                if (value % 3 != 0) return const SizedBox();
+                final int idx = value.toInt();
+                if (idx % 3 != 0 && idx != 13) return const SizedBox();
+                final date = now.subtract(Duration(days: 13 - idx));
                 return Text(
-                  'Day ${value.toInt() + 1}',
+                  DateFormat('dd/MM').format(date),
                   style: GoogleFonts.spaceGrotesk(
-                    color: isDark ? Colors.white54 : Colors.black54,
+                    color: colorScheme.onSurfaceVariant,
                     fontSize: 10,
                   ),
                 );
@@ -500,16 +550,16 @@ class _BoxesPageState extends ConsumerState<BoxesPage> {
           LineChartBarData(
             spots: spots,
             isCurved: true,
-            color: const Color(0xFF002FA7),
+            color: colorScheme.primary,
             barWidth: 3,
             isStrokeCapRound: true,
-            dotData: FlDotData(show: false),
+            dotData: const FlDotData(show: false),
             belowBarData: BarAreaData(
               show: true,
               gradient: LinearGradient(
                 colors: [
-                  const Color(0xFF002FA7).withOpacity(0.3),
-                  const Color(0xFF002FA7).withOpacity(0.0),
+                  colorScheme.primary.withValues(alpha: 0.3),
+                  colorScheme.primary.withValues(alpha: 0.0),
                 ],
                 begin: Alignment.topCenter,
                 end: Alignment.bottomCenter,
@@ -521,58 +571,61 @@ class _BoxesPageState extends ConsumerState<BoxesPage> {
     ).animate().fade(duration: const Duration(milliseconds: 600));
   }
 
-  Widget _buildReceiptRow(int index, bool isDark) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF0F0F0F) : Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: isDark ? Colors.white.withOpacity(0.06) : Colors.black.withOpacity(0.04),
+  Widget _buildReceiptRow(BuildContext context, Receipt receipt, String currency, ColorScheme colorScheme) {
+    return GestureDetector(
+      onTap: () => context.push('/review', extra: receipt),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: colorScheme.surfaceContainer,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: colorScheme.outline.withValues(alpha: 0.3),
+          ),
         ),
-      ),
-      child: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              color: isDark ? Colors.white12 : Colors.black.withOpacity(0.05),
-              shape: BoxShape.circle,
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: colorScheme.primary.withValues(alpha: 0.1),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(Icons.receipt_long, color: colorScheme.primary, size: 20),
             ),
-            child: Icon(Icons.receipt_long, color: isDark ? Colors.white70 : Colors.black87, size: 20),
-          ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Receipt Placeholder ${index + 1}',
-                  style: GoogleFonts.spaceGrotesk(
-                    color: isDark ? Colors.white : Colors.black,
-                    fontWeight: FontWeight.w600,
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    receipt.merchantName.isNotEmpty ? receipt.merchantName : 'Receipt',
+                    style: GoogleFonts.spaceGrotesk(
+                      color: colorScheme.onSurface,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
-                ),
-                Text(
-                  '2026-07-2${index + 1}',
-                  style: GoogleFonts.jetBrainsMono(
-                    color: isDark ? Colors.white54 : Colors.black54,
-                    fontSize: 12,
+                  Text(
+                    DateFormat('yyyy-MM-dd').format(receipt.date),
+                    style: GoogleFonts.jetBrainsMono(
+                      color: colorScheme.onSurfaceVariant,
+                      fontSize: 12,
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
-          ),
-          Text(
-            '\$${(index + 1) * 24.50}',
-            style: GoogleFonts.jetBrainsMono(
-              color: isDark ? Colors.white : Colors.black,
-              fontWeight: FontWeight.bold,
-              fontSize: 16,
+            Text(
+              '$currency ${receipt.totalAmount.toStringAsFixed(2)}',
+              style: GoogleFonts.jetBrainsMono(
+                color: colorScheme.onSurface,
+                fontWeight: FontWeight.bold,
+                fontSize: 16,
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

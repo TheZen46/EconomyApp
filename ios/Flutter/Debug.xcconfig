@@ -1,1 +1,3 @@
 #include "Generated.xcconfig"
+
+OTHER_LDFLAGS = $(inherited) -framework Metal -framework Accelerate -framework Foundation -framework LocalAuthentication -lc++

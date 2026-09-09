@@ -63,3 +63,57 @@ key.properties
 
 # Scratch test files with secrets
 test_supabase.dart
+
+# Python virtual environments and caches
+.venv/
+.venv/**
+**/.venv/
+**/.venv/**
+venv/
+venv/**
+**/venv/
+**/venv/**
+__pycache__/
+__pycache__/**
+**/__pycache__/
+**/__pycache__/**
+*.pyc
+
+# VLM Training directories and weights
+tool/vlm_training/.venv/
+tool/vlm_training/data/
+tool/vlm_training/merged_model/
+tool/vlm_training/output_lora/
+tool/vlm_training/training_dataset/
+
+# ML weights, checkpoints, and LoRA adapters
+*.safetensors
+*.pt
+*.pth
+*.bin
+*.gguf
+**/output_lora/
+**/merged_model/
+**/checkpoint-*/
+
+# Native C++ build artifacts and binaries
+native/build/
+native/bin/
+*.dll
+*.exe
+*.so
+*.dylib
+*.a
+*.lib
+*.obj
+*.o
+
+# VLM datasets and raw training media
+assets/raw_receipts/
+tool/vlm_training/**/*.jpg
+tool/vlm_training/**/*.png
+tool/vlm_training/**/*.jpeg
+tool/vlm_training/**/*.json
+tool/vlm_training/**/*.jsonl
+
+

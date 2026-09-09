@@ -11,7 +11,7 @@ class ReceiptItemRow extends ConsumerWidget {
   final ReceiptItem item;
   final VoidCallback onDelete;
   final Function(String) onDescriptionChanged;
-  final Function(ItemNecessity, String?, String?) onTaxonomyChanged; // New combined callback
+  final Function(ItemNecessity, String?, String?) onTaxonomyChanged;
   final Function(String) onPriceChanged;
   final Function(String) onQuantityChanged;
   final ValueChanged<bool> onAssetChanged;
@@ -46,138 +46,233 @@ class ReceiptItemRow extends ConsumerWidget {
           ScaffoldMessenger.of(context).showSnackBar(SnackBar(
             content: Text(!item.isAsset ? 'Marked as Asset (Vault) 🛡️' : 'Removed from Vault'),
             duration: const Duration(milliseconds: 1500),
-            backgroundColor: !item.isAsset ? AppTheme.secondary : Colors.grey,
+            backgroundColor: !item.isAsset ? const Color(0xFF10B981) : Colors.grey,
           ));
         },
         child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
+          padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 14),
           decoration: BoxDecoration(
-            color: item.isAsset ? AppTheme.secondary.withAlpha(25) : AppTheme.surface.withAlpha(76),
-            border: Border(bottom: BorderSide(color: Colors.white.withAlpha(12))),
+            color: item.isAsset ? const Color(0xFF10B981).withOpacity(0.08) : Colors.transparent,
+            border: Border(bottom: BorderSide(color: Colors.white.withOpacity(0.05))),
           ),
-          child: Row(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Necessity Indicator (Click to Cycle)
-              GestureDetector(
-                onTap: () {
-                  // Cycle: Essential -> Discretional -> Junk -> Unknown -> Essential
-                  final nextIndex = (item.necessity.index + 1) % ItemNecessity.values.length;
-                  final next = ItemNecessity.values[nextIndex];
-                  onTaxonomyChanged(next, item.mainCategory, item.subCategory);
-                },
-                child: Container(
-                  width: 12,
-                  height: 12,
-                  margin: const EdgeInsets.only(right: 8),
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: _getNecessityColor(item.necessity),
-                    border: Border.all(color: Colors.white24, width: 1),
-                  ),
-                ),
-              ),
-
-              // Quantity Badge Input (Spacious, legible, and high-contrast)
-              Container(
-                width: 52,
-                height: 32,
-                alignment: Alignment.center,
-                padding: const EdgeInsets.symmetric(horizontal: 4),
-                decoration: BoxDecoration(
-                  color: AppColors.accent.withAlpha(25),
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(
-                    color: AppColors.accent.withAlpha(60),
-                    width: 1,
-                  ),
-                ),
-                child: TextFormField(
-                  initialValue: '${item.quantity}',
-                  textAlign: TextAlign.center,
-                  style: GoogleFonts.jetBrainsMono(
-                    color: AppColors.accent,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 13,
-                  ),
-                  decoration: InputDecoration(
-                    border: InputBorder.none,
-                    isDense: true,
-                    contentPadding: EdgeInsets.zero,
-                    suffixText: '×',
-                    suffixStyle: GoogleFonts.jetBrainsMono(
-                      color: AppColors.accent.withAlpha(180),
-                      fontSize: 11,
-                      fontWeight: FontWeight.bold,
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  // Quantity Badge Input
+                  Container(
+                    width: 48,
+                    height: 32,
+                    alignment: Alignment.center,
+                    padding: const EdgeInsets.symmetric(horizontal: 2),
+                    decoration: BoxDecoration(
+                      color: AppColors.accent.withOpacity(0.12),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: AppColors.accent.withOpacity(0.3),
+                        width: 1,
+                      ),
+                    ),
+                    child: TextFormField(
+                      initialValue: '${item.quantity}',
+                      textAlign: TextAlign.center,
+                      style: GoogleFonts.jetBrainsMono(
+                        color: AppColors.accent,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 13,
+                      ),
+                      decoration: InputDecoration(
+                        border: InputBorder.none,
+                        isDense: true,
+                        contentPadding: EdgeInsets.zero,
+                        suffixText: '×',
+                        suffixStyle: GoogleFonts.jetBrainsMono(
+                          color: AppColors.accent.withOpacity(0.7),
+                          fontSize: 11,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      keyboardType: TextInputType.number,
+                      onChanged: (val) => onQuantityChanged(val.replaceAll(RegExp(r'[^0-9]'), '')),
                     ),
                   ),
-                  keyboardType: TextInputType.number,
-                  onChanged: (val) => onQuantityChanged(val.replaceAll(RegExp(r'[^0-9]'), '')),
-                ),
-              ),
-              const SizedBox(width: 10),
-              
-              // Description & Taxonomy Subtitle
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    TextFormField(
-                      initialValue: item.description,
-                      style: const TextStyle(color: AppTheme.textMain, fontSize: 14),
+                  const SizedBox(width: 10),
+                  
+                  // Description
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        TextFormField(
+                          initialValue: item.description,
+                          style: GoogleFonts.spaceGrotesk(color: AppTheme.textMain, fontSize: 14, fontWeight: FontWeight.w500),
+                          decoration: const InputDecoration(
+                            border: InputBorder.none,
+                            isDense: true,
+                            hintText: 'Item description',
+                            hintStyle: TextStyle(color: AppTheme.textDim),
+                            contentPadding: EdgeInsets.zero,
+                          ),
+                          onChanged: onDescriptionChanged,
+                        ),
+                        // Taxonomy Subtitle
+                        GestureDetector(
+                          onTap: () => _showCategoryPicker(context, ref),
+                          child: Row(
+                            children: [
+                              Text(
+                                _getCategoryText(),
+                                style: TextStyle(
+                                  color: item.mainCategory == null ? AppTheme.textDim.withOpacity(0.6) : AppColors.accent,
+                                  fontSize: 11,
+                                ),
+                              ),
+                              if (item.isAsset) ...[
+                                const SizedBox(width: 6),
+                                const Icon(Icons.shield, color: Color(0xFF10B981), size: 12),
+                                const SizedBox(width: 2),
+                                const Text('Vault Asset', style: TextStyle(color: Color(0xFF10B981), fontSize: 10, fontWeight: FontWeight.bold)),
+                              ],
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+
+                  // Price
+                  SizedBox(
+                    width: 76,
+                    child: TextFormField(
+                      initialValue: item.unitPrice.toStringAsFixed(2),
+                      textAlign: TextAlign.right,
+                      style: GoogleFonts.jetBrainsMono(color: AppTheme.textMain, fontSize: 13, fontWeight: FontWeight.w600),
                       decoration: const InputDecoration(
                         border: InputBorder.none,
                         isDense: true,
-                        hintText: 'Item description',
-                        hintStyle: TextStyle(color: AppTheme.textDim),
-                        contentPadding: EdgeInsets.zero,
+                        prefixText: '\$ ',
+                        prefixStyle: TextStyle(color: AppTheme.textDim, fontSize: 12),
                       ),
-                      onChanged: onDescriptionChanged,
+                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      onChanged: onPriceChanged,
                     ),
-                    // Taxonomy Picker
-                    GestureDetector(
-                      onTap: () => _showCategoryPicker(context, ref),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              
+              // ─── 3-Tier Necessity Interactive Pill Selector ──────────────
+              Wrap(
+                spacing: 6,
+                runSpacing: 4,
+                children: [
+                  _buildNecessityChip(
+                    context,
+                    necessity: ItemNecessity.essential,
+                    label: 'Essential',
+                    icon: Icons.shield_outlined,
+                    color: const Color(0xFF10B981),
+                  ),
+                  _buildNecessityChip(
+                    context,
+                    necessity: ItemNecessity.discretional,
+                    label: 'Discretional',
+                    icon: Icons.auto_awesome_outlined,
+                    color: const Color(0xFF0891B2),
+                  ),
+                  _buildNecessityChip(
+                    context,
+                    necessity: ItemNecessity.junk,
+                    label: 'Junk',
+                    icon: Icons.local_fire_department_outlined,
+                    color: const Color(0xFFEC4899),
+                  ),
+                  // Digital Vault Toggle Chip
+                  InkWell(
+                    borderRadius: BorderRadius.circular(12),
+                    onTap: () => onAssetChanged(!item.isAsset),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: item.isAsset ? const Color(0xFF10B981).withOpacity(0.18) : Colors.white.withOpacity(0.04),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: item.isAsset ? const Color(0xFF10B981) : Colors.white.withOpacity(0.1),
+                          width: 1,
+                        ),
+                      ),
                       child: Row(
+                        mainAxisSize: MainAxisSize.min,
                         children: [
+                          Icon(
+                            item.isAsset ? Icons.verified_user : Icons.verified_user_outlined,
+                            size: 11,
+                            color: item.isAsset ? const Color(0xFF10B981) : AppTheme.textDim,
+                          ),
+                          const SizedBox(width: 4),
                           Text(
-                            _getCategoryText(),
-                            style: TextStyle(
-                              color: item.mainCategory == null ? AppTheme.textDim.withAlpha(127) : AppTheme.primary,
-                              fontSize: 11,
+                            item.isAsset ? 'Vault [Active]' : '+ Vault',
+                            style: GoogleFonts.spaceGrotesk(
+                              fontSize: 10,
+                              fontWeight: item.isAsset ? FontWeight.bold : FontWeight.normal,
+                              color: item.isAsset ? const Color(0xFF10B981) : AppTheme.textDim,
                             ),
                           ),
-                          if (item.isAsset) ...[
-                            const SizedBox(width: 6),
-                            const Icon(Icons.shield, color: AppTheme.secondary, size: 12),
-                            const SizedBox(width: 2),
-                            const Text('Vault', style: TextStyle(color: AppTheme.secondary, fontSize: 10, fontWeight: FontWeight.bold)),
-                          ],
                         ],
                       ),
                     ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 8),
-
-              // Price
-              SizedBox(
-                width: 70,
-                child: TextFormField(
-                  initialValue: item.unitPrice.toStringAsFixed(2),
-                  textAlign: TextAlign.right,
-                  style: const TextStyle(color: AppTheme.textDim, fontSize: 13),
-                  decoration: const InputDecoration(
-                    border: InputBorder.none,
-                    isDense: true,
-                    prefixText: '€',
-                    prefixStyle: TextStyle(color: AppTheme.textDim, fontSize: 12),
                   ),
-                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                  onChanged: onPriceChanged,
-                ),
+                ],
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildNecessityChip(
+    BuildContext context, {
+    required ItemNecessity necessity,
+    required String label,
+    required IconData icon,
+    required Color color,
+  }) {
+    final isSelected = item.necessity == necessity;
+
+    return InkWell(
+      borderRadius: BorderRadius.circular(12),
+      onTap: () => onTaxonomyChanged(necessity, item.mainCategory, item.subCategory),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+        decoration: BoxDecoration(
+          color: isSelected ? color.withOpacity(0.2) : Colors.white.withOpacity(0.04),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: isSelected ? color : Colors.white.withOpacity(0.08),
+            width: isSelected ? 1.2 : 1,
+          ),
+          boxShadow: isSelected
+              ? [BoxShadow(color: color.withOpacity(0.3), blurRadius: 6)]
+              : null,
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 11, color: isSelected ? color : AppTheme.textDim),
+            const SizedBox(width: 4),
+            Text(
+              label,
+              style: GoogleFonts.spaceGrotesk(
+                fontSize: 10,
+                fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                color: isSelected ? color : AppTheme.textDim,
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -193,17 +288,7 @@ class ReceiptItemRow extends ConsumerWidget {
     return '+ Check Category';
   }
 
-  Color _getNecessityColor(ItemNecessity n) {
-    switch (n) {
-      case ItemNecessity.essential: return Colors.greenAccent;
-      case ItemNecessity.discretional: return Colors.amberAccent;
-      case ItemNecessity.junk: return Colors.redAccent;
-      case ItemNecessity.unknown: return Colors.grey;
-    }
-  }
-
   void _showCategoryPicker(BuildContext context, WidgetRef ref) {
-    // Read the current dynamic hierarchy from the provider
     final hierarchy = ref.read(taxonomyProvider);
     
     showModalBottomSheet(
@@ -264,7 +349,7 @@ class _SearchWidgetState extends State<SearchWidget> {
             hintStyle: const TextStyle(color: AppTheme.textDim),
             prefixIcon: const Icon(Icons.search, color: AppTheme.textDim),
             filled: true,
-            fillColor: Colors.white.withAlpha(12),
+            fillColor: Colors.white.withOpacity(0.05),
             border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
             isDense: true,
           ),
@@ -279,7 +364,6 @@ class _SearchWidgetState extends State<SearchWidget> {
   }
 
   Widget _buildSearchResults() {
-    // Flatten and Filter
     final List<Map<String, dynamic>> matches = [];
     
     for (var mainEntry in widget.hierarchy.entries) {
@@ -295,7 +379,6 @@ class _SearchWidgetState extends State<SearchWidget> {
         }
       }
     }
-
 
     if (matches.isEmpty) {
       return const Center(child: Text('No matches found', style: TextStyle(color: AppTheme.textDim)));
@@ -373,9 +456,9 @@ class _NecessityDot extends StatelessWidget {
 
   Color _getColor() {
     switch (necessity) {
-      case ItemNecessity.essential: return Colors.greenAccent;
-      case ItemNecessity.discretional: return Colors.amberAccent;
-      case ItemNecessity.junk: return Colors.redAccent;
+      case ItemNecessity.essential: return const Color(0xFF10B981);
+      case ItemNecessity.discretional: return const Color(0xFF0891B2);
+      case ItemNecessity.junk: return const Color(0xFFEC4899);
       case ItemNecessity.unknown: return Colors.grey;
     }
   }

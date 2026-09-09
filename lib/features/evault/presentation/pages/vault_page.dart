@@ -3,12 +3,22 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import 'package:go_router/go_router.dart';
 
+import '../../../../core/constants/app_constants.dart';
 import '../../../../core/theme/app_theme.dart';
+import '../../data/models/asset_model.dart';
 import '../providers/asset_provider.dart';
+import '../../../receipt_scanning/domain/entities/receipt.dart';
+import '../../../receipt_scanning/presentation/providers/receipt_provider.dart';
 import '../../../receipt_scanning/presentation/widgets/universal_receipt_image.dart';
 
+/// Digital Vault page for managing purchased hardware, furniture, warranties, and receipts.
+///
+/// Features high-value asset tracking, warranty expiration countdowns, category filters,
+/// and bidirectional deep-linking to scanned receipts.
 class VaultPage extends ConsumerStatefulWidget {
+  /// Creates a new [VaultPage] instance.
   const VaultPage({super.key});
 
   @override
@@ -29,22 +39,10 @@ class _VaultPageState extends ConsumerState<VaultPage> {
 
   String _deriveCategory(String name) {
     final lower = name.toLowerCase();
-    if (lower.contains('macbook') ||
-        lower.contains('laptop') ||
-        lower.contains('phone') ||
-        lower.contains('tv') ||
-        lower.contains('computer') ||
-        lower.contains('watch') ||
-        lower.contains('airpods') ||
-        lower.contains('monitor')) {
+    if (AppConstants.hardwareKeywords.any((kw) => lower.contains(kw))) {
       return 'Hardware';
     }
-    if (lower.contains('chair') ||
-        lower.contains('desk') ||
-        lower.contains('table') ||
-        lower.contains('sofa') ||
-        lower.contains('bed') ||
-        lower.contains('couch')) {
+    if (AppConstants.furnitureKeywords.any((kw) => lower.contains(kw))) {
       return 'Furniture';
     }
     return 'General';
@@ -420,7 +418,7 @@ class _VaultPageState extends ConsumerState<VaultPage> {
                       crossAxisCount: 2,
                       crossAxisSpacing: 16,
                       mainAxisSpacing: 16,
-                      childAspectRatio: 0.75, // Adjusts height of cards
+                      childAspectRatio: 0.70, // Spacious card layout
                     ),
                     delegate: SliverChildBuilderDelegate(
                       (context, index) {
@@ -447,8 +445,8 @@ class _VaultPageState extends ConsumerState<VaultPage> {
   }
 }
 
-class _AssetCardWidget extends StatefulWidget {
-  final dynamic asset;
+class _AssetCardWidget extends ConsumerStatefulWidget {
+  final AssetModel asset;
   final VoidCallback onDelete;
   final Color cardColor;
   final Color borderColor;
@@ -467,10 +465,10 @@ class _AssetCardWidget extends StatefulWidget {
   });
 
   @override
-  State<_AssetCardWidget> createState() => _AssetCardWidgetState();
+  ConsumerState<_AssetCardWidget> createState() => _AssetCardWidgetState();
 }
 
-class _AssetCardWidgetState extends State<_AssetCardWidget> {
+class _AssetCardWidgetState extends ConsumerState<_AssetCardWidget> {
   bool _isHovered = false;
 
   @override
@@ -478,6 +476,7 @@ class _AssetCardWidgetState extends State<_AssetCardWidget> {
     final expiry = widget.asset.warrantyExpiryDate;
     final daysLeft = expiry.difference(DateTime.now()).inDays;
     final isExpired = daysLeft <= 0;
+    final colorScheme = Theme.of(context).colorScheme;
 
     return MouseRegion(
       onEnter: (_) => setState(() => _isHovered = true),
@@ -587,50 +586,113 @@ class _AssetCardWidgetState extends State<_AssetCardWidget> {
                         Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(
-                              widget.asset.name,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: GoogleFonts.spaceGrotesk(
-                                color: widget.textColor,
-                                fontSize: 14,
-                                fontWeight: FontWeight.w600,
-                              ),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    widget.asset.name,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: GoogleFonts.spaceGrotesk(
+                                      color: widget.textColor,
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ),
+                              ],
                             ),
                             const SizedBox(height: 2),
-                            Text(
-                              widget.asset.merchantName,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: GoogleFonts.spaceGrotesk(
-                                color: widget.mutedTextColor,
-                                fontSize: 12,
-                              ),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    widget.asset.merchantName,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: GoogleFonts.spaceGrotesk(
+                                      color: widget.mutedTextColor,
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                ),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                  decoration: BoxDecoration(
+                                    color: colorScheme.primary.withOpacity(0.12),
+                                    borderRadius: BorderRadius.circular(6),
+                                  ),
+                                  child: Text(
+                                    '📦 Vault',
+                                    style: GoogleFonts.spaceGrotesk(
+                                      fontSize: 10,
+                                      color: colorScheme.primary,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ),
+                              ],
                             ),
                           ],
                         ),
-                        // Warranty chip
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 8, vertical: 4),
-                          decoration: BoxDecoration(
-                            color: isExpired
-                                ? widget.destructiveColor
-                                : Theme.of(context).colorScheme.secondary,
-                            borderRadius: BorderRadius.circular(12), // Pill shape
-                          ),
-                          child: Text(
-                            isExpired
-                                ? 'Warranty Expired'
-                                : '$daysLeft days left on warranty',
-                            style: GoogleFonts.spaceGrotesk(
-                              color: isExpired
-                                  ? Theme.of(context).colorScheme.onError
-                                  : Theme.of(context).colorScheme.onSecondary,
-                              fontSize: 10,
-                              fontWeight: FontWeight.w600,
+                        const SizedBox(height: 6),
+                        // Warranty chip & Action Row
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 8, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: isExpired
+                                    ? widget.destructiveColor.withOpacity(0.2)
+                                    : const Color(0xFF10B981).withOpacity(0.2),
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(
+                                  color: isExpired
+                                      ? widget.destructiveColor.withOpacity(0.5)
+                                      : const Color(0xFF10B981).withOpacity(0.5),
+                                ),
+                              ),
+                              child: Text(
+                                isExpired
+                                    ? 'Expired ${daysLeft.abs()}d ago'
+                                    : '$daysLeft days remaining',
+                                style: GoogleFonts.jetBrainsMono(
+                                  color: isExpired
+                                      ? widget.destructiveColor
+                                      : const Color(0xFF10B981),
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
                             ),
-                          ),
+                            InkWell(
+                              onTap: () {
+                                final receipts = ref.read(receiptListProvider).valueOrNull ?? [];
+                                final matchingReceipt = receipts.cast<Receipt?>().firstWhere(
+                                  (r) => r?.id == widget.asset.receiptId || r?.id == widget.asset.id,
+                                  orElse: () => null,
+                                );
+                                if (matchingReceipt != null) {
+                                  context.push('/review', extra: matchingReceipt);
+                                } else {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Text('Linked receipt details for "${widget.asset.name}" (${widget.asset.merchantName})'),
+                                      duration: const Duration(seconds: 2),
+                                    ),
+                                  );
+                                }
+                              },
+                              borderRadius: BorderRadius.circular(6),
+                              child: Padding(
+                                padding: const EdgeInsets.all(4.0),
+                                child: Icon(Icons.receipt_long_outlined, size: 16, color: widget.mutedTextColor),
+                              ),
+                            ),
+                          ],
                         ),
                       ],
                     ),
