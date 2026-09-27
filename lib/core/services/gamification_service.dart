@@ -76,6 +76,42 @@ class GamificationService {
     );
   }
 
+  /// Calculates current active streak in consecutive calendar days up to today or yesterday.
+  static int calculateCurrentStreak(List<Receipt> receipts) {
+    if (receipts.isEmpty) return 0;
+
+    DateTime toDateOnly(DateTime dt) => DateTime(dt.year, dt.month, dt.day);
+
+    final uniqueDays = receipts
+        .map((r) => toDateOnly(r.date))
+        .toSet()
+        .toList()
+      ..sort((a, b) => b.compareTo(a));
+
+    if (uniqueDays.isEmpty) return 0;
+
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final yesterday = today.subtract(const Duration(days: 1));
+
+    // If latest receipt date is older than yesterday, streak is broken
+    final latestDate = uniqueDays.first;
+    if (latestDate.isBefore(yesterday)) {
+      return 0;
+    }
+
+    int streak = 1;
+    for (int i = 0; i < uniqueDays.length - 1; i++) {
+      final diff = uniqueDays[i].difference(uniqueDays[i + 1]).inDays;
+      if (diff == 1) {
+        streak++;
+      } else {
+        break;
+      }
+    }
+    return streak;
+  }
+
   /// Evaluates consecutive scanning day streak history.
   static Achievement _checkStreak(List<Receipt> receipts, int days) {
     if (receipts.isEmpty) {

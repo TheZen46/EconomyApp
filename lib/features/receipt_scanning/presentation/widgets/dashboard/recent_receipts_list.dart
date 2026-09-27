@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -7,6 +7,7 @@ import 'package:intl/intl.dart';
 import '../../../domain/entities/receipt.dart';
 import '../../providers/category_provider.dart';
 import '../../providers/receipt_provider.dart';
+import '../../../../../core/constants/app_constants.dart';
 
 class RecentReceiptsList extends ConsumerStatefulWidget {
   final List<Receipt> receipts;
@@ -32,6 +33,7 @@ class _RecentReceiptsListState extends ConsumerState<RecentReceiptsList> {
     final fgCol = colorScheme.onSurface;
     final muted = colorScheme.onSurfaceVariant;
     final categories = ref.watch(categoryListProvider);
+    final isPrivacy = ref.watch(privacyModeProvider);
 
     final filtered = widget.receipts.where((r) {
       if (_selectedCategory == null) return true;
@@ -98,7 +100,7 @@ class _RecentReceiptsListState extends ConsumerState<RecentReceiptsList> {
             ),
           )
         else
-          ...filtered.take(5).map((r) => _buildReceiptRow(context, r, colorScheme, fgCol, muted)),
+          ...filtered.take(5).map((r) => _buildReceiptRow(context, r, colorScheme, fgCol, muted, isPrivacy)),
       ],
     );
   }
@@ -109,6 +111,7 @@ class _RecentReceiptsListState extends ConsumerState<RecentReceiptsList> {
     ColorScheme colorScheme,
     Color fgCol,
     Color muted,
+    bool isPrivacy,
   ) {
     return Dismissible(
       key: ValueKey(r.id),
@@ -151,7 +154,7 @@ class _RecentReceiptsListState extends ConsumerState<RecentReceiptsList> {
                 ],
               ),
               Text(
-                '\$${r.totalAmount.toStringAsFixed(2)}',
+                AppConstants.formatAmount(r.totalAmount, currency: r.currency, isPrivacy: isPrivacy),
                 style: GoogleFonts.jetBrainsMono(
                   fontSize: 15,
                   fontWeight: FontWeight.w600,

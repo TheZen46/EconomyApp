@@ -24,6 +24,7 @@ class SyncManager {
   final Box<InvoiceModel> invoicesBox;
   final Box<AssetModel> assetsBox;
   final Box settingsBox;
+  final VoidCallback? onSyncCompleted;
 
   final Lock _syncLock = Lock();
   StreamSubscription<List<ConnectivityResult>>? _connectivitySub;
@@ -37,6 +38,7 @@ class SyncManager {
     required this.invoicesBox,
     required this.assetsBox,
     required this.settingsBox,
+    this.onSyncCompleted,
   }) {
     _initAutoSync();
   }
@@ -83,6 +85,7 @@ class SyncManager {
         // Update last synced timestamp
         await settingsBox.put('last_synced_at', DateTime.now().toUtc().toIso8601String());
         debugPrint('SyncManager: Synchronization cycle completed successfully.');
+        onSyncCompleted?.call();
       } catch (e, stack) {
         debugPrint('SyncManager: Error during sync cycle: $e\n$stack');
       } finally {
@@ -128,6 +131,8 @@ class SyncManager {
       } catch (e) {
         debugPrint('SyncManager: Failed to sync outbox item ${item.id}: $e');
         await outboxService.markFailed(item.id, e.toString());
+        // Preserve FIFO ordering and causality: abort remaining flush for this cycle
+        break;
       }
     }
   }

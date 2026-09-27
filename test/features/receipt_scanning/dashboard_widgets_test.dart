@@ -9,6 +9,7 @@ import 'package:t_aidy/features/receipt_scanning/presentation/widgets/dashboard/
 import 'package:t_aidy/features/receipt_scanning/presentation/widgets/dashboard/dashboard_summary_card.dart';
 import 'package:t_aidy/features/receipt_scanning/presentation/widgets/dashboard/gamification_header.dart';
 import 'package:t_aidy/features/receipt_scanning/presentation/widgets/dashboard/recent_receipts_list.dart';
+import 'package:t_aidy/features/receipt_scanning/presentation/providers/receipt_provider.dart';
 
 void main() {
   final sampleReceipts = [
@@ -124,6 +125,33 @@ void main() {
       expect(find.text('\$75.50'), findsOneWidget);
       expect(find.text('Apple Store'), findsOneWidget);
       expect(find.text('\$199.00'), findsOneWidget);
+    });
+
+    testWidgets('renders masked amounts when privacyModeProvider is enabled', (tester) async {
+      final privacyNotifier = PrivacyModeNotifier();
+      await privacyNotifier.setEnabled(true);
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            categoryListProvider.overrideWith((ref) => CategoryNotifier()),
+            privacyModeProvider.overrideWith((ref) => privacyNotifier),
+          ],
+          child: MaterialApp(
+            home: Scaffold(
+              body: RecentReceiptsList(
+                receipts: sampleReceipts,
+                isDark: false,
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Recent Transactions'), findsOneWidget);
+      expect(find.text('Trader Joe\'s'), findsOneWidget);
+      expect(find.text('••••••'), findsNWidgets(2));
+      expect(find.text('\$75.50'), findsNothing);
     });
   });
 

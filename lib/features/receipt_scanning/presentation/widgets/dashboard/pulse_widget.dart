@@ -1,11 +1,14 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:intl/intl.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:fl_chart/fl_chart.dart';
 import '../../../domain/entities/receipt.dart';
+import '../../providers/receipt_provider.dart';
+import '../../../../../core/constants/app_constants.dart';
 
-class PulseWidget extends StatelessWidget {
+class PulseWidget extends ConsumerWidget {
   final List<Receipt> receipts;
   final bool isDark;
 
@@ -16,9 +19,10 @@ class PulseWidget extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
+    final isPrivacy = ref.watch(privacyModeProvider);
     final fgCol = colorScheme.onSurface;
     final muted = colorScheme.onSurfaceVariant;
     final accent = colorScheme.primary;
@@ -94,14 +98,14 @@ class PulseWidget extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
                       Text('Average', style: GoogleFonts.spaceGrotesk(fontSize: 11, color: muted)),
-                      Text('\$${average.toStringAsFixed(0)}', style: GoogleFonts.jetBrainsMono(fontSize: 15, color: fgCol)),
+                      Text(AppConstants.formatAmount(average, isPrivacy: isPrivacy, decimals: 0), style: GoogleFonts.jetBrainsMono(fontSize: 15, color: fgCol)),
                     ],
                   ),
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
                       Text('Peak', style: GoogleFonts.spaceGrotesk(fontSize: 11, color: muted)),
-                      Text('\$${peak.toStringAsFixed(0)}', style: GoogleFonts.jetBrainsMono(fontSize: 15, color: fgCol)),
+                      Text(AppConstants.formatAmount(peak, isPrivacy: isPrivacy, decimals: 0), style: GoogleFonts.jetBrainsMono(fontSize: 15, color: fgCol)),
                     ],
                   ),
                 ].animate(interval: 100.ms).fadeIn().slideY(begin: 0.1),
@@ -159,9 +163,9 @@ class PulseWidget extends StatelessWidget {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  _necessityBadge('Essential', '\$${essentialSpend.toStringAsFixed(0)}', const Color(0xFF10B981)),
-                  _necessityBadge('Discretional', '\$${discretionalSpend.toStringAsFixed(0)}', const Color(0xFF0891B2)),
-                  _necessityBadge('Junk', '\$${junkSpend.toStringAsFixed(0)}', const Color(0xFFEC4899)),
+                  _necessityBadge('Essential', AppConstants.formatAmount(essentialSpend, isPrivacy: isPrivacy, decimals: 0), const Color(0xFF10B981)),
+                  _necessityBadge('Discretional', AppConstants.formatAmount(discretionalSpend, isPrivacy: isPrivacy, decimals: 0), const Color(0xFF0891B2)),
+                  _necessityBadge('Junk', AppConstants.formatAmount(junkSpend, isPrivacy: isPrivacy, decimals: 0), const Color(0xFFEC4899)),
                 ],
               ),
             ],
@@ -244,7 +248,7 @@ class PulseWidget extends StatelessWidget {
                   getTooltipColor: (touchedSpot) => colorScheme.surface,
                   getTooltipItems: (touchedSpots) {
                     return touchedSpots.map((spot) => LineTooltipItem(
-                      '\$${spot.y.toInt()}',
+                      AppConstants.formatAmount(spot.y, isPrivacy: isPrivacy, decimals: 0),
                       GoogleFonts.jetBrainsMono(color: fgCol, fontSize: 13),
                     )).toList();
                   }

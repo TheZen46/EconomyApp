@@ -19,6 +19,7 @@ import '../../data/models/receipt_model.dart';
 import '../../data/repositories/receipt_repository_impl.dart';
 import '../../domain/entities/receipt.dart';
 import '../../domain/repositories/receipt_repository.dart';
+import '../../../../core/constants/app_constants.dart';
 
 // --- Data Source Providers ---
 
@@ -30,6 +31,8 @@ import '../../../evault/presentation/providers/asset_provider.dart';
 import '../../../settings/presentation/providers/llm_provider.dart';
 import '../../../boxes/data/providers/boxes_provider.dart';
 import '../../data/datasources/csv_parser_service.dart';
+import '../../../../core/sync/outbox_service.dart';
+import '../../../../core/sync/sync_providers.dart';
 
 final csvParserServiceProvider = Provider<CsvParserService>((ref) => CsvParserService());
 
@@ -149,6 +152,11 @@ final receiptRepositoryProvider = Provider<ReceiptRepository>((ref) {
   final syncService = ref.watch(syncServiceProvider);
   final webhookService = ref.watch(webhookServiceProvider);
   final assetsBox = ref.watch(assetsBoxProvider);
+
+  OutboxService? outbox;
+  try {
+    outbox = ref.watch(outboxServiceProvider);
+  } catch (_) {}
   
   return ReceiptRepositoryImpl(
     localDataSource: localDS, 
@@ -158,6 +166,7 @@ final receiptRepositoryProvider = Provider<ReceiptRepository>((ref) {
     syncService: syncService,
     webhookService: webhookService,
     assetsBox: assetsBox,
+    outboxService: outbox,
   );
 });
 
@@ -199,6 +208,7 @@ class ReceiptListNotifier extends StateNotifier<AsyncValue<List<Receipt>>> {
   }
 
   Future<void> addReceipt(Receipt receipt) async {
+    final previous = state;
     final current = state.valueOrNull ?? [];
     final updated = current.any((r) => r.id == receipt.id)
         ? current.map((r) => r.id == receipt.id ? receipt : r).toList()
@@ -209,23 +219,27 @@ class ReceiptListNotifier extends StateNotifier<AsyncValue<List<Receipt>>> {
     result.fold(
       (failure) {
         debugPrint('Error saving receipt: ${failure.message}');
+        state = previous;
       },
       (_) {},
     );
   }
 
   Future<void> clearAll({bool includeCloud = false}) async {
+    final previous = state;
     state = const AsyncValue.data([]);
     final result = await _repository.clearAllData(includeCloud: includeCloud);
     result.fold(
       (failure) {
         debugPrint('Error clearing receipts: ${failure.message}');
+        state = previous;
       },
       (_) {},
     );
   }
 
   Future<void> deleteReceipt(String id) async {
+    final previous = state;
     final current = state.valueOrNull ?? [];
     state = AsyncValue.data(current.where((r) => r.id != id).toList());
 
@@ -233,6 +247,7 @@ class ReceiptListNotifier extends StateNotifier<AsyncValue<List<Receipt>>> {
     result.fold(
       (failure) {
         debugPrint('Error deleting receipt: ${failure.message}');
+        state = previous;
       },
       (_) {},
     );
@@ -331,3 +346,77 @@ class ProjectedIncomeNotifier extends StateNotifier<double> {
     state = newIncome;
   }
 }
+
+final privacyModeProvider = StateNotifierProvider<PrivacyModeNotifier, bool>((ref) {
+  try {
+    final box = ref.watch(settingsBoxProvider);
+    return PrivacyModeNotifier(box);
+  } catch (_) {
+    return PrivacyModeNotifier(null);
+  }
+});
+
+class PrivacyModeNotifier extends StateNotifier<bool> {
+  final Box? _box;
+  static const _key = 'privacy_mode_enabled';
+
+  PrivacyModeNotifier([this._box]) : super((_box?.get(_key, defaultValue: false) as bool?) ?? false);
+
+  Future<void> toggle() async {
+    final next = !state;
+    await _box?.put(_key, next);
+    state = next;
+  }
+
+  Future<void> setEnabled(bool enabled) async {
+    await _box?.put(_key, enabled);
+    state = enabled;
+  }
+}
+
+final taxNestRateProvider = StateNotifierProvider<TaxNestRateNotifier, double>((ref) {
+  try {
+    final box = ref.watch(settingsBoxProvider);
+    return TaxNestRateNotifier(box);
+  } catch (_) {
+    return TaxNestRateNotifier(null);
+  }
+});
+
+class TaxNestRateNotifier extends StateNotifier<double> {
+  final Box? _box;
+  static const _key = 'tax_nest_rate';
+
+  TaxNestRateNotifier([this._box])
+      : super((_box?.get(_key, defaultValue: AppConstants.defaultTaxRate) as num?)?.toDouble() ??
+            AppConstants.defaultTaxRate);
+
+  Future<void> setRate(double rate) async {
+    await _box?.put(_key, rate);
+    state = rate;
+  }
+}
+
+final taxNestGoalProvider = StateNotifierProvider<TaxNestGoalNotifier, double>((ref) {
+  try {
+    final box = ref.watch(settingsBoxProvider);
+    return TaxNestGoalNotifier(box);
+  } catch (_) {
+    return TaxNestGoalNotifier(null);
+  }
+});
+
+class TaxNestGoalNotifier extends StateNotifier<double> {
+  final Box? _box;
+  static const _key = 'tax_nest_goal';
+
+  TaxNestGoalNotifier([this._box])
+      : super((_box?.get(_key, defaultValue: AppConstants.defaultTaxNestGoal) as num?)?.toDouble() ??
+            AppConstants.defaultTaxNestGoal);
+
+  Future<void> setGoal(double goal) async {
+    await _box?.put(_key, goal);
+    state = goal;
+  }
+}
+

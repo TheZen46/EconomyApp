@@ -4,6 +4,8 @@ import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import '../../../../invoices/data/providers/invoices_provider.dart';
+import '../../../../../core/constants/app_constants.dart';
+import '../../providers/receipt_provider.dart';
 
 /// Dashboard widget previewing active client invoices and revenue status.
 class ProjectCardsWidget extends ConsumerWidget {
@@ -20,6 +22,7 @@ class ProjectCardsWidget extends ConsumerWidget {
     final fgCol = colorScheme.onSurface;
     final muted = colorScheme.onSurfaceVariant;
     final accent = colorScheme.primary;
+    final isPrivacy = ref.watch(privacyModeProvider);
 
     final invoices = ref.watch(invoicesProvider).take(4).toList();
 
@@ -179,7 +182,7 @@ class ProjectCardsWidget extends ConsumerWidget {
                       ),
                       const SizedBox(width: 16),
                       Text(
-                        '${inv.currency == "USD" ? "\$" : inv.currency} ${amount.toStringAsFixed(2)}',
+                        AppConstants.formatAmount(amount, currency: inv.currency, isPrivacy: isPrivacy),
                         style: GoogleFonts.jetBrainsMono(
                           fontSize: 13,
                           color: fgCol,

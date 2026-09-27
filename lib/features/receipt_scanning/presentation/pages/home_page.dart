@@ -18,6 +18,7 @@ import '../../../boxes/data/models/box_model.dart';
 import '../../../boxes/data/providers/boxes_provider.dart';
 import '../../../boxes/presentation/widgets/box_creator_sheet.dart';
 import '../../data/models/sync_item_model.dart';
+import '../../../../core/sync/sync_providers.dart';
 
 class HomePage extends ConsumerStatefulWidget {
   const HomePage({super.key});
@@ -310,7 +311,10 @@ class _HomePageState extends ConsumerState<HomePage> {
                       const SnackBar(content: Text('Forcing Cloud Delta Sync... 🔄')),
                     );
                     try {
+                      await ref.read(syncManagerProvider)?.syncAll();
                       await ref.read(syncServiceProvider).syncPendingItems();
+                      await ref.read(receiptListProvider.notifier).loadReceipts();
+                      ref.read(boxesProvider.notifier).reload();
                       if (mounted) {
                         messenger.showSnackBar(
                           const SnackBar(content: Text('Cloud sync completed successfully! 🟢')),
@@ -538,9 +542,24 @@ class _HomePageState extends ConsumerState<HomePage> {
         IconButton(icon: Icon(Icons.search, color: fgCol), onPressed: () => setState(() => _isSearching = true)),
         IconButton(icon: Icon(Icons.shield_outlined, color: fgCol), onPressed: () => context.push('/vault')),
         IconButton(icon: Icon(Icons.dashboard_customize, color: fgCol), onPressed: () => setState(() => _isEditMode = true)),
-        IconButton(
-          icon: Icon(Icons.visibility_off_outlined, color: fgCol),
-          onPressed: () => ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Privacy mode toggled.'))),
+        Consumer(
+          builder: (context, ref, _) {
+            final isPrivacy = ref.watch(privacyModeProvider);
+            return IconButton(
+              icon: Icon(isPrivacy ? Icons.visibility : Icons.visibility_off_outlined, color: fgCol),
+              tooltip: isPrivacy ? 'Privacy Mode: Active (Figures masked)' : 'Privacy Mode: Inactive (Click to mask)',
+              onPressed: () {
+                ref.read(privacyModeProvider.notifier).toggle();
+                final newState = !isPrivacy;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(newState ? 'Privacy Mode Enabled: Figures masked 🛡️' : 'Privacy Mode Disabled: Figures revealed 👁️'),
+                    duration: const Duration(seconds: 2),
+                  ),
+                );
+              },
+            );
+          },
         ),
         IconButton(icon: Icon(Icons.download, color: fgCol), onPressed: _exportCsv),
         IconButton(icon: Icon(Icons.settings, color: fgCol), onPressed: () => _showSettingsPanel(context)),

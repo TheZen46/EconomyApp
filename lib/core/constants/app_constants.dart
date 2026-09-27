@@ -47,6 +47,26 @@ class AppConstants {
     return currencySymbols[currencyCode.toUpperCase()] ?? currencyCode;
   }
 
+  /// Formats an amount with currency symbol, respecting privacy mode masking.
+  static String formatAmount(
+    double amount, {
+    String currency = 'USD',
+    bool isPrivacy = false,
+    int decimals = 2,
+  }) {
+    if (isPrivacy) {
+      return '••••••';
+    }
+    final symbol = getCurrencySymbol(currency);
+    return '$symbol${amount.toStringAsFixed(decimals)}';
+  }
+
+  /// Masks sensitive numeric or financial text if privacy mode is active.
+  static String privacyMask(String text, {bool isPrivacy = false}) {
+    if (!isPrivacy) return text;
+    return '••••••';
+  }
+
   /// Default box identifier for the main financial context.
   static const String defaultBoxId = 'main';
 

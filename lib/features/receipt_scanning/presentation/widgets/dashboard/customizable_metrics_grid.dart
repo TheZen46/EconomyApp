@@ -7,8 +7,10 @@ import 'package:flutter_animate/flutter_animate.dart';
 import '../../../domain/entities/receipt.dart';
 import '../../../data/models/dashboard_config.dart';
 import '../../providers/dashboard_provider.dart';
+import '../../providers/receipt_provider.dart';
 import '../../../../boxes/data/providers/boxes_provider.dart';
 import '../../../../boxes/data/models/box_model.dart';
+import '../../../../../core/constants/app_constants.dart';
 import '../interactive_hover.dart';
 import 'dashboard_summary_card.dart';
 import 'pulse_widget.dart';
@@ -321,6 +323,8 @@ class _CustomizableMetricsGridState extends ConsumerState<CustomizableMetricsGri
     final fgCol = colorScheme.onSurface;
     final activeId = ref.watch(activeBoxIdProvider);
     final boxes = ref.watch(boxesProvider);
+    final monthlyBudget = ref.watch(monthlyBudgetProvider);
+    final isPrivacy = ref.watch(privacyModeProvider);
 
     String boxName = 'Out of the Box';
     double spent = 0.0;
@@ -328,6 +332,7 @@ class _CustomizableMetricsGridState extends ConsumerState<CustomizableMetricsGri
 
     if (activeId == 'main') {
       spent = receipts.fold(0.0, (sum, r) => sum + r.totalAmount);
+      budget = monthlyBudget;
     } else {
       final box = boxes.firstWhere(
         (b) => b.id == activeId,
@@ -336,7 +341,8 @@ class _CustomizableMetricsGridState extends ConsumerState<CustomizableMetricsGri
             : BoxModel(id: 'main', name: 'Main', budget: 0, spent: 0, currency: 'USD', color: 0),
       );
       boxName = box.name;
-      spent = box.spent;
+      final receiptsSum = receipts.fold(0.0, (sum, r) => sum + r.totalAmount);
+      spent = receiptsSum > 0 ? receiptsSum : box.spent;
       budget = box.budget;
     }
 
@@ -369,7 +375,7 @@ class _CustomizableMetricsGridState extends ConsumerState<CustomizableMetricsGri
           const SizedBox(height: 16),
           Text(boxName, style: GoogleFonts.spaceGrotesk(fontSize: 16, fontWeight: FontWeight.w600, color: fgCol)),
           const SizedBox(height: 8),
-          Text('\$${spent.toStringAsFixed(2)} spent', style: GoogleFonts.jetBrainsMono(fontSize: 14, color: colorScheme.onSurfaceVariant)),
+          Text('${AppConstants.formatAmount(spent, isPrivacy: isPrivacy)} spent', style: GoogleFonts.jetBrainsMono(fontSize: 14, color: colorScheme.onSurfaceVariant)),
           if (budget > 0) ...[
             const SizedBox(height: 16),
             LinearProgressIndicator(

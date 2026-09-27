@@ -1,8 +1,11 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hive/hive.dart';
 import 'package:uuid/uuid.dart';
 import '../models/invoice_model.dart';
 import '../../../../features/receipt_scanning/presentation/providers/receipt_provider.dart';
+import '../../../../core/sync/outbox_service.dart';
+import '../../../../core/sync/sync_providers.dart';
 
 final invoicesHiveBoxProvider = Provider<Box<InvoiceModel>>((ref) {
   throw UnimplementedError('invoicesHiveBoxProvider must be overridden in main.dart');
@@ -16,9 +19,10 @@ const _counterKey = 'global_invoice_counter';
 class InvoicesNotifier extends StateNotifier<List<InvoiceModel>> {
   final Box<InvoiceModel>? _box;
   final Box? _settingsBox;
+  final OutboxService? _outboxService;
   static const _uuid = Uuid();
 
-  InvoicesNotifier([this._box, this._settingsBox]) : super([]) {
+  InvoicesNotifier([this._box, this._settingsBox, this._outboxService]) : super([]) {
     _load();
   }
 
@@ -37,6 +41,11 @@ class InvoicesNotifier extends StateNotifier<List<InvoiceModel>> {
     }).toList();
 
     state = [...updated];
+  }
+
+  /// Reloads state from Hive box to synchronize with background sync deltas.
+  void reload() {
+    _load();
   }
 
   /// Scans all existing box entries (and in-memory state) to determine the
@@ -127,6 +136,7 @@ class InvoicesNotifier extends StateNotifier<List<InvoiceModel>> {
       );
     }
 
+    final nowUtc = DateTime.now().toUtc();
     final inv = InvoiceModel(
       id: _uuid.v4(),
       invoiceNumber: invoiceNumber,
@@ -137,11 +147,30 @@ class InvoicesNotifier extends StateNotifier<List<InvoiceModel>> {
       dueDate: dueDate,
       notes: notes,
       currency: currency,
+      createdAt: nowUtc,
+      updatedAt: nowUtc,
     );
 
-    await _box?.put(inv.id, inv);
-    state = [inv, ...state];
-    return inv;
+    final previous = state;
+    try {
+      await _box?.put(inv.id, inv);
+      state = [inv, ...state];
+
+      if (_outboxService != null) {
+        await _outboxService.enqueue(
+          entityType: 'invoice',
+          entityId: inv.id,
+          mutationType: 'upsert',
+          payload: inv.toJson(),
+        );
+      }
+
+      return inv;
+    } catch (e) {
+      debugPrint('InvoicesNotifier: Error creating invoice: $e');
+      state = previous;
+      rethrow;
+    }
   }
 
   /// Alias for [createInvoice].
@@ -169,18 +198,54 @@ class InvoicesNotifier extends StateNotifier<List<InvoiceModel>> {
   /// Updates an invoice's status immutably, persists the updated instance to Hive,
   /// and emits a new immutable list state to trigger reactive UI re-renders.
   Future<void> updateInvoiceStatus(String id, String newStatus) async {
-    final existing = state.firstWhere((i) => i.id == id);
-    final updatedInvoice = existing.copyWith(status: newStatus);
-    await _box?.put(id, updatedInvoice);
-    state = state.map((inv) => inv.id == id ? updatedInvoice : inv).toList();
+    final previous = state;
+    try {
+      final existing = state.firstWhere((i) => i.id == id);
+      final updatedInvoice = existing.copyWith(
+        status: newStatus,
+        updatedAt: DateTime.now().toUtc(),
+        version: existing.version + 1,
+      );
+      await _box?.put(id, updatedInvoice);
+      state = state.map((inv) => inv.id == id ? updatedInvoice : inv).toList();
+
+      if (_outboxService != null) {
+        await _outboxService.enqueue(
+          entityType: 'invoice',
+          entityId: id,
+          mutationType: 'upsert',
+          payload: updatedInvoice.toJson(),
+        );
+      }
+    } catch (e) {
+      debugPrint('InvoicesNotifier: Error updating invoice: $e');
+      state = previous;
+      rethrow;
+    }
   }
 
   /// Alias for [updateInvoiceStatus].
   Future<void> updateStatus(String id, String newStatus) => updateInvoiceStatus(id, newStatus);
 
   Future<void> delete(String id) async {
-    await _box?.delete(id);
-    state = state.where((i) => i.id != id).toList();
+    final previous = state;
+    try {
+      await _box?.delete(id);
+      state = state.where((i) => i.id != id).toList();
+
+      if (_outboxService != null) {
+        await _outboxService.enqueue(
+          entityType: 'invoice',
+          entityId: id,
+          mutationType: 'delete',
+          payload: {'id': id},
+        );
+      }
+    } catch (e) {
+      debugPrint('InvoicesNotifier: Error deleting invoice: $e');
+      state = previous;
+      rethrow;
+    }
     // Monotonic sequence counter is NEVER decremented upon deletion.
   }
 
@@ -199,11 +264,20 @@ class InvoicesNotifier extends StateNotifier<List<InvoiceModel>> {
 }
 
 final invoicesProvider = StateNotifierProvider<InvoicesNotifier, List<InvoiceModel>>((ref) {
+  Box<InvoiceModel>? box;
   try {
-    final box = ref.watch(invoicesHiveBoxProvider);
-    final settingsBox = ref.watch(settingsBoxProvider);
-    return InvoicesNotifier(box, settingsBox);
-  } catch (_) {
-    return InvoicesNotifier(null, null);
-  }
+    box = ref.watch(invoicesHiveBoxProvider);
+  } catch (_) {}
+
+  Box? settingsBox;
+  try {
+    settingsBox = ref.watch(settingsBoxProvider);
+  } catch (_) {}
+
+  OutboxService? outbox;
+  try {
+    outbox = ref.watch(outboxServiceProvider);
+  } catch (_) {}
+
+  return InvoicesNotifier(box, settingsBox, outbox);
 });

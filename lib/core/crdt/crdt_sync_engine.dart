@@ -179,6 +179,51 @@ class CrdtSyncEngine {
     return updatedReceipt;
   }
 
+  /// Updates top-level metadata of an existing receipt without clobbering line items or their causality clocks.
+  ReceiptCrdt updateReceiptMetadata({
+    required String receiptId,
+    String? merchantName,
+    String? boxId,
+    String? currency,
+    String? vatNumber,
+    String? merchantAddress,
+    DateTime? receiptDate,
+  }) {
+    final receipt = _store[receiptId];
+    if (receipt == null) {
+      throw ArgumentError('Receipt with id $receiptId not found in CRDT store');
+    }
+
+    final tickHlc = _tick();
+    final updatedReceipt = ReceiptCrdt(
+      id: receipt.id,
+      merchantName: merchantName != null
+          ? LwwRegister(merchantName, tickHlc)
+          : receipt.merchantName,
+      totalAmountCents: receipt.totalAmountCents,
+      currency: currency != null
+          ? LwwRegister(currency, tickHlc)
+          : receipt.currency,
+      receiptDateMillis: receiptDate != null
+          ? LwwRegister(receiptDate.millisecondsSinceEpoch, tickHlc)
+          : receipt.receiptDateMillis,
+      vatNumber: vatNumber != null
+          ? LwwRegister(vatNumber, tickHlc)
+          : receipt.vatNumber,
+      merchantAddress: merchantAddress != null
+          ? LwwRegister(merchantAddress, tickHlc)
+          : receipt.merchantAddress,
+      boxId: boxId != null
+          ? LwwRegister(boxId, tickHlc)
+          : receipt.boxId,
+      isDeleted: receipt.isDeleted,
+      items: receipt.items,
+    );
+
+    _store[receiptId] = updatedReceipt;
+    return updatedReceipt;
+  }
+
   /// Generates a sync delta payload containing all modified state for transmission.
   SyncDeltaPayload generateDeltaPayload() {
     return SyncDeltaPayload(

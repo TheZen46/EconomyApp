@@ -6,6 +6,7 @@ import 'package:google_fonts/google_fonts.dart';
 import '../../../domain/entities/receipt.dart';
 import '../../providers/receipt_provider.dart';
 import '../../../../boxes/data/providers/boxes_provider.dart';
+import '../../../../../core/constants/app_constants.dart';
 import '../interactive_hover.dart';
 
 /// Widget that computes and visualizes the user's monthly runway and cash flow health.
@@ -30,6 +31,7 @@ class MonthlyRunwayWidget extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
+    final isPrivacy = ref.watch(privacyModeProvider);
 
     final now = DateTime.now();
     final monthlyBurn = receipts
@@ -85,11 +87,11 @@ class MonthlyRunwayWidget extends ConsumerWidget {
           },
         ),
         const SizedBox(height: 24),
-        _hoverRow('Calculated Monthly Burn', '\$${monthlyBurn.toStringAsFixed(2)}', fgCol, muted),
+        _hoverRow('Calculated Monthly Burn', AppConstants.formatAmount(monthlyBurn, isPrivacy: isPrivacy), fgCol, muted),
         const SizedBox(height: 8),
-        _hoverRow('Projected Income', '\$${projectedIncome.toStringAsFixed(2)}', fgCol, muted),
+        _hoverRow('Projected Income', AppConstants.formatAmount(projectedIncome, isPrivacy: isPrivacy), fgCol, muted),
         const SizedBox(height: 8),
-        _hoverRow('Current Balance', '\$${effectiveBalance.toStringAsFixed(2)}', fgCol, muted),
+        _hoverRow('Current Balance', AppConstants.formatAmount(effectiveBalance, isPrivacy: isPrivacy), fgCol, muted),
         const SizedBox(height: 24),
         InteractiveHover(
           child: SizedBox(
@@ -108,6 +110,7 @@ class MonthlyRunwayWidget extends ConsumerWidget {
                 effectiveBalance: effectiveBalance,
                 netBurn: netBurn,
                 runwayMonths: runwayMonths,
+                isPrivacy: isPrivacy,
               ),
               child: Text('Generate Forecast', style: GoogleFonts.spaceGrotesk(fontWeight: FontWeight.w600)),
             ),
@@ -134,6 +137,7 @@ class MonthlyRunwayWidget extends ConsumerWidget {
     required double effectiveBalance,
     required double netBurn,
     required double runwayMonths,
+    bool isPrivacy = false,
   }) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
@@ -174,8 +178,8 @@ class MonthlyRunwayWidget extends ConsumerWidget {
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(
                     color: netMonthlyCashflow >= 0
-                        ? colorScheme.primary.withValues(alpha: 0.3)
-                        : colorScheme.error.withValues(alpha: 0.3),
+                      ? colorScheme.primary.withValues(alpha: 0.3)
+                      : colorScheme.error.withValues(alpha: 0.3),
                   ),
                 ),
                 child: Row(
@@ -189,8 +193,8 @@ class MonthlyRunwayWidget extends ConsumerWidget {
                     Expanded(
                       child: Text(
                         netMonthlyCashflow >= 0
-                            ? 'Net Positive Cashflow (+ \$${netMonthlyCashflow.toStringAsFixed(2)}/mo)'
-                            : 'Deficit Burn Rate (- \$${(-netMonthlyCashflow).toStringAsFixed(2)}/mo)',
+                            ? 'Net Positive Cashflow (+ ${AppConstants.formatAmount(netMonthlyCashflow, isPrivacy: isPrivacy)}/mo)'
+                            : 'Deficit Burn Rate (- ${AppConstants.formatAmount(-netMonthlyCashflow, isPrivacy: isPrivacy)}/mo)',
                         style: GoogleFonts.spaceGrotesk(
                           fontSize: 13,
                           fontWeight: FontWeight.w600,
@@ -207,11 +211,11 @@ class MonthlyRunwayWidget extends ConsumerWidget {
                 style: GoogleFonts.spaceGrotesk(fontSize: 10, letterSpacing: 1.2, color: muted, fontWeight: FontWeight.w600),
               ),
               const SizedBox(height: 12),
-              _buildForecastRow('3-Month Horizon', balance3M, colorScheme),
+              _buildForecastRow('3-Month Horizon', balance3M, colorScheme, isPrivacy: isPrivacy),
               const Divider(height: 16),
-              _buildForecastRow('6-Month Horizon', balance6M, colorScheme),
+              _buildForecastRow('6-Month Horizon', balance6M, colorScheme, isPrivacy: isPrivacy),
               const Divider(height: 16),
-              _buildForecastRow('12-Month Horizon', balance12M, colorScheme),
+              _buildForecastRow('12-Month Horizon', balance12M, colorScheme, isPrivacy: isPrivacy),
               const SizedBox(height: 16),
               Text(
                 runwayMonths >= 99.9
@@ -232,14 +236,14 @@ class MonthlyRunwayWidget extends ConsumerWidget {
     );
   }
 
-  Widget _buildForecastRow(String horizon, double balance, ColorScheme colorScheme) {
+  Widget _buildForecastRow(String horizon, double balance, ColorScheme colorScheme, {bool isPrivacy = false}) {
     final bool isPositive = balance >= 0;
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
         Text(horizon, style: GoogleFonts.spaceGrotesk(fontSize: 13, color: colorScheme.onSurfaceVariant)),
         Text(
-          '\$${balance.toStringAsFixed(2)}',
+          AppConstants.formatAmount(balance, isPrivacy: isPrivacy),
           style: GoogleFonts.jetBrainsMono(
             fontSize: 14,
             fontWeight: FontWeight.bold,

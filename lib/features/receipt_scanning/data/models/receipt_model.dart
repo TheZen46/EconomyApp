@@ -1,4 +1,4 @@
-﻿import 'package:hive/hive.dart';
+import 'package:hive/hive.dart';
 import '../../domain/entities/receipt.dart';
 
 part 'receipt_model.g.dart';
@@ -123,6 +123,7 @@ class ReceiptModel extends HiveObject {
     return {
       'id': id,
       'merchant_name': merchantName,
+      'date': date.toUtc().toIso8601String(),
       'scanned_date': date.toUtc().toIso8601String(),
       'total_amount': totalAmount,
       'currency': currency,

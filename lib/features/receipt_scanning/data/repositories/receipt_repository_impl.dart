@@ -15,9 +15,9 @@ import 'package:hive/hive.dart'; // Add Hive import
 import '../../../settings/data/datasources/webhook_service.dart'; // Webhook Import
 
 import '../../../../core/constants/taxonomy_constants.dart';
-
-import '../../../evault/data/models/asset_model.dart'; // Asset Model
+import '../../../evault/data/models/asset_model.dart';
 import 'package:uuid/uuid.dart'; // UUID
+import '../../../../core/sync/outbox_service.dart';
 
 class ReceiptRepositoryImpl implements ReceiptRepository {
   final LocalReceiptDataSource localDataSource;
@@ -27,6 +27,7 @@ class ReceiptRepositoryImpl implements ReceiptRepository {
   final SyncService syncService;
   final WebhookService webhookService;
   final Box<AssetModel> assetsBox; // New injection
+  final OutboxService? outboxService;
 
   ReceiptRepositoryImpl({
     required this.localDataSource,
@@ -36,6 +37,7 @@ class ReceiptRepositoryImpl implements ReceiptRepository {
     required this.syncService,
     required this.webhookService,
     required this.assetsBox,
+    this.outboxService,
   });
 
   @override
@@ -61,22 +63,33 @@ class ReceiptRepositoryImpl implements ReceiptRepository {
       final model = ReceiptModel.fromEntity(receipt);
       await localDataSource.saveReceipt(model);
 
-      // 2. Schedule Background Upload (Auto-Retry)
+      // 2. Enqueue mutation in OutboxService for Dual-Tier Sync & Offline Resiliency
+      if (outboxService != null) {
+        await outboxService!.enqueue(
+          entityType: 'receipt',
+          entityId: model.id,
+          mutationType: 'upsert',
+          payload: model.toJson(),
+        );
+      }
+
+      // 3. Schedule Background Upload (Auto-Retry)
       // Fire and forget, SyncService handles upload of image (if present) and receipt data to Supabase
       unawaited(syncService.scheduleUpload(receipt.id, receipt.imagePath ?? ''));
 
-      // 3. Trigger Webhook (Fire & Forget)
+      // 4. Trigger Webhook (Fire & Forget)
       // We don't await this to keep UI snappy
       unawaited(webhookService.sendWebhook(receipt).catchError((e) {
         debugPrint('Webhook failed: $e');
       }));
 
-      // 4. Update Digital Vault
+      // 5. Update Digital Vault
       try {
         for (final item in receipt.items) {
           if (item.isAsset) {
              final alreadyExists = assetsBox.values.any((a) => a.receiptId == receipt.id && a.name == item.description);
              if (!alreadyExists) {
+               final nowUtc = DateTime.now().toUtc();
                final asset = AssetModel(
                   id: const Uuid().v4(),
                   name: item.description,
@@ -86,8 +99,18 @@ class ReceiptRepositoryImpl implements ReceiptRepository {
                   receiptImagePath: receipt.imagePath ?? '',
                   merchantName: receipt.merchantName,
                   receiptId: receipt.id,
+                  createdAt: nowUtc,
+                  updatedAt: nowUtc,
                );
-               await assetsBox.add(asset);
+               await assetsBox.put(asset.id, asset);
+               if (outboxService != null) {
+                 await outboxService!.enqueue(
+                   entityType: 'asset',
+                   entityId: asset.id,
+                   mutationType: 'upsert',
+                   payload: asset.toJson(),
+                 );
+               }
                debugPrint('Vault: Added ${item.description}');
              }
           }
@@ -116,14 +139,25 @@ class ReceiptRepositoryImpl implements ReceiptRepository {
   @override
   Future<Either<Failure, void>> clearAllData({bool includeCloud = false}) async {
     try {
+      final receiptModels = await localDataSource.getReceipts();
+      final ids = receiptModels.map((e) => e.id).toList();
+
       if (includeCloud) {
-        // We need IDs to delete from Supabase
-        final receiptModels = await localDataSource.getReceipts();
-        final ids = receiptModels.map((e) => e.id).toList();
-        
         if (ids.isNotEmpty) {
           await supabaseDataSource.deleteData(ids);
           await supabaseDataSource.deleteReceipts(ids);
+        }
+      }
+
+      // Enqueue delete tombstones in outbox so cloud replicas delete their state
+      if (outboxService != null) {
+        for (final id in ids) {
+          await outboxService!.enqueue(
+            entityType: 'receipt',
+            entityId: id,
+            mutationType: 'delete',
+            payload: {'id': id},
+          );
         }
       }
       
@@ -139,16 +173,25 @@ class ReceiptRepositoryImpl implements ReceiptRepository {
   @override
   Future<Either<Failure, void>> deleteReceipt(String id) async {
     try {
-      // 1. Try to delete from Cloud (Best effort)
-      try {
-        await supabaseDataSource.deleteData([id]);
-        await supabaseDataSource.deleteReceipts([id]);
-      } catch (e) {
-        // Ignore cloud deletion error if offline
+      // 1. Delete from Local first to ensure transactional consistency
+      await localDataSource.deleteReceipt(id);
+
+      // 2. Enqueue deletion tombstone in OutboxService to propagate soft-delete to cloud replicas
+      if (outboxService != null) {
+        await outboxService!.enqueue(
+          entityType: 'receipt',
+          entityId: id,
+          mutationType: 'delete',
+          payload: {'id': id},
+        );
       }
 
-      // 2. Delete from Local
-      await localDataSource.deleteReceipt(id);
+      // 3. Delete binary training image/data from storage (Best effort)
+      try {
+        await supabaseDataSource.deleteData([id]);
+      } catch (e) {
+        // Ignore storage error; outbox tombstone guarantees eventual DB consistency
+      }
       
       return const Right(null);
     } catch (e) {

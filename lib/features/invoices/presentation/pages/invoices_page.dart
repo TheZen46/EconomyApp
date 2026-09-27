@@ -168,11 +168,11 @@ class _InvoicesPageState extends ConsumerState<InvoicesPage> {
                 padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
                 child: Row(
                   children: [
-                    const Text('⚠️', style: TextStyle(fontSize: 16)),
+                    const Icon(Icons.cloud_done_outlined, size: 16, color: Color(0xFF10B981)),
                     const SizedBox(width: 12),
                     Expanded(
                       child: Text(
-                        'BETA FEATURE — Invoice tracking is in beta. Data is stored locally only. Cloud sync coming soon.',
+                        'VAULT SYNC ACTIVE — Encrypted local vault storage with automatic cloud synchronization enabled.',
                         style: GoogleFonts.spaceGrotesk(color: textCol, fontSize: 13, fontWeight: FontWeight.w500),
                       ),
                     ),

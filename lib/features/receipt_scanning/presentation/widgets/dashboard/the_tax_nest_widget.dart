@@ -4,6 +4,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:fl_chart/fl_chart.dart';
 import '../../../../../core/constants/app_constants.dart';
 import '../../../domain/entities/receipt.dart';
+import '../../providers/receipt_provider.dart';
 
 /// Interactive dashboard widget displaying estimated tax reserves (The Tax Nest).
 ///
@@ -24,9 +25,6 @@ class TheTaxNestWidget extends ConsumerStatefulWidget {
 }
 
 class _TheTaxNestWidgetState extends ConsumerState<TheTaxNestWidget> {
-  double _taxRate = AppConstants.defaultTaxRate;
-  double _goal = AppConstants.defaultTaxNestGoal;
-
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
@@ -34,9 +32,13 @@ class _TheTaxNestWidgetState extends ConsumerState<TheTaxNestWidget> {
     final muted = colorScheme.onSurfaceVariant;
     final accent = colorScheme.primary;
 
+    final taxRate = ref.watch(taxNestRateProvider);
+    final goal = ref.watch(taxNestGoalProvider);
+    final isPrivacy = ref.watch(privacyModeProvider);
+
     final ytdTotal = widget.receipts.fold(0.0, (sum, r) => sum + r.totalAmount);
-    final stashed = ytdTotal * _taxRate;
-    final progressPercent = _goal > 0 ? (stashed / _goal * 100).clamp(0.0, 100.0) : 0.0;
+    final stashed = ytdTotal * taxRate;
+    final progressPercent = goal > 0 ? (stashed / goal * 100).clamp(0.0, 100.0) : 0.0;
 
     final now = DateTime.now();
     final quarter = ((now.month - 1) ~/ 3) + 1;
@@ -77,7 +79,7 @@ class _TheTaxNestWidgetState extends ConsumerState<TheTaxNestWidget> {
                 borderRadius: BorderRadius.circular(6),
               ),
               child: Text(
-                '${(_taxRate * 100).toInt()}% Auto-Stash',
+                '${(taxRate * 100).toInt()}% Auto-Stash',
                 style: GoogleFonts.jetBrainsMono(
                   fontSize: 10,
                   fontWeight: FontWeight.bold,
@@ -89,12 +91,12 @@ class _TheTaxNestWidgetState extends ConsumerState<TheTaxNestWidget> {
         ),
         const SizedBox(height: 20),
         GestureDetector(
-          onTap: () => _showTaxGoalDialog(context, stashed, progressPercent),
+          onTap: () => _showTaxGoalDialog(context, stashed, progressPercent, goal, isPrivacy),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                '\$${stashed.toStringAsFixed(2)}',
+                AppConstants.privacyMask('\$${stashed.toStringAsFixed(2)}', isPrivacy: isPrivacy),
                 style: GoogleFonts.jetBrainsMono(
                   fontSize: 38,
                   fontWeight: FontWeight.w300,
@@ -131,7 +133,7 @@ class _TheTaxNestWidgetState extends ConsumerState<TheTaxNestWidget> {
         const SizedBox(height: 20),
         SizedBox(
           height: 60,
-          child: _buildTaxHistoryChart(accent),
+          child: _buildTaxHistoryChart(accent, taxRate),
         ),
         const SizedBox(height: 16),
         SizedBox(
@@ -144,7 +146,7 @@ class _TheTaxNestWidgetState extends ConsumerState<TheTaxNestWidget> {
               padding: const EdgeInsets.symmetric(vertical: 12),
             ),
             icon: Icon(Icons.tune, size: 14, color: muted),
-            onPressed: () => _showAutoStashConfigSheet(context),
+            onPressed: () => _showAutoStashConfigSheet(context, taxRate, goal),
             label: Text(
               'Configure Tax Withholding',
               style: GoogleFonts.spaceGrotesk(fontWeight: FontWeight.w500, fontSize: 12),
@@ -155,7 +157,7 @@ class _TheTaxNestWidgetState extends ConsumerState<TheTaxNestWidget> {
     );
   }
 
-  Widget _buildTaxHistoryChart(Color accent) {
+  Widget _buildTaxHistoryChart(Color accent, double rate) {
     final now = DateTime.now();
     // Compute last 6 months' tax stashes from actual receipt data
     final List<double> monthlyStashes = List.generate(6, (i) {
@@ -163,7 +165,7 @@ class _TheTaxNestWidgetState extends ConsumerState<TheTaxNestWidget> {
       final monthTotal = widget.receipts
           .where((r) => r.date.year == monthDate.year && r.date.month == monthDate.month)
           .fold(0.0, (sum, r) => sum + r.totalAmount);
-      return monthTotal * _taxRate;
+      return monthTotal * rate;
     });
 
     final maxVal = monthlyStashes.fold(100.0, (max, val) => val > max ? val : max);
@@ -203,7 +205,7 @@ class _TheTaxNestWidgetState extends ConsumerState<TheTaxNestWidget> {
     );
   }
 
-  void _showTaxGoalDialog(BuildContext context, double currentStashed, double progress) {
+  void _showTaxGoalDialog(BuildContext context, double currentStashed, double progress, double goal, bool isPrivacy) {
     final colorScheme = Theme.of(context).colorScheme;
     showDialog(
       context: context,
@@ -222,12 +224,12 @@ class _TheTaxNestWidgetState extends ConsumerState<TheTaxNestWidget> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'Target Goal: \$${_goal.toStringAsFixed(2)}',
+              'Target Goal: \$${goal.toStringAsFixed(2)}',
               style: GoogleFonts.spaceGrotesk(color: colorScheme.onSurfaceVariant),
             ),
             const SizedBox(height: 8),
             Text(
-              'Current Reserves: \$${currentStashed.toStringAsFixed(2)} (${progress.toStringAsFixed(1)}%)',
+              'Current Reserves: ${AppConstants.privacyMask('\$${currentStashed.toStringAsFixed(2)}', isPrivacy: isPrivacy)} (${progress.toStringAsFixed(1)}%)',
               style: GoogleFonts.jetBrainsMono(
                 color: colorScheme.primary,
                 fontWeight: FontWeight.bold,
@@ -252,12 +254,12 @@ class _TheTaxNestWidgetState extends ConsumerState<TheTaxNestWidget> {
     );
   }
 
-  void _showAutoStashConfigSheet(BuildContext context) {
+  void _showAutoStashConfigSheet(BuildContext context, double currentRate, double currentGoal) {
     final colorScheme = Theme.of(context).colorScheme;
     final fgCol = colorScheme.onSurface;
     final muted = colorScheme.onSurfaceVariant;
-    double selectedRate = _taxRate;
-    double selectedGoal = _goal;
+    double selectedRate = currentRate;
+    double selectedGoal = currentGoal;
 
     showModalBottomSheet(
       context: context,
@@ -337,12 +339,12 @@ class _TheTaxNestWidgetState extends ConsumerState<TheTaxNestWidget> {
                         foregroundColor: colorScheme.onPrimary,
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                       ),
-                      onPressed: () {
-                        setState(() {
-                          _taxRate = selectedRate;
-                          _goal = selectedGoal;
-                        });
-                        Navigator.pop(ctx);
+                      onPressed: () async {
+                        await ref.read(taxNestRateProvider.notifier).setRate(selectedRate);
+                        await ref.read(taxNestGoalProvider.notifier).setGoal(selectedGoal);
+                        if (context.mounted) {
+                          Navigator.pop(ctx);
+                        }
                       },
                       child: Text('Save Settings', style: GoogleFonts.spaceGrotesk(fontWeight: FontWeight.bold)),
                     ),
@@ -356,3 +358,4 @@ class _TheTaxNestWidgetState extends ConsumerState<TheTaxNestWidget> {
     );
   }
 }
+

@@ -1,12 +1,15 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../../domain/entities/receipt.dart';
+import '../../providers/receipt_provider.dart';
+import '../../../../../core/constants/app_constants.dart';
 import '../interactive_hover.dart';
 
 /// Dashboard widget comparing essential spending (Needs) against discretionary spending (Wants).
 ///
 /// Features interactive toggling between percentage allocations and raw currency totals.
-class NeedsVsWantsWidget extends StatefulWidget {
+class NeedsVsWantsWidget extends ConsumerStatefulWidget {
   final List<Receipt> receipts;
   final bool isDark;
 
@@ -17,10 +20,10 @@ class NeedsVsWantsWidget extends StatefulWidget {
   });
 
   @override
-  State<NeedsVsWantsWidget> createState() => _NeedsVsWantsWidgetState();
+  ConsumerState<NeedsVsWantsWidget> createState() => _NeedsVsWantsWidgetState();
 }
 
-class _NeedsVsWantsWidgetState extends State<NeedsVsWantsWidget> {
+class _NeedsVsWantsWidgetState extends ConsumerState<NeedsVsWantsWidget> {
   bool _showAmounts = false;
 
   @override
@@ -29,6 +32,7 @@ class _NeedsVsWantsWidgetState extends State<NeedsVsWantsWidget> {
     final fgCol = colorScheme.onSurface;
     final muted = colorScheme.onSurfaceVariant;
     final accent = colorScheme.primary;
+    final isPrivacy = ref.watch(privacyModeProvider);
 
     final needsTotal = widget.receipts.fold(0.0, (sum, r) => sum + r.essentialTotal);
     final wantsTotal = widget.receipts.fold(0.0, (sum, r) => sum + (r.totalAmount - r.essentialTotal));
@@ -141,7 +145,7 @@ class _NeedsVsWantsWidgetState extends State<NeedsVsWantsWidget> {
                 children: [
                   Flexible(
                     child: Text(
-                      '\$${needsTotal.toStringAsFixed(2)}',
+                      AppConstants.formatAmount(needsTotal, isPrivacy: isPrivacy),
                       style: GoogleFonts.jetBrainsMono(fontSize: 12, fontWeight: FontWeight.bold, color: accent),
                       overflow: TextOverflow.ellipsis,
                     ),
@@ -149,7 +153,7 @@ class _NeedsVsWantsWidgetState extends State<NeedsVsWantsWidget> {
                   const SizedBox(width: 8),
                   Flexible(
                     child: Text(
-                      '\$${wantsTotal.toStringAsFixed(2)}',
+                      AppConstants.formatAmount(wantsTotal, isPrivacy: isPrivacy),
                       style: GoogleFonts.jetBrainsMono(fontSize: 12, fontWeight: FontWeight.w500, color: muted),
                       overflow: TextOverflow.ellipsis,
                     ),

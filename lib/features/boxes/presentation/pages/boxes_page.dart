@@ -65,7 +65,7 @@ class _BoxesPageState extends ConsumerState<BoxesPage> {
             children: [
               Expanded(
                 flex: 1,
-                child: _buildBoxList(context, boxes, activeId, colorScheme),
+                child: _buildBoxList(context, boxes, activeId, allReceipts, colorScheme),
               ),
               const SizedBox(width: 24),
               Expanded(
@@ -78,7 +78,7 @@ class _BoxesPageState extends ConsumerState<BoxesPage> {
             children: [
               Expanded(
                 flex: 2,
-                child: _buildBoxList(context, boxes, activeId, colorScheme),
+                child: _buildBoxList(context, boxes, activeId, allReceipts, colorScheme),
               ),
               const SizedBox(height: 16),
               Expanded(
@@ -138,7 +138,18 @@ class _BoxesPageState extends ConsumerState<BoxesPage> {
     );
   }
 
-  Widget _buildBoxList(BuildContext context, List<BoxModel> boxes, String activeId, ColorScheme colorScheme) {
+  double _calculateBoxSpent(BoxModel box, List<Receipt> receipts) {
+    final matching = receipts.where((r) {
+      if (box.id == 'main') {
+        return r.boxId == null || r.boxId == 'main';
+      }
+      return r.boxId == box.id;
+    });
+    final sum = matching.fold<double>(0.0, (acc, r) => acc + r.totalAmount);
+    return sum > 0 ? sum : box.spent;
+  }
+
+  Widget _buildBoxList(BuildContext context, List<BoxModel> boxes, String activeId, List<Receipt> allReceipts, ColorScheme colorScheme) {
     return ListView.separated(
       itemCount: boxes.length,
       separatorBuilder: (ctx, idx) => const SizedBox(height: 16),
@@ -146,6 +157,7 @@ class _BoxesPageState extends ConsumerState<BoxesPage> {
         final box = boxes[index];
         final isSelected = box.id == _selectedBoxId;
         final isActive = box.id == activeId;
+        final spent = _calculateBoxSpent(box, allReceipts);
 
         return GestureDetector(
           onTap: () => setState(() => _selectedBoxId = box.id),
@@ -224,7 +236,7 @@ class _BoxesPageState extends ConsumerState<BoxesPage> {
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Text(
-                      '${box.currency} ${box.spent.toStringAsFixed(2)}',
+                      '${box.currency} ${spent.toStringAsFixed(2)}',
                       style: GoogleFonts.jetBrainsMono(
                         color: colorScheme.onSurface,
                         fontWeight: FontWeight.bold,
@@ -243,10 +255,10 @@ class _BoxesPageState extends ConsumerState<BoxesPage> {
                 if (box.budget > 0) ...[
                   const SizedBox(height: 8),
                   LinearProgressIndicator(
-                    value: (box.spent / box.budget).clamp(0.0, 1.0),
+                    value: (spent / box.budget).clamp(0.0, 1.0),
                     backgroundColor: colorScheme.outline.withValues(alpha: 0.2),
                     valueColor: AlwaysStoppedAnimation<Color>(
-                      box.spent > box.budget ? colorScheme.error : colorScheme.primary,
+                      spent > box.budget ? colorScheme.error : colorScheme.primary,
                     ),
                     borderRadius: BorderRadius.circular(4),
                   ),
@@ -280,8 +292,9 @@ class _BoxesPageState extends ConsumerState<BoxesPage> {
 
     final box = boxes.firstWhere((b) => b.id == _selectedBoxId, orElse: () => boxes.first);
     final isActive = box.id == activeId;
-    final remaining = box.budget > 0 ? box.budget - box.spent : 0.0;
-    final isOverBudget = box.budget > 0 && box.spent > box.budget;
+    final spent = _calculateBoxSpent(box, allReceipts);
+    final remaining = box.budget > 0 ? box.budget - spent : 0.0;
+    final isOverBudget = box.budget > 0 && spent > box.budget;
 
     // Filter receipts belonging to this box
     final boxReceipts = allReceipts.where((r) {
@@ -388,7 +401,7 @@ class _BoxesPageState extends ConsumerState<BoxesPage> {
                 childAspectRatio: 2,
                 children: [
                   _buildKpiCard('Budget', box.budget > 0 ? '${box.currency} ${box.budget.toStringAsFixed(0)}' : '∞', colorScheme),
-                  _buildKpiCard('Spent', '${box.currency} ${box.spent.toStringAsFixed(2)}', colorScheme),
+                  _buildKpiCard('Spent', '${box.currency} ${spent.toStringAsFixed(2)}', colorScheme),
                   _buildKpiCard('Remaining', box.budget > 0 ? '${box.currency} ${remaining.toStringAsFixed(2)}' : '∞', colorScheme, isOverBudget ? colorScheme.error : null),
                   _buildKpiCard('Pace', isOverBudget ? 'Over Budget' : 'On Track', colorScheme, isOverBudget ? colorScheme.error : const Color(0xFF16a34a)),
                 ],

@@ -339,18 +339,28 @@ class _SettingsPanelWidgetState extends ConsumerState<SettingsPanelWidget> {
                                       ),
                                     ],
                                   ),
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                    decoration: BoxDecoration(
-                                      color: colorScheme.surfaceContainerHighest,
-                                      borderRadius: BorderRadius.circular(8),
-                                      border: Border.all(color: divider),
-                                    ),
-                                    child: Text(
-                                      'VRAM: 669 MB',
-                                      style: GoogleFonts.jetBrainsMono(fontSize: 11, color: fgCol),
-                                    ),
-                                  ),
+                                  Builder(builder: (_) {
+                                    final String memLabel;
+                                    if (isVlmActive) {
+                                      memLabel = 'VRAM: ~669 MB';
+                                    } else if (isEnabled && apiKey.isNotEmpty) {
+                                      memLabel = 'RAM: ~12 MB (Cloud)';
+                                    } else {
+                                      memLabel = 'RAM: ~38 MB (ML Kit)';
+                                    }
+                                    return Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                      decoration: BoxDecoration(
+                                        color: colorScheme.surfaceContainerHighest,
+                                        borderRadius: BorderRadius.circular(8),
+                                        border: Border.all(color: divider),
+                                      ),
+                                      child: Text(
+                                        memLabel,
+                                        style: GoogleFonts.jetBrainsMono(fontSize: 11, color: fgCol),
+                                      ),
+                                    );
+                                  }),
                                 ],
                               ),
                             ),

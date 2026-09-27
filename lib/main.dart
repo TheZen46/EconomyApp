@@ -336,6 +336,11 @@ class _TAIdyAppState extends ConsumerState<TAIdyApp> {
       final llmService = ref.read(llmServiceProvider);
       await llmService.initialize();
       ref.read(isLlmLoadedProvider.notifier).state = llmService.isModelLoaded;
+      try {
+        ref.read(syncManagerProvider);
+      } catch (e) {
+        debugPrint('Notice: SyncManager auto-sync deferred: $e');
+      }
     });
   }
 

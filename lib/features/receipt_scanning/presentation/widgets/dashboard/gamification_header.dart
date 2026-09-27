@@ -32,12 +32,8 @@ class GamificationHeader extends ConsumerWidget {
     final xpInCurrentLevel = totalXp % xpPerLevel;
     final levelProgress = (xpInCurrentLevel / xpPerLevel).clamp(0.0, 1.0);
 
-    final streakAchievement = achievements.firstWhere(
-      (a) => a.id.startsWith('streak'),
-      orElse: () => Achievement(id: '', name: '', description: '', icon: Icons.local_fire_department, isUnlocked: false, color: Colors.orange),
-    );
-    final isStreakActive = streakAchievement.isUnlocked || receipts.isNotEmpty;
-    final streakDays = receipts.isEmpty ? 0 : (streakAchievement.isUnlocked ? 3 : 1);
+    final streakDays = GamificationService.calculateCurrentStreak(receipts);
+    final isStreakActive = streakDays > 0;
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),

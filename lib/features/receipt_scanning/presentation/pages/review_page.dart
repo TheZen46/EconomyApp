@@ -18,6 +18,7 @@ import '../../../../features/settings/presentation/providers/llm_provider.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../core/theme/theme_notifier.dart';
 import '../../../../core/utils/error_handler.dart';
+import '../../../../core/constants/app_constants.dart';
 
 class ReviewPage extends ConsumerStatefulWidget {
   final Receipt receipt;
@@ -81,10 +82,9 @@ class _ReviewPageState extends ConsumerState<ReviewPage> {
   }
 
   void _checkHardwareAssets() {
-    const hardwareKeywords = ['phone', 'laptop', 'macbook', 'ipad', 'monitor', 'tv', 'camera', 'watch', 'airpods', 'sony', 'dell', 'samsung', 'apple', 'console', 'gpu'];
     for (final wrapper in _items) {
       final desc = wrapper.item.description.toLowerCase();
-      if (hardwareKeywords.any((k) => desc.contains(k))) {
+      if (AppConstants.hardwareKeywords.any((k) => desc.contains(k))) {
         _autoDetectedAssets = true;
         break;
       }
