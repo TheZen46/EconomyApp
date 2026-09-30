@@ -1,0 +1,162 @@
+﻿import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:google_fonts/google_fonts.dart';
+import 'package:flutter_animate/flutter_animate.dart';
+
+import 'package:t_aidy/features/receipt_scanning/domain/entities/receipt.dart';
+import 'package:t_aidy/core/services/gamification_service.dart';
+import 'package:t_aidy/features/boxes/data/providers/boxes_provider.dart';
+import 'package:t_aidy/features/receipt_scanning/presentation/providers/receipt_provider.dart';
+
+class GamificationHeader extends ConsumerWidget {
+  final List<Receipt> receipts;
+  final bool isDark;
+  final double? budget;
+
+  const GamificationHeader({
+    super.key,
+    required this.receipts,
+    required this.isDark,
+    this.budget,
+  });
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final fgCol = colorScheme.onSurface;
+    final muted = colorScheme.onSurfaceVariant;
+    final accent = colorScheme.primary;
+
+    final effectiveBudget = budget ?? () {
+      final activeId = ref.watch(activeBoxIdProvider);
+      final boxes = ref.watch(boxesProvider);
+      if (activeId != 'main') {
+        final match = boxes.where((b) => b.id == activeId);
+        if (match.isNotEmpty && match.first.budget > 0) return match.first.budget;
+      }
+      return ref.watch(monthlyBudgetProvider);
+    }();
+
+    final achievements = GamificationService.calculateAchievements(receipts, effectiveBudget);
+    final unlockedCount = achievements.where((a) => a.isUnlocked).length;
+    final totalXp = (receipts.length * 50) + (unlockedCount * 100);
+    const xpPerLevel = 300;
+    final currentLevel = (totalXp ~/ xpPerLevel) + 1;
+    final xpInCurrentLevel = totalXp % xpPerLevel;
+    final levelProgress = (xpInCurrentLevel / xpPerLevel).clamp(0.0, 1.0);
+
+    final streakDays = GamificationService.calculateCurrentStreak(receipts);
+    final isStreakActive = streakDays > 0;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: colorScheme.surfaceContainer,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: colorScheme.outline.withAlpha(50)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            decoration: BoxDecoration(
+              color: accent,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Text(
+              'LVL $currentLevel',
+              style: GoogleFonts.spaceGrotesk(
+                fontSize: 11,
+                fontWeight: FontWeight.bold,
+                color: colorScheme.onPrimary,
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Flexible(
+                      child: Text(
+                        'XP Progress',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: GoogleFonts.spaceGrotesk(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: fgCol,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                    Flexible(
+                      child: Text(
+                        '$xpInCurrentLevel / $xpPerLevel XP',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: GoogleFonts.jetBrainsMono(
+                          fontSize: 10,
+                          color: muted,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(4),
+                  child: LinearProgressIndicator(
+                    value: levelProgress,
+                    minHeight: 6,
+                    backgroundColor: colorScheme.surfaceContainerHighest,
+                    valueColor: AlwaysStoppedAnimation<Color>(accent),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            decoration: BoxDecoration(
+              color: isStreakActive
+                  ? Colors.orange.withAlpha(30)
+                  : colorScheme.surfaceContainerHighest,
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(
+                color: isStreakActive ? Colors.orange : colorScheme.outline.withAlpha(50),
+              ),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  Icons.local_fire_department,
+                  size: 14,
+                  color: isStreakActive ? Colors.orange : muted,
+                ),
+                const SizedBox(width: 3),
+                Text(
+                  '$streakDays d',
+                  style: GoogleFonts.jetBrainsMono(
+                    fontSize: 10,
+                    fontWeight: FontWeight.bold,
+                    color: isStreakActive ? Colors.orange : muted,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    ).animate().fadeIn().slideY(begin: -0.05);
+  }
+}
+
+

@@ -489,7 +489,12 @@ WITH CHECK (auth.uid() = id);
 DROP POLICY IF EXISTS "Service role can view anonymized training labels" ON public.receipt_training_labels;
 CREATE POLICY "Service role can view anonymized training labels"
 ON public.receipt_training_labels FOR SELECT
-USING (auth.jwt() ->> 'role' = 'service_role' OR auth.jwt() ->> 'role' = 'authenticated');
+USING (auth.jwt() ->> 'role' = 'service_role');
+
+DROP POLICY IF EXISTS "Authenticated users can insert training labels" ON public.receipt_training_labels;
+CREATE POLICY "Authenticated users can insert training labels"
+ON public.receipt_training_labels FOR INSERT
+WITH CHECK (auth.role() = 'authenticated' OR auth.jwt() ->> 'role' = 'service_role');
 
 -- ============================================================================
 -- 7. Storage Buckets & Isolation Policies
@@ -504,8 +509,8 @@ VALUES ('asset_documents', 'asset_documents', false)
 ON CONFLICT (id) DO NOTHING;
 
 INSERT INTO storage.buckets (id, name, public)
-VALUES ('training_data', 'training_data', true)
-ON CONFLICT (id) DO NOTHING;
+VALUES ('training_data', 'training_data', false)
+ON CONFLICT (id) DO UPDATE SET public = false;
 
 DROP POLICY IF EXISTS "Users can manage their own receipt images" ON storage.objects;
 CREATE POLICY "Users can manage their own receipt images"

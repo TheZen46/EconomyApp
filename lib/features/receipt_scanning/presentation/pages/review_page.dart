@@ -14,6 +14,7 @@ import '../widgets/receipt_item_row.dart';
 import '../widgets/universal_receipt_image.dart';
 import '../widgets/spatial_box_overlay.dart';
 import '../../../../features/boxes/data/providers/boxes_provider.dart';
+import '../../../../features/boxes/data/models/box_model.dart';
 import '../../../../features/settings/presentation/providers/llm_provider.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../core/theme/theme_notifier.dart';
@@ -41,6 +42,7 @@ class _ReviewPageState extends ConsumerState<ReviewPage> {
   
   String _selectedCurrency = 'USD';
   String _selectedBoxId = 'main';
+  final Set<String> _selectedItemIds = {};
   Color _getBgColor(BuildContext context) => Theme.of(context).scaffoldBackgroundColor;
   Color _getCardColor(BuildContext context) => Theme.of(context).colorScheme.surface;
   Color _getBorderColor(BuildContext context) => Theme.of(context).colorScheme.outline;
@@ -84,7 +86,8 @@ class _ReviewPageState extends ConsumerState<ReviewPage> {
   void _checkHardwareAssets() {
     for (final wrapper in _items) {
       final desc = wrapper.item.description.toLowerCase();
-      if (AppConstants.hardwareKeywords.any((k) => desc.contains(k))) {
+      if (AppConstants.hardwareKeywords.any((k) => desc.contains(k)) ||
+          AppConstants.furnitureKeywords.any((k) => desc.contains(k))) {
         _autoDetectedAssets = true;
         break;
       }
@@ -329,7 +332,7 @@ class _ReviewPageState extends ConsumerState<ReviewPage> {
         totalAmount: double.tryParse(_totalController.text) ?? 0.0,
         date: _currentDate,
         currency: _selectedCurrency,
-        items: _items.map((w) => w.item.copyWith(boxId: _selectedBoxId)).toList(),
+        items: _items.map((w) => w.item.copyWith(boxId: w.item.boxId ?? _selectedBoxId)).toList(),
         boxId: _selectedBoxId,
       );
 
@@ -381,7 +384,9 @@ class _ReviewPageState extends ConsumerState<ReviewPage> {
     final boxes = ref.watch(boxesProvider);
     final selectedBox = boxes.firstWhere(
       (b) => b.id == _selectedBoxId, 
-      orElse: () => boxes.isNotEmpty ? boxes.first : throw StateError('No boxes available')
+      orElse: () => boxes.isNotEmpty
+          ? boxes.first
+          : BoxModel(id: 'main', name: 'Main', budget: 0, spent: 0, currency: 'USD', color: 0),
     );
 
     return Scaffold(
@@ -639,7 +644,83 @@ class _ReviewPageState extends ConsumerState<ReviewPage> {
                                       ),
                                     ).animate().fadeIn().slideY(begin: -0.1),
 
-                                  // Asset / eVault Auto-Detector Alert
+                                                                     // Batch Allocation Toolbar
+                                   if (_selectedItemIds.isNotEmpty)
+                                     Container(
+                                       margin: const EdgeInsets.only(bottom: 12),
+                                       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                                       decoration: BoxDecoration(
+                                         color: AppColors.accent.withOpacity(0.15),
+                                         borderRadius: BorderRadius.circular(14),
+                                         border: Border.all(color: AppColors.accent.withOpacity(0.5)),
+                                       ),
+                                       child: Row(
+                                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                         children: [
+                                           Row(
+                                             children: [
+                                               const Icon(Icons.checklist_rtl, color: AppColors.accent, size: 18),
+                                               const SizedBox(width: 8),
+                                               Text(
+                                                 ' items selected',
+                                                 style: GoogleFonts.spaceGrotesk(color: _getTextColor(context), fontWeight: FontWeight.bold, fontSize: 13),
+                                               ),
+                                             ],
+                                           ),
+                                           Row(
+                                             children: [
+                                               PopupMenuButton<String>(
+                                                 tooltip: 'Move to Box',
+                                                 onSelected: (targetBoxId) {
+                                                   setState(() {
+                                                     for (int i = 0; i < _items.length; i++) {
+                                                       if (_selectedItemIds.contains(_items[i].id)) {
+                                                         _items[i] = _UiReceiptItem(_items[i].id, _items[i].item.copyWith(boxId: targetBoxId));
+                                                       }
+                                                     }
+                                                     _selectedItemIds.clear();
+                                                     _hasUserEdits = true;
+                                                   });
+                                                   ScaffoldMessenger.of(context).showSnackBar(
+                                                     const SnackBar(content: Text('Selected items assigned to Box! 📦')),
+                                                   );
+                                                 },
+                                                 itemBuilder: (ctx) => boxes.map((b) => PopupMenuItem(
+                                                   value: b.id,
+                                                   child: Row(
+                                                     children: [
+                                                       Container(width: 10, height: 10, decoration: BoxDecoration(color: Color(b.color), shape: BoxShape.circle)),
+                                                       const SizedBox(width: 8),
+                                                       Text(b.name, style: GoogleFonts.spaceGrotesk(fontSize: 13)),
+                                                     ],
+                                                   ),
+                                                 )).toList(),
+                                                 child: Container(
+                                                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                                                   decoration: BoxDecoration(
+                                                     color: AppColors.accent,
+                                                     borderRadius: BorderRadius.circular(8),
+                                                   ),
+                                                   child: Row(
+                                                     children: [
+                                                       const Icon(Icons.drive_file_move_outline, color: Colors.white, size: 14),
+                                                       const SizedBox(width: 4),
+                                                       Text('Split to Box', style: GoogleFonts.spaceGrotesk(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 11)),
+                                                     ],
+                                                   ),
+                                                 ),
+                                               ),
+                                               const SizedBox(width: 6),
+                                               IconButton(
+                                                 icon: const Icon(Icons.close, size: 16),
+                                                 onPressed: () => setState(() => _selectedItemIds.clear()),
+                                               ),
+                                             ],
+                                           ),
+                                         ],
+                                       ),
+                                     ).animate().fadeIn().slideY(begin: -0.1),
+                                   // Asset / eVault Auto-Detector Alert
                                   if (_autoDetectedAssets)
                                     Container(
                                       margin: const EdgeInsets.only(bottom: 14),

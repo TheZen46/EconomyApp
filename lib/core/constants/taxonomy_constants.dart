@@ -249,6 +249,65 @@ class TaxonomyConstants {
     'junk': 'Junk',
     'unknown': '?',
   };
+
+  /// Dynamically infers main category, subcategory, and necessity from an item description.
+  static ({String mainCategory, String? subCategory, String necessity}) classifyItem(String description) {
+    final lower = description.toLowerCase().trim();
+    if (lower.isEmpty) {
+      return (mainCategory: 'General', subCategory: null, necessity: 'essential');
+    }
+
+    // 1. Check hierarchical taxonomy
+    const genericAdjectives = {
+      'fresh', 'frozen', 'canned', 'dried', 'specialty', 'red', 'white',
+      'yellow', 'whole', 'cut', 'organic', 'raw', 'hot', 'sweet', 'standard', 'fancy',
+    };
+
+    for (final catEntry in hierarchy.entries) {
+      final category = catEntry.key;
+      for (final subEntry in catEntry.value.entries) {
+        final subCategory = subEntry.key;
+        for (final item in subEntry.value) {
+          final itemNameParts = item.name.toLowerCase().split(RegExp(r'[/()]'));
+          for (final part in itemNameParts) {
+            final cleaned = part.trim();
+            if (genericAdjectives.contains(cleaned)) continue;
+            if (cleaned.length >= 3 && lower.contains(cleaned)) {
+              return (mainCategory: category, subCategory: subCategory, necessity: item.defaultNecessity);
+            }
+          }
+        }
+      }
+    }
+
+    // 2. Common domain keywords
+    if (lower.contains('coffee') || lower.contains('caffe') || lower.contains('latte') ||
+        lower.contains('cappuccino') || lower.contains('espresso') || lower.contains('brioche') ||
+        lower.contains('croissant') || lower.contains('panino') || lower.contains('sandwich') ||
+        lower.contains('restaurant') || lower.contains('pizza') || lower.contains('burger')) {
+      return (mainCategory: 'Dining', subCategory: 'Cafe', necessity: 'discretional');
+    }
+
+    if (lower.contains('uber') || lower.contains('taxi') || lower.contains('transit') ||
+        lower.contains('bus') || lower.contains('metro') || lower.contains('train') || lower.contains('ticket')) {
+      return (mainCategory: 'Transportation', subCategory: 'Transit', necessity: 'essential');
+    }
+
+    if (lower.contains('cable') || lower.contains('charger') || lower.contains('adapter') ||
+        lower.contains('usb') || lower.contains('battery') || lower.contains('hdmi') ||
+        lower.contains('macbook') || lower.contains('laptop') || lower.contains('phone') ||
+        lower.contains('airpods') || lower.contains('keyboard') || lower.contains('monitor')) {
+      return (mainCategory: 'Tech & Gadgets', subCategory: 'Hardware', necessity: 'discretional');
+    }
+
+    if (lower.contains('beer') || lower.contains('wine') || lower.contains('cocktail') ||
+        lower.contains('chips') || lower.contains('candy') || lower.contains('chocolate') ||
+        lower.contains('soda') || lower.contains('cola')) {
+      return (mainCategory: 'Snacks & Sweets', subCategory: 'Vices', necessity: 'junk');
+    }
+
+    return (mainCategory: 'General', subCategory: null, necessity: 'essential');
+  }
 }
 
 class TaxonomyItem {

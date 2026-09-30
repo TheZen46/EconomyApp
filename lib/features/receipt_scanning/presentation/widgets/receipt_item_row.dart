@@ -6,6 +6,7 @@ import '../../domain/entities/receipt.dart';
 import '../../../../core/constants/taxonomy_constants.dart';
 import '../../../../core/utils/string_utils.dart';
 import '../../../settings/presentation/providers/taxonomy_provider.dart';
+import '../../../boxes/data/models/box_model.dart';
 
 class ReceiptItemRow extends ConsumerWidget {
   final ReceiptItem item;
@@ -15,6 +16,12 @@ class ReceiptItemRow extends ConsumerWidget {
   final Function(String) onPriceChanged;
   final Function(String) onQuantityChanged;
   final ValueChanged<bool> onAssetChanged;
+  final String? boxId;
+  final List<BoxModel> availableBoxes;
+  final ValueChanged<String?>? onBoxChanged;
+  final bool isSelected;
+  final ValueChanged<bool>? onSelectionChanged;
+  final double? priceTrendPercent;
 
   const ReceiptItemRow({
     super.key,
@@ -25,6 +32,12 @@ class ReceiptItemRow extends ConsumerWidget {
     required this.onPriceChanged,
     required this.onQuantityChanged,
     required this.onAssetChanged,
+    this.boxId,
+    this.availableBoxes = const [],
+    this.onBoxChanged,
+    this.isSelected = false,
+    this.onSelectionChanged,
+    this.priceTrendPercent,
   });
 
   @override
@@ -52,8 +65,13 @@ class ReceiptItemRow extends ConsumerWidget {
         child: Container(
           padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 14),
           decoration: BoxDecoration(
-            color: item.isAsset ? const Color(0xFF10B981).withOpacity(0.08) : Colors.transparent,
-            border: Border(bottom: BorderSide(color: Colors.white.withOpacity(0.05))),
+            color: isSelected
+                ? AppColors.accent.withOpacity(0.12)
+                : (item.isAsset ? const Color(0xFF10B981).withOpacity(0.08) : Colors.transparent),
+            border: Border(
+              bottom: BorderSide(color: Colors.white.withOpacity(0.05)),
+              left: isSelected ? const BorderSide(color: AppColors.accent, width: 3) : BorderSide.none,
+            ),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -61,6 +79,16 @@ class ReceiptItemRow extends ConsumerWidget {
               Row(
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
+                  if (onSelectionChanged != null) ...[
+                    Checkbox(
+                      value: isSelected,
+                      activeColor: AppColors.accent,
+                      onChanged: (val) => onSelectionChanged!(val ?? false),
+                      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      visualDensity: VisualDensity.compact,
+                    ),
+                    const SizedBox(width: 4),
+                  ],
                   // Quantity Badge Input
                   Container(
                     width: 48,
@@ -164,7 +192,7 @@ class ReceiptItemRow extends ConsumerWidget {
               ),
               const SizedBox(height: 8),
               
-              // ─── 3-Tier Necessity Interactive Pill Selector ──────────────
+              // ─── Interactive Controls (Necessity, Box Assignment, Vault, Price Trend) ────
               Wrap(
                 spacing: 6,
                 runSpacing: 4,
@@ -190,6 +218,8 @@ class ReceiptItemRow extends ConsumerWidget {
                     icon: Icons.local_fire_department_outlined,
                     color: const Color(0xFFEC4899),
                   ),
+                  // Box Assignment Chip
+                  _buildBoxChip(context),
                   // Digital Vault Toggle Chip
                   InkWell(
                     borderRadius: BorderRadius.circular(12),
@@ -225,6 +255,8 @@ class ReceiptItemRow extends ConsumerWidget {
                       ),
                     ),
                   ),
+                  // Price Trend Alert Chip (if present)
+                  if (priceTrendPercent != null) _buildPriceTrendChip(context),
                 ],
               ),
             ],
@@ -274,6 +306,138 @@ class ReceiptItemRow extends ConsumerWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildBoxChip(BuildContext context) {
+    final currentBoxId = item.boxId ?? boxId ?? 'main';
+    final box = availableBoxes.firstWhere(
+      (b) => b.id == currentBoxId,
+      orElse: () => BoxModel(id: 'main', name: 'Main Life', budget: 0, spent: 0, currency: 'USD', color: 0xFF002FA7),
+    );
+    final boxColor = Color(box.color);
+
+    return InkWell(
+      borderRadius: BorderRadius.circular(12),
+      onTap: () => _showBoxPicker(context),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+        decoration: BoxDecoration(
+          color: boxColor.withOpacity(0.15),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: boxColor.withOpacity(0.5),
+            width: 1,
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 7,
+              height: 7,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: boxColor,
+              ),
+            ),
+            const SizedBox(width: 5),
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 90),
+              child: Text(
+                box.name,
+                style: GoogleFonts.spaceGrotesk(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w600,
+                  color: AppTheme.textMain,
+                ),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            const SizedBox(width: 2),
+            const Icon(Icons.arrow_drop_down, size: 12, color: AppTheme.textDim),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showBoxPicker(BuildContext context) {
+    if (availableBoxes.isEmpty || onBoxChanged == null) return;
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: AppTheme.surface,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (ctx) {
+        return Container(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Assign Item to Box',
+                style: GoogleFonts.spaceGrotesk(color: AppTheme.textMain, fontWeight: FontWeight.bold, fontSize: 16),
+              ),
+              const SizedBox(height: 12),
+              ...availableBoxes.map((b) {
+                final isSelected = b.id == (item.boxId ?? boxId ?? 'main');
+                final col = Color(b.color);
+                return ListTile(
+                  dense: true,
+                  leading: Container(width: 12, height: 12, decoration: BoxDecoration(color: col, shape: BoxShape.circle)),
+                  title: Text(b.name, style: GoogleFonts.spaceGrotesk(color: AppTheme.textMain, fontWeight: isSelected ? FontWeight.bold : FontWeight.normal)),
+                  trailing: isSelected ? Icon(Icons.check, color: col, size: 18) : null,
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    onBoxChanged!(b.id);
+                  },
+                );
+              }),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildPriceTrendChip(BuildContext context) {
+    final pct = priceTrendPercent!;
+    final isIncrease = pct > 0.05;
+    final isDecrease = pct < -0.05;
+    final color = isIncrease
+        ? const Color(0xFFF59E0B)
+        : (isDecrease ? const Color(0xFF10B981) : Colors.grey);
+    final icon = isIncrease
+        ? Icons.trending_up
+        : (isDecrease ? Icons.trending_down : Icons.trending_flat);
+    final label = isIncrease
+        ? '+${pct.toStringAsFixed(1)}% (Surge)'
+        : (isDecrease ? '${pct.toStringAsFixed(1)}%' : 'Stable');
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.12),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: color.withOpacity(0.35), width: 1),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 11, color: color),
+          const SizedBox(width: 3),
+          Text(
+            label,
+            style: GoogleFonts.jetBrainsMono(
+              fontSize: 9,
+              fontWeight: FontWeight.bold,
+              color: color,
+            ),
+          ),
+        ],
       ),
     );
   }

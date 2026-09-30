@@ -4,27 +4,49 @@ import 'package:google_fonts/google_fonts.dart';
 
 import '../../../../core/constants/app_constants.dart';
 import '../providers/receipt_provider.dart';
-import '../../domain/entities/receipt.dart';
+import '../../../analytics/data/price_drift_service.dart';
 
-/// Page monitoring grocery and product price volatility, inflation, and historical price changes.
+/// Page monitoring product SKU price volatility, inflation trends, and multi-merchant variance.
 ///
-/// Groups line-item descriptions across all scanned receipts chronologically, computes
-/// historical minimums, maximums, and moving averages, and visualizes price trend directions.
-class PriceWatchPage extends ConsumerWidget {
+/// Groups line-item descriptions using FastText subword semantic embedding vectors,
+/// detects price drift over time, and highlights the cheapest merchant for recurring items.
+class PriceWatchPage extends ConsumerStatefulWidget {
   /// Creates a new [PriceWatchPage] instance.
   const PriceWatchPage({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<PriceWatchPage> createState() => _PriceWatchPageState();
+}
+
+class _PriceWatchPageState extends ConsumerState<PriceWatchPage> {
+  String _searchQuery = '';
+  String _activeFilter = 'All'; // 'All', 'Rising', 'Falling', 'Stable'
+
+  @override
+  Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
-    final receiptListAsync = ref.watch(receiptListProvider);
+    final clusters = ref.watch(priceDriftClustersProvider);
+    final isPrivacy = ref.watch(privacyModeProvider);
+    final receiptsAsync = ref.watch(receiptListProvider);
+    final currency = receiptsAsync.valueOrNull?.isNotEmpty == true ? receiptsAsync.valueOrNull!.first.currency : 'USD';
+
+    final filteredClusters = clusters.where((c) {
+      final matchesSearch = c.canonicalName.toLowerCase().contains(_searchQuery.toLowerCase()) ||
+          (c.cheapestMerchant != null && c.cheapestMerchant!.toLowerCase().contains(_searchQuery.toLowerCase()));
+      if (!matchesSearch) return false;
+
+      if (_activeFilter == 'Rising') return c.priceTrend == 'up';
+      if (_activeFilter == 'Falling') return c.priceTrend == 'down';
+      if (_activeFilter == 'Stable') return c.priceTrend == 'stable';
+      return true;
+    }).toList();
 
     return Scaffold(
       backgroundColor: colorScheme.surface,
       appBar: AppBar(
         title: Text(
-          'Price Watch & Inflation',
+          'Price Watch & Inflation Radar',
           style: GoogleFonts.spaceGrotesk(
             fontWeight: FontWeight.bold,
             color: colorScheme.onSurface,
@@ -37,118 +59,190 @@ class PriceWatchPage extends ConsumerWidget {
           onPressed: () => Navigator.of(context).pop(),
         ),
       ),
-      body: receiptListAsync.when(
-        data: (receipts) {
-          final itemStats = _calculateStats(receipts);
-          final currencySymbol = AppConstants.getCurrencySymbol(
-            receipts.isNotEmpty ? receipts.first.currency : 'USD',
-          );
-          
-          if (itemStats.isEmpty) {
-            return Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(Icons.query_stats_rounded, size: 64, color: colorScheme.onSurfaceVariant.withValues(alpha: 0.4)),
-                  const SizedBox(height: 16),
-                  Text(
-                    'No recurring item price data found.\nScan multiple itemized receipts to track inflation trends.',
-                    textAlign: TextAlign.center,
-                    style: GoogleFonts.spaceGrotesk(
-                      color: colorScheme.onSurfaceVariant,
-                      fontSize: 14,
-                    ),
-                  ),
-                ],
-              ),
-            );
-          }
-
-          return ListView.builder(
-            padding: const EdgeInsets.all(16),
-            itemCount: itemStats.length,
-            itemBuilder: (context, index) {
-              final stat = itemStats[index];
-              final isUp = stat.percentChange > 0.5;
-              final isDown = stat.percentChange < -0.5;
-              final isNeutral = !isUp && !isDown;
-              
-              return Container(
-                margin: const EdgeInsets.only(bottom: 12),
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: colorScheme.surfaceContainer,
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: colorScheme.outline.withValues(alpha: 0.2)),
+      body: Column(
+        children: [
+          // Search & Filter Header
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: TextField(
+              onChanged: (val) => setState(() => _searchQuery = val),
+              style: GoogleFonts.spaceGrotesk(color: colorScheme.onSurface),
+              decoration: InputDecoration(
+                hintText: 'Search products or merchants...',
+                hintStyle: GoogleFonts.spaceGrotesk(color: colorScheme.onSurfaceVariant),
+                prefixIcon: Icon(Icons.search, color: colorScheme.onSurfaceVariant),
+                filled: true,
+                fillColor: colorScheme.surfaceContainerHighest.withAlpha(120),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(14),
+                  borderSide: BorderSide(color: colorScheme.outline.withAlpha(60)),
                 ),
-                child: Column(
-                  children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(14),
+                  borderSide: BorderSide(color: colorScheme.outline.withAlpha(60)),
+                ),
+              ),
+            ),
+          ),
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+            child: Row(
+              children: ['All', 'Rising', 'Falling', 'Stable'].map((filter) {
+                final isSelected = _activeFilter == filter;
+                return Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: FilterChip(
+                    selected: isSelected,
+                    label: Text(filter),
+                    labelStyle: GoogleFonts.spaceGrotesk(
+                      color: isSelected ? colorScheme.onPrimary : colorScheme.onSurface,
+                      fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                      fontSize: 12,
+                    ),
+                    selectedColor: colorScheme.primary,
+                    checkmarkColor: colorScheme.onPrimary,
+                    onSelected: (_) => setState(() => _activeFilter = filter),
+                  ),
+                );
+              }).toList(),
+            ),
+          ),
+          const SizedBox(height: 8),
+
+          // List of Clustered SKUs
+          Expanded(
+            child: filteredClusters.isEmpty
+                ? Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Expanded(
-                          child: Text(
-                            stat.name, 
-                            style: GoogleFonts.spaceGrotesk(
-                              color: colorScheme.onSurface, 
-                              fontWeight: FontWeight.bold,
-                              fontSize: 16,
-                            ),
-                            overflow: TextOverflow.ellipsis,
+                        Icon(Icons.query_stats_rounded, size: 64, color: colorScheme.onSurfaceVariant.withAlpha(100)),
+                        const SizedBox(height: 16),
+                        Text(
+                          'No recurring product SKU trends found.\nScan multiple itemized receipts to track inflation.',
+                          textAlign: TextAlign.center,
+                          style: GoogleFonts.spaceGrotesk(
+                            color: colorScheme.onSurfaceVariant,
+                            fontSize: 14,
                           ),
                         ),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                          decoration: BoxDecoration(
-                            color: isNeutral 
-                                ? colorScheme.surfaceContainerHighest 
-                                : (isUp 
-                                    ? colorScheme.error.withValues(alpha: 0.15) 
-                                    : const Color(0xFF10B981).withValues(alpha: 0.15)),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              if (!isNeutral) 
-                                Icon(
-                                  isUp ? Icons.arrow_upward_rounded : Icons.arrow_downward_rounded, 
-                                  size: 14, 
-                                  color: isUp ? colorScheme.error : const Color(0xFF10B981),
+                      ],
+                    ),
+                  )
+                : ListView.builder(
+                    padding: const EdgeInsets.all(16),
+                    itemCount: filteredClusters.length,
+                    itemBuilder: (context, index) {
+                      final cluster = filteredClusters[index];
+                      final isUp = cluster.priceTrend == 'up';
+                      final isDown = cluster.priceTrend == 'down';
+                      final isNeutral = !isUp && !isDown;
+
+                      return Container(
+                        margin: const EdgeInsets.only(bottom: 14),
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: colorScheme.surfaceContainer,
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(color: colorScheme.outline.withAlpha(60)),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    cluster.canonicalName,
+                                    style: GoogleFonts.spaceGrotesk(
+                                      color: colorScheme.onSurface,
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 16,
+                                    ),
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
                                 ),
-                              Text(
-                                isNeutral ? 'Stable' : '${stat.percentChange.abs().toStringAsFixed(1)}%',
-                                style: GoogleFonts.jetBrainsMono(
-                                  color: isNeutral 
-                                      ? colorScheme.onSurfaceVariant 
-                                      : (isUp ? colorScheme.error : const Color(0xFF10B981)),
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 12,
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                  decoration: BoxDecoration(
+                                    color: isNeutral
+                                        ? colorScheme.surfaceContainerHighest
+                                        : (isUp
+                                            ? colorScheme.error.withAlpha(40)
+                                            : const Color(0xFF10B981).withAlpha(40)),
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      if (!isNeutral)
+                                        Icon(
+                                          isUp ? Icons.arrow_upward_rounded : Icons.arrow_downward_rounded,
+                                          size: 14,
+                                          color: isUp ? colorScheme.error : const Color(0xFF10B981),
+                                        ),
+                                      Text(
+                                        isNeutral ? 'Stable' : '${cluster.priceDriftPercent.abs().toStringAsFixed(1)}%',
+                                        style: GoogleFonts.jetBrainsMono(
+                                          color: isNeutral
+                                              ? colorScheme.onSurfaceVariant
+                                              : (isUp ? colorScheme.error : const Color(0xFF10B981)),
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 12,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
                                 ),
+                              ],
+                            ),
+                            const SizedBox(height: 12),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                _statColumn('Latest', AppConstants.formatAmount(cluster.latestPrice, currency: currency, isPrivacy: isPrivacy), colorScheme),
+                                _statColumn('Avg Price', AppConstants.formatAmount(cluster.avgPrice, currency: currency, isPrivacy: isPrivacy), colorScheme),
+                                _statColumn('Min / Max', '${AppConstants.formatAmount(cluster.minPrice, currency: currency, isPrivacy: isPrivacy)} / ${AppConstants.formatAmount(cluster.maxPrice, currency: currency, isPrivacy: isPrivacy)}', colorScheme),
+                                _statColumn('Purchases', '${cluster.count}x', colorScheme),
+                              ],
+                            ),
+                            if (cluster.cheapestMerchant != null) ...[
+                              const Divider(height: 20),
+                              Row(
+                                children: [
+                                  Icon(Icons.storefront_outlined, size: 14, color: const Color(0xFF10B981)),
+                                  const SizedBox(width: 6),
+                                  Text(
+                                    'Cheapest at: ',
+                                    style: GoogleFonts.spaceGrotesk(
+                                      fontSize: 12,
+                                      color: colorScheme.onSurfaceVariant,
+                                    ),
+                                  ),
+                                  Expanded(
+                                    child: Text(
+                                      '${cluster.cheapestMerchant} (${AppConstants.formatAmount(cluster.lowestPrice ?? cluster.minPrice, currency: currency, isPrivacy: isPrivacy)})',
+                                      style: GoogleFonts.jetBrainsMono(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w600,
+                                        color: const Color(0xFF10B981),
+                                      ),
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                ],
                               ),
                             ],
-                          ),
+                          ],
                         ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        _statColumn('Avg Price', '$currencySymbol${stat.avgPrice.toStringAsFixed(2)}', colorScheme),
-                        _statColumn('Min', '$currencySymbol${stat.minPrice.toStringAsFixed(2)}', colorScheme),
-                        _statColumn('Max', '$currencySymbol${stat.maxPrice.toStringAsFixed(2)}', colorScheme),
-                        _statColumn('Purchases', '${stat.count}x', colorScheme),
-                      ],
-                    ),
-                  ],
-                ),
-              );
-            },
-          );
-        },
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (err, _) => Center(child: Text('Error: $err', style: TextStyle(color: colorScheme.error))),
+                      );
+                    },
+                  ),
+          ),
+        ],
       ),
     );
   }
@@ -159,80 +253,8 @@ class PriceWatchPage extends ConsumerWidget {
       children: [
         Text(label, style: GoogleFonts.spaceGrotesk(color: colorScheme.onSurfaceVariant, fontSize: 10)),
         const SizedBox(height: 2),
-        Text(value, style: GoogleFonts.jetBrainsMono(color: colorScheme.onSurface, fontSize: 13, fontWeight: FontWeight.w600)),
+        Text(value, style: GoogleFonts.jetBrainsMono(color: colorScheme.onSurface, fontSize: 12, fontWeight: FontWeight.w600)),
       ],
     );
   }
-
-  List<_ItemStat> _calculateStats(List<Receipt> receipts) {
-    // Map product name -> list of (date, price) observations
-    final Map<String, List<_PriceObservation>> itemObservations = {};
-
-    for (final r in receipts) {
-      for (final item in r.items) {
-        final name = item.description.trim();
-        if (name.isNotEmpty && item.unitPrice > 0) {
-          final display = name[0].toUpperCase() + name.substring(1).toLowerCase();
-          itemObservations.putIfAbsent(display, () => []).add(
-            _PriceObservation(date: r.date, price: item.unitPrice),
-          );
-        }
-      }
-    }
-
-    final stats = <_ItemStat>[];
-    itemObservations.forEach((name, observations) {
-      if (observations.length > 1) {
-        // Sort chronologically to compute true historical price change
-        observations.sort((a, b) => a.date.compareTo(b.date));
-        
-        final prices = observations.map((o) => o.price).toList();
-        final double avg = prices.reduce((a, b) => a + b) / prices.length;
-        final double min = prices.reduce((a, b) => a < b ? a : b);
-        final double max = prices.reduce((a, b) => a > b ? a : b);
-        
-        final double firstPrice = observations.first.price;
-        final double lastPrice = observations.last.price;
-        final double pctChange = firstPrice > 0 ? ((lastPrice - firstPrice) / firstPrice) * 100 : 0.0;
-
-        stats.add(_ItemStat(
-          name: name,
-          avgPrice: avg,
-          minPrice: min,
-          maxPrice: max,
-          count: observations.length,
-          percentChange: pctChange,
-        ));
-      }
-    });
-
-    // Sort by frequency
-    stats.sort((a, b) => b.count.compareTo(a.count));
-    return stats;
-  }
-}
-
-class _PriceObservation {
-  final DateTime date;
-  final double price;
-
-  _PriceObservation({required this.date, required this.price});
-}
-
-class _ItemStat {
-  final String name;
-  final double avgPrice;
-  final double minPrice;
-  final double maxPrice;
-  final int count;
-  final double percentChange;
-
-  _ItemStat({
-    required this.name,
-    required this.avgPrice,
-    required this.minPrice,
-    required this.maxPrice,
-    required this.count,
-    required this.percentChange,
-  });
 }

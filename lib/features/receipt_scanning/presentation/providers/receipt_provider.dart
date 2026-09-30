@@ -182,11 +182,32 @@ final filteredReceiptsByActiveBoxProvider = Provider<AsyncValue<List<Receipt>>>(
   final activeBoxId = ref.watch(activeBoxIdProvider);
 
   return receiptsAsync.whenData((receipts) {
-    if (activeBoxId == 'main') {
-      return receipts.where((r) => (r.boxId ?? 'main') == 'main').toList();
-    }
-    return receipts.where((r) => r.boxId == activeBoxId).toList();
+    return receipts.where((r) {
+      final parentMatches = (r.boxId ?? 'main') == activeBoxId;
+      final childMatches = r.items.any((i) => (i.boxId ?? r.boxId ?? 'main') == activeBoxId);
+      return parentMatches || childMatches;
+    }).toList();
   });
+});
+
+final boxSpentAmountProvider = Provider.family<double, String>((ref, boxId) {
+  final receipts = ref.watch(receiptListProvider).valueOrNull ?? [];
+  double total = 0.0;
+  for (final receipt in receipts) {
+    if (receipt.items.isEmpty) {
+      if ((receipt.boxId ?? 'main') == boxId) {
+        total += receipt.totalAmount;
+      }
+    } else {
+      for (final item in receipt.items) {
+        final itemBox = item.boxId ?? receipt.boxId ?? 'main';
+        if (itemBox == boxId) {
+          total += item.totalPrice;
+        }
+      }
+    }
+  }
+  return total;
 });
 
 class ReceiptListNotifier extends StateNotifier<AsyncValue<List<Receipt>>> {

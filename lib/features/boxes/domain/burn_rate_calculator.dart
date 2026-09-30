@@ -1,4 +1,4 @@
-import 'dart:math' as math;
+﻿import 'dart:math' as math;
 import '../../receipt_scanning/domain/entities/receipt.dart';
 import '../data/models/box_model.dart';
 
@@ -166,3 +166,4 @@ class BurnRateCalculator {
     return DateTime(year, month + 1, 0).day;
   }
 }
+

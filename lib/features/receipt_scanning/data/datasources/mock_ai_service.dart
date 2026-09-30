@@ -8,6 +8,7 @@ import '../../../../core/error/failures.dart';
 import '../../../../core/services/ai_service.dart';
 import '../../domain/entities/receipt.dart';
 import '../../../../core/constants/taxonomy_constants.dart';
+import '../../../../core/constants/app_constants.dart';
 
 /// Dynamic optical and heuristic fallback service for receipt data extraction.
 ///
@@ -56,16 +57,25 @@ class FallbackAIService implements AIService {
     }
   }
 
+  /// Public entry point for parsing extracted OCR text into a structured [Receipt].
+  @visibleForTesting
+  Receipt? parseOcrText(String text, {String imagePath = ''}) {
+    return _parseFromOcrText(text, imagePath);
+  }
+
   Receipt? _parseFromOcrText(String text, String imagePath) {
     final lines = text.split('\n').map((l) => l.trim()).where((l) => l.isNotEmpty).toList();
     if (lines.isEmpty) return null;
 
-    // Merchant name from top lines (skip generic receipt noise)
+    // Merchant name from top lines (skip generic receipt noise and date/time lines)
     String merchant = 'Merchant Store';
-    final noiseWords = {'receipt', 'tax invoice', 'scontrino', 'fattura', 'welcome', 'store #', 'terminal'};
-    for (final line in lines.take(4)) {
+    final noiseWords = {'receipt', 'tax invoice', 'scontrino', 'fattura', 'welcome', 'terminal'};
+    final dateOrNumberOnly = RegExp(r'^\s*[\d/:.\- ]+(?:am|pm)?\s*$', caseSensitive: false);
+    for (final line in lines.take(5)) {
       final lower = line.toLowerCase();
-      if (!noiseWords.any((w) => lower.contains(w)) && line.length >= 3) {
+      if (dateOrNumberOnly.hasMatch(line)) continue;
+      if (noiseWords.any((w) => lower == w || lower.startsWith('$w:'))) continue;
+      if (line.length >= 3) {
         merchant = line;
         break;
       }
@@ -81,14 +91,31 @@ class FallbackAIService implements AIService {
         final parts = raw.split(RegExp(r'[-/.]'));
         if (parts.length == 3) {
           try {
+            int year, month, day;
             if (parts[0].length == 4) {
-              date = DateTime(int.parse(parts[0]), int.parse(parts[1]), int.parse(parts[2]));
+              year = int.parse(parts[0]);
+              month = int.parse(parts[1]);
+              day = int.parse(parts[2]);
             } else {
-              int year = int.parse(parts[2]);
+              int p0 = int.parse(parts[0]);
+              int p1 = int.parse(parts[1]);
+              year = int.parse(parts[2]);
               if (year < 100) year += 2000;
-              date = DateTime(year, int.parse(parts[1]), int.parse(parts[0]));
+              if (p0 > 12) {
+                day = p0;
+                month = p1;
+              } else if (p1 > 12) {
+                month = p0;
+                day = p1;
+              } else {
+                day = p0;
+                month = p1;
+              }
             }
-            break;
+            if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+              date = DateTime(year, month, day);
+              break;
+            }
           } catch (_) {}
         }
       }
@@ -102,13 +129,21 @@ class FallbackAIService implements AIService {
       currency = 'GBP';
     } else if (text.contains('CHF')) {
       currency = 'CHF';
+    } else if (text.contains('€') || text.contains('EUR')) {
+      currency = 'EUR';
     }
 
     // Items & Total parsing
     final items = <ReceiptItem>[];
     double detectedTotal = 0.0;
-    final totalRegex = RegExp(r'(?:TOTAL|TOTALE|AMOUNT|SUM|IMPORTO|DUE|BALANCE)\s*[:=]?\s*[\$€£]?\s*(\d+[.,]\d{2})', caseSensitive: false);
-    final lineItemRegex = RegExp(r'^(?:(\d+)\s*[xX*]\s*)?(.+?)\s+[\$€£]?\s*(\d+[.,]\d{2})$');
+    final totalRegex = RegExp(
+      r'(?:TOTAL|TOTALE|AMOUNT|SUM|IMPORTO|DUE|BALANCE|GESAMT|SUMME)\s*[:=]?\s*(?:[\$€£]|EUR|USD|GBP|CHF)?\s*(\d+[.,]\d{2})\s*(?:[\$€£]|EUR|USD|GBP|CHF)?',
+      caseSensitive: false,
+    );
+    final lineItemRegex = RegExp(
+      r'^(?:(\d+)\s*(?:[xX*@]|pz|stk)?\s+)?(.+?)\s+(?:[\$€£]|EUR|USD|GBP|CHF)?\s*(\d+[.,]\d{2})\s*(?:[\$€£]|EUR|USD|GBP|CHF)?$',
+      caseSensitive: false,
+    );
 
     for (final line in lines) {
       final totalMatch = totalRegex.firstMatch(line);
@@ -127,13 +162,36 @@ class FallbackAIService implements AIService {
         final rawPrice = double.tryParse(itemMatch.group(3)!.replaceAll(',', '.')) ?? 0.0;
         if (desc.length > 2 && rawPrice > 0) {
           final unitPrice = qty > 0 ? (rawPrice / qty) : rawPrice;
+          final classification = TaxonomyConstants.classifyItem(desc);
+          final ItemNecessity necessity;
+          switch (classification.necessity) {
+            case 'essential':
+              necessity = ItemNecessity.essential;
+              break;
+            case 'discretional':
+              necessity = ItemNecessity.discretional;
+              break;
+            case 'junk':
+              necessity = ItemNecessity.junk;
+              break;
+            default:
+              necessity = ItemNecessity.essential;
+          }
+
+          final lowerDesc = desc.toLowerCase();
+          final isHardware = AppConstants.hardwareKeywords.any((k) => lowerDesc.contains(k));
+          final isFurniture = AppConstants.furnitureKeywords.any((k) => lowerDesc.contains(k));
+          final isAsset = isHardware || isFurniture;
+
           items.add(ReceiptItem(
             description: desc,
             unitPrice: double.parse(unitPrice.toStringAsFixed(2)),
             quantity: qty,
             totalPrice: rawPrice,
-            necessity: ItemNecessity.essential,
-            mainCategory: 'General',
+            necessity: necessity,
+            mainCategory: classification.mainCategory,
+            subCategory: classification.subCategory,
+            isAsset: isAsset,
           ));
         }
       }

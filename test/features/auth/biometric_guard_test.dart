@@ -166,5 +166,56 @@ void main() {
       expect(find.text('Secret Financial Dashboard'), findsOneWidget);
       expect(find.text('tAIdy Locked'), findsNothing);
     });
+
+    testWidgets('locks screen after inactivity session timeout and preserves form state in memory', (tester) async {
+      mockAuth.authSuccess = true;
+
+      final controller = TextEditingController(text: 'Draft Unsaved Invoice Entry');
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            biometricEnabledProvider.overrideWith((ref) => TestBiometricNotifier(true)),
+            biometricServiceProvider.overrideWithValue(BiometricService(localAuth: mockAuth)),
+          ],
+          child: MaterialApp(
+            home: BiometricGuard(
+              inactivityDuration: const Duration(milliseconds: 200),
+              child: Material(
+                child: TextField(
+                  controller: controller,
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+
+      await tester.pumpAndSettle();
+      expect(find.text('Draft Unsaved Invoice Entry'), findsOneWidget);
+      expect(find.text('tAIdy Locked'), findsNothing);
+
+      // Elapse inactivity timeout
+      await tester.pump(const Duration(milliseconds: 250));
+      await tester.pumpAndSettle();
+
+      // Inactivity lock veil is visible
+      expect(find.text('tAIdy Locked'), findsOneWidget);
+      expect(find.textContaining('5-minute session timeout'), findsOneWidget);
+      expect(find.text('Draft Unsaved Invoice Entry'), findsNothing);
+
+      // Verify in-memory text was safely preserved in RAM
+      expect(controller.text, equals('Draft Unsaved Invoice Entry'));
+
+      // Unlock with biometrics
+      mockAuth.authSuccess = true;
+      await tester.tap(find.text('Unlock with Biometrics'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 50));
+
+      // Form state restored
+      expect(find.text('Draft Unsaved Invoice Entry'), findsOneWidget);
+      expect(controller.text, equals('Draft Unsaved Invoice Entry'));
+    });
   });
 }

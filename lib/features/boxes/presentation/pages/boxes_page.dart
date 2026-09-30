@@ -11,6 +11,7 @@ import '../../data/models/box_model.dart';
 import '../widgets/box_creator_sheet.dart';
 import '../../../receipt_scanning/domain/entities/receipt.dart';
 import '../../../receipt_scanning/presentation/providers/receipt_provider.dart';
+import '../../../../core/constants/app_constants.dart';
 
 /// Page displaying activity contexts ("Boxes") for compartmentalized expense tracking.
 ///
@@ -55,6 +56,7 @@ class _BoxesPageState extends ConsumerState<BoxesPage> {
     final activeId = ref.watch(activeBoxIdProvider);
     final receiptsAsync = ref.watch(receiptListProvider);
     final allReceipts = receiptsAsync.valueOrNull ?? [];
+    final isPrivacy = ref.watch(privacyModeProvider);
 
     // Responsive layout
     final isWide = MediaQuery.of(context).size.width > 800;
@@ -65,12 +67,12 @@ class _BoxesPageState extends ConsumerState<BoxesPage> {
             children: [
               Expanded(
                 flex: 1,
-                child: _buildBoxList(context, boxes, activeId, allReceipts, colorScheme),
+                child: _buildBoxList(context, boxes, activeId, allReceipts, colorScheme, isPrivacy),
               ),
               const SizedBox(width: 24),
               Expanded(
                 flex: 2,
-                child: _buildDetailPanel(context, boxes, activeId, allReceipts, colorScheme),
+                child: _buildDetailPanel(context, boxes, activeId, allReceipts, colorScheme, isPrivacy),
               ),
             ],
           )
@@ -78,12 +80,12 @@ class _BoxesPageState extends ConsumerState<BoxesPage> {
             children: [
               Expanded(
                 flex: 2,
-                child: _buildBoxList(context, boxes, activeId, allReceipts, colorScheme),
+                child: _buildBoxList(context, boxes, activeId, allReceipts, colorScheme, isPrivacy),
               ),
               const SizedBox(height: 16),
               Expanded(
                 flex: 3,
-                child: _buildDetailPanel(context, boxes, activeId, allReceipts, colorScheme),
+                child: _buildDetailPanel(context, boxes, activeId, allReceipts, colorScheme, isPrivacy),
               ),
             ],
           );
@@ -149,7 +151,7 @@ class _BoxesPageState extends ConsumerState<BoxesPage> {
     return sum > 0 ? sum : box.spent;
   }
 
-  Widget _buildBoxList(BuildContext context, List<BoxModel> boxes, String activeId, List<Receipt> allReceipts, ColorScheme colorScheme) {
+  Widget _buildBoxList(BuildContext context, List<BoxModel> boxes, String activeId, List<Receipt> allReceipts, ColorScheme colorScheme, bool isPrivacy) {
     return ListView.separated(
       itemCount: boxes.length,
       separatorBuilder: (ctx, idx) => const SizedBox(height: 16),
@@ -236,7 +238,7 @@ class _BoxesPageState extends ConsumerState<BoxesPage> {
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Text(
-                      '${box.currency} ${spent.toStringAsFixed(2)}',
+                      AppConstants.formatAmount(spent, currency: box.currency, isPrivacy: isPrivacy),
                       style: GoogleFonts.jetBrainsMono(
                         color: colorScheme.onSurface,
                         fontWeight: FontWeight.bold,
@@ -244,7 +246,7 @@ class _BoxesPageState extends ConsumerState<BoxesPage> {
                       ),
                     ),
                     Text(
-                      box.budget > 0 ? '/ ${box.budget.toStringAsFixed(0)}' : '∞',
+                      box.budget > 0 ? '/ ${AppConstants.formatAmount(box.budget, currency: box.currency, isPrivacy: isPrivacy, decimals: 0)}' : '∞',
                       style: GoogleFonts.jetBrainsMono(
                         color: colorScheme.onSurfaceVariant,
                         fontSize: 14,
@@ -277,6 +279,7 @@ class _BoxesPageState extends ConsumerState<BoxesPage> {
     String activeId,
     List<Receipt> allReceipts,
     ColorScheme colorScheme,
+    bool isPrivacy,
   ) {
     if (_selectedBoxId == null) {
       return Center(
@@ -400,9 +403,9 @@ class _BoxesPageState extends ConsumerState<BoxesPage> {
                 crossAxisSpacing: 16,
                 childAspectRatio: 2,
                 children: [
-                  _buildKpiCard('Budget', box.budget > 0 ? '${box.currency} ${box.budget.toStringAsFixed(0)}' : '∞', colorScheme),
-                  _buildKpiCard('Spent', '${box.currency} ${spent.toStringAsFixed(2)}', colorScheme),
-                  _buildKpiCard('Remaining', box.budget > 0 ? '${box.currency} ${remaining.toStringAsFixed(2)}' : '∞', colorScheme, isOverBudget ? colorScheme.error : null),
+                  _buildKpiCard('Budget', box.budget > 0 ? AppConstants.formatAmount(box.budget, currency: box.currency, isPrivacy: isPrivacy, decimals: 0) : '∞', colorScheme),
+                  _buildKpiCard('Spent', AppConstants.formatAmount(spent, currency: box.currency, isPrivacy: isPrivacy), colorScheme),
+                  _buildKpiCard('Remaining', box.budget > 0 ? AppConstants.formatAmount(remaining, currency: box.currency, isPrivacy: isPrivacy) : '∞', colorScheme, isOverBudget ? colorScheme.error : null),
                   _buildKpiCard('Pace', isOverBudget ? 'Over Budget' : 'On Track', colorScheme, isOverBudget ? colorScheme.error : const Color(0xFF16a34a)),
                 ],
               ),
@@ -428,7 +431,7 @@ class _BoxesPageState extends ConsumerState<BoxesPage> {
                     color: colorScheme.outline.withValues(alpha: 0.3),
                   ),
                 ),
-                child: _buildChart(boxReceipts, colorScheme),
+                child: _buildChart(boxReceipts, colorScheme, isPrivacy: isPrivacy),
               ),
               const SizedBox(height: 24),
 
@@ -452,7 +455,7 @@ class _BoxesPageState extends ConsumerState<BoxesPage> {
                   ),
                 )
               else
-                ...boxReceipts.take(5).map((r) => _buildReceiptRow(context, r, box.currency, colorScheme)),
+                ...boxReceipts.take(5).map((r) => _buildReceiptRow(context, r, box.currency, colorScheme, isPrivacy)),
             ],
           ),
         ),
@@ -495,7 +498,7 @@ class _BoxesPageState extends ConsumerState<BoxesPage> {
     );
   }
 
-  Widget _buildChart(List<Receipt> boxReceipts, ColorScheme colorScheme) {
+  Widget _buildChart(List<Receipt> boxReceipts, ColorScheme colorScheme, {bool isPrivacy = false}) {
     final now = DateTime.now();
     final spots = List.generate(14, (index) {
       final targetDate = now.subtract(Duration(days: 13 - index));
@@ -531,7 +534,7 @@ class _BoxesPageState extends ConsumerState<BoxesPage> {
               reservedSize: 42,
               getTitlesWidget: (value, meta) {
                 return Text(
-                  value.toInt().toString(),
+                  isPrivacy ? '••' : value.toInt().toString(),
                   style: GoogleFonts.jetBrainsMono(
                     color: colorScheme.onSurfaceVariant,
                     fontSize: 10,
@@ -584,7 +587,7 @@ class _BoxesPageState extends ConsumerState<BoxesPage> {
     ).animate().fade(duration: const Duration(milliseconds: 600));
   }
 
-  Widget _buildReceiptRow(BuildContext context, Receipt receipt, String currency, ColorScheme colorScheme) {
+  Widget _buildReceiptRow(BuildContext context, Receipt receipt, String currency, ColorScheme colorScheme, bool isPrivacy) {
     return GestureDetector(
       onTap: () => context.push('/review', extra: receipt),
       child: Container(
@@ -630,7 +633,7 @@ class _BoxesPageState extends ConsumerState<BoxesPage> {
               ),
             ),
             Text(
-              '$currency ${receipt.totalAmount.toStringAsFixed(2)}',
+              AppConstants.formatAmount(receipt.totalAmount, currency: currency, isPrivacy: isPrivacy),
               style: GoogleFonts.jetBrainsMono(
                 color: colorScheme.onSurface,
                 fontWeight: FontWeight.bold,

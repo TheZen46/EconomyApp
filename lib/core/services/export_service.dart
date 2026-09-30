@@ -1,20 +1,21 @@
 import 'dart:convert';
 import 'dart:io';
 import 'package:csv/csv.dart';
+import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import '../../features/receipt_scanning/domain/entities/receipt.dart';
 import '../../features/invoices/data/models/invoice_model.dart';
+import '../../features/boxes/data/models/box_model.dart';
+import 'audit_dossier_service.dart';
+import 'accountant_portal_generator.dart';
 
 /// Enterprise-grade data export service for the tAIdy platform.
 ///
 /// Facilitates structured export and platform sharing of financial receipts,
-/// line-item breakdowns, and invoice records in CSV and JSON formats.
+/// line-item breakdowns, invoice records, and zero-knowledge CPA portals.
 class ExportService {
   /// Exports a collection of [Receipt] entities to a CSV file and opens the platform share sheet.
-  ///
-  /// Flattens line items into individual rows while preserving parent receipt metadata.
-  /// Returns the generated [File] containing the CSV data.
   Future<File?> exportReceiptsToCsv(
     List<Receipt> receipts, {
     String filePrefix = 'expenses_export',
@@ -79,7 +80,8 @@ class ExportService {
       }
     }
 
-    final csvString = const ListToCsvConverter().convert(rows);
+    final sanitizedRows = rows.map((r) => r.map(_sanitizeCsvCell).toList()).toList();
+    final csvString = const ListToCsvConverter().convert(sanitizedRows);
 
     final directory = await getApplicationDocumentsDirectory();
     final path = '${directory.path}/${filePrefix}_${DateTime.now().millisecondsSinceEpoch}.csv';
@@ -182,7 +184,8 @@ class ExportService {
       ]);
     }
 
-    final csvString = const ListToCsvConverter().convert(rows);
+    final sanitizedRows = rows.map((r) => r.map(_sanitizeCsvCell).toList()).toList();
+    final csvString = const ListToCsvConverter().convert(sanitizedRows);
 
     final directory = await getApplicationDocumentsDirectory();
     final path = '${directory.path}/${filePrefix}_${DateTime.now().millisecondsSinceEpoch}.csv';
@@ -193,6 +196,70 @@ class ExportService {
       [XFile(path)],
       subject: shareSubject,
       text: 'Exported ${invoices.length} invoices from tAIdy.',
+    );
+
+    return file;
+  }
+
+  /// Prepend single quote to string values starting with formula trigger chars (=, +, -, @, tab, cr)
+  /// to protect against CSV / Excel formula injection (CWE-1236).
+  static dynamic _sanitizeCsvCell(dynamic value) {
+    if (value is String && value.isNotEmpty) {
+      if (value.startsWith('=') ||
+          value.startsWith('+') ||
+          value.startsWith('@') ||
+          value.startsWith('\t') ||
+          value.startsWith('\r') ||
+          (value.startsWith('-') && double.tryParse(value) == null)) {
+        return "'$value";
+      }
+    }
+    return value;
+  }
+
+  /// Exposed for testing: verifies CSV formula injection sanitization.
+  @visibleForTesting
+  static dynamic sanitizeCsvCell(dynamic value) => _sanitizeCsvCell(value);
+
+  /// Exports a cryptographically sealed Audit Defense Dossier.
+  Future<File?> exportAuditDefenseDossier(
+    List<Receipt> receipts, {
+    String? boxName,
+    int fiscalYear = 2026,
+  }) async {
+    return await AuditDossierService.exportAndShareDossier(
+      receipts: receipts,
+      boxName: boxName,
+      fiscalYear: fiscalYear,
+    );
+  }
+
+  /// Exports an air-gapped, zero-knowledge, PII-redacted CPA Audit Portal (.html).
+  Future<File?> exportZeroKnowledgeCpaPortal(
+    List<Receipt> receipts, {
+    List<BoxModel> boxes = const [],
+    String clientName = 'tAIdy Freelancer',
+    String fiscalYear = '2026',
+    String filePrefix = 'tAIdy_CPA_Portal',
+  }) async {
+    if (receipts.isEmpty) return null;
+
+    final htmlContent = AccountantPortalGenerator.generatePortalHtml(
+      receipts: receipts,
+      boxes: boxes,
+      clientName: clientName,
+      fiscalYear: fiscalYear,
+    );
+
+    final directory = await getApplicationDocumentsDirectory();
+    final path = '${directory.path}/${filePrefix}_${fiscalYear}_${DateTime.now().millisecondsSinceEpoch}.html';
+    final file = File(path);
+    await file.writeAsString(htmlContent);
+
+    await Share.shareXFiles(
+      [XFile(path)],
+      subject: 'tAIdy Zero-Knowledge CPA Audit Portal (FY$fiscalYear)',
+      text: 'Exported PII-sanitized CPA Audit Portal containing ${receipts.length} receipts.',
     );
 
     return file;

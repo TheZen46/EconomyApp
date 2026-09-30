@@ -23,11 +23,15 @@
 
 ## Code Layout
 - `lib/main.dart` — entry point & bootstrap pipeline
-- `lib/core/` — router (`app_router.dart`), security, storage, theme, failure models
+- `lib/core/` — router (`app_router.dart`), security, storage, theme, failure models, FX and shared Money value objects
+- `lib/features/dashboard/` — financial cockpit, liquidity velocity, pulse, runway, and milestone metrics
 - `lib/features/sync/` — cross-device sync engine, remote replica data source, kinetic visualizer
-- `lib/features/receipt_scanning/` — receipt ingestion, dashboard widgets, review page
-- `lib/features/boxes/` — activity contexts and box creator
-- `lib/features/invoices/` — invoice tracking and revenue charts
-- `lib/features/evault/` — digital warranty vault and protected asset catalog
+- `lib/features/receipt_scanning/` — receipt ingestion, deduplication, OCR/VLM correction, and review page
+- `lib/features/boxes/` — activity contexts, box PnL engine, inter-box transfers, and spatial overlays
+- `lib/features/invoices/` — invoice tracking, aging analysis engine, and revenue charts
+- `lib/features/evault/` — digital warranty vault, E2EE vault crypto service, and protected asset catalog
+- `lib/features/tax_compliance/` — statutory tax engines, VAT, audit risk scoring, and accountant dossier generator
+- `lib/features/analytics/` — cash flow forecasting engine, capital flow topology, and subscription detection
+- `lib/features/mileage/` — mileage log and statutory mileage deduction engine
 - `lib/features/settings/` — app preferences, sync center, LLM manager
 - `lib/features/auth/` — Supabase authentication, biometric guard, reactive router notifier

@@ -35,8 +35,9 @@ void main() async {
 
   // Generate a distinct test user per run if needed
   final uniqueSuffix = DateTime.now().millisecondsSinceEpoch % 100000;
-  final fakeEmail = 'tester$uniqueSuffix@taidy-demo.io';
-  const fakePassword = 'SuperSecretPassword2026!';
+  final fakePassword = Platform.environment['SEED_PASSWORD'] ??
+      envMap['SEED_PASSWORD'] ??
+      'Secured_${DateTime.now().millisecondsSinceEpoch}_!A9';
   String userId = '';
 
   stdout.writeln('Creating/Authenticating demo user: $fakeEmail...');

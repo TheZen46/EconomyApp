@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:intl/intl.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../core/constants/app_constants.dart';
 import '../../../../core/theme/app_theme.dart';
+import '../../../../core/financial/depreciation_engine.dart';
 import '../../data/models/asset_model.dart';
 import '../providers/asset_provider.dart';
 import '../../../receipt_scanning/domain/entities/receipt.dart';
@@ -15,8 +15,8 @@ import '../../../receipt_scanning/presentation/widgets/universal_receipt_image.d
 
 /// Digital Vault page for managing purchased hardware, furniture, warranties, and receipts.
 ///
-/// Features high-value asset tracking, warranty expiration countdowns, category filters,
-/// and bidirectional deep-linking to scanned receipts.
+/// Features high-value asset tracking, Section 179 / MACRS asset depreciation schedules,
+/// warranty expiration countdowns, category filters, and bidirectional deep-linking to scanned receipts.
 class VaultPage extends ConsumerStatefulWidget {
   /// Creates a new [VaultPage] instance.
   const VaultPage({super.key});
@@ -32,6 +32,7 @@ class _VaultPageState extends ConsumerState<VaultPage> {
   final List<String> _filters = [
     'All',
     'Active Warranty',
+    'Expiring Soon (<30d)',
     'Expired',
     'Hardware',
     'Furniture'
@@ -52,6 +53,8 @@ class _VaultPageState extends ConsumerState<VaultPage> {
     switch (filter) {
       case 'Active Warranty':
         return Icons.shield_outlined;
+      case 'Expiring Soon (<30d)':
+        return Icons.warning_amber_rounded;
       case 'Expired':
         return Icons.history_outlined;
       case 'Hardware':
@@ -78,10 +81,10 @@ class _VaultPageState extends ConsumerState<VaultPage> {
     final mutedTextColor = colorScheme.onSurfaceVariant;
 
     final allAssets = ref.watch(assetListProvider);
+    final isPrivacy = ref.watch(privacyModeProvider);
     final notifier = ref.read(assetListProvider.notifier);
 
-    // Calculate total value based on all assets
-    final totalValue = allAssets.fold(0.0, (sum, item) => sum + item.price);
+    final taxSummary = DepreciationEngine.calculatePortfolioSummary(allAssets);
 
     // Filter assets
     final filteredAssets = allAssets.where((asset) {
@@ -93,14 +96,16 @@ class _VaultPageState extends ConsumerState<VaultPage> {
               .contains(_searchQuery.toLowerCase());
       if (!matchesSearch) return false;
 
-      final daysLeft =
-          asset.warrantyExpiryDate.difference(DateTime.now()).inDays;
+      final daysLeft = asset.warrantyExpiryDate.difference(DateTime.now()).inDays;
       final isExpired = daysLeft <= 0;
+      final isExpiringSoon = daysLeft > 0 && daysLeft <= 30;
       final cat = _deriveCategory(asset.name);
 
       switch (_activeFilter) {
         case 'Active Warranty':
           return !isExpired;
+        case 'Expiring Soon (<30d)':
+          return isExpiringSoon;
         case 'Expired':
           return isExpired;
         case 'Hardware':
@@ -117,7 +122,7 @@ class _VaultPageState extends ConsumerState<VaultPage> {
       backgroundColor: bgColor,
       appBar: AppBar(
         title: Text(
-          'Digital Vault',
+          'Digital Vault & Asset Ledger',
           style: GoogleFonts.spaceGrotesk(
             fontWeight: FontWeight.w600,
             color: textColor,
@@ -134,10 +139,10 @@ class _VaultPageState extends ConsumerState<VaultPage> {
           constraints: const BoxConstraints(maxWidth: 1000),
           child: CustomScrollView(
             slivers: [
-              // Hero Section
+              // Hero Section with Section 179 / Book Value Tax Breakdown
               SliverToBoxAdapter(
                 child: Padding(
-                  padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
+                  padding: const EdgeInsets.fromLTRB(24, 8, 24, 20),
                   child: Container(
                     padding: const EdgeInsets.all(24),
                     decoration: BoxDecoration(
@@ -164,82 +169,139 @@ class _VaultPageState extends ConsumerState<VaultPage> {
                       ],
                     ),
                     clipBehavior: Clip.hardEdge,
-                    child: Stack(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        // Decorative glowing orb
-                        Positioned(
-                          top: -40,
-                          right: -40,
-                          child: Container(
-                            width: 150,
-                            height: 150,
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              color: Colors.white.withOpacity(0.1),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: Colors.white.withOpacity(isDark ? 0.05 : 0.2),
-                                  blurRadius: 50,
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
                             Text(
-                              'PROTECTED ASSETS',
+                              'PORTFOLIO BOOK VALUE',
                               style: GoogleFonts.spaceGrotesk(
-                                color: Colors.white.withOpacity(0.7),
-                                fontSize: 10,
+                                color: Colors.white.withOpacity(0.8),
+                                fontSize: 11,
                                 fontWeight: FontWeight.w600,
                                 letterSpacing: 1.5,
                               ),
                             ),
-                            const SizedBox(height: 12),
-                            Text(
-                              NumberFormat.currency(
-                                      symbol: '\$', decimalDigits: 2)
-                                  .format(totalValue),
-                              style: GoogleFonts.jetBrainsMono(
-                                color: Colors.white,
-                                fontSize: 48,
-                                fontWeight: FontWeight.w200, // thin
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                              decoration: BoxDecoration(
+                                color: Colors.white.withOpacity(0.18),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Text(
+                                '${allAssets.length} Assets',
+                                style: GoogleFonts.jetBrainsMono(
+                                  color: Colors.white,
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.bold,
+                                ),
                               ),
                             ),
-                            const SizedBox(height: 24),
-                            Divider(color: Colors.white.withOpacity(0.2)),
-                            const SizedBox(height: 16),
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Text(
-                                  '${allAssets.length} Active Items',
-                                  style: GoogleFonts.spaceGrotesk(
-                                    color: Colors.white,
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w500,
-                                  ),
-                                ),
-                                Row(
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          AppConstants.formatAmount(taxSummary.totalCurrentBookValue, isPrivacy: isPrivacy),
+                          style: GoogleFonts.jetBrainsMono(
+                            color: Colors.white,
+                            fontSize: 44,
+                            fontWeight: FontWeight.w200,
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        
+                        // Depreciation & Section 179 Sub-bar
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: Colors.black.withOpacity(0.2),
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    Icon(Icons.cloud_done_outlined,
-                                        color: Colors.white.withOpacity(0.9),
-                                        size: 16),
-                                    const SizedBox(width: 6),
                                     Text(
-                                      'Auto-sync enabled',
+                                      'ORIGINAL COST',
                                       style: GoogleFonts.spaceGrotesk(
-                                        color: Colors.white.withOpacity(0.9),
+                                        fontSize: 9,
+                                        letterSpacing: 1.0,
+                                        color: Colors.white.withOpacity(0.7),
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      AppConstants.formatAmount(taxSummary.totalAcquisitionCost, isPrivacy: isPrivacy),
+                                      style: GoogleFonts.jetBrainsMono(
                                         fontSize: 14,
+                                        fontWeight: FontWeight.bold,
+                                        color: Colors.white,
                                       ),
                                     ),
                                   ],
                                 ),
-                              ],
-                            ),
-                          ],
+                              ),
+                              Container(width: 1, height: 28, color: Colors.white.withOpacity(0.2)),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'SEC 179 WRITE-OFF',
+                                      style: GoogleFonts.spaceGrotesk(
+                                        fontSize: 9,
+                                        letterSpacing: 1.0,
+                                        color: const Color(0xFF6EE7B7),
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      AppConstants.formatAmount(taxSummary.totalSection179Eligible, isPrivacy: isPrivacy),
+                                      style: GoogleFonts.jetBrainsMono(
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.bold,
+                                        color: const Color(0xFF6EE7B7),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              Container(width: 1, height: 28, color: Colors.white.withOpacity(0.2)),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'THIS YEAR MACRS',
+                                      style: GoogleFonts.spaceGrotesk(
+                                        fontSize: 9,
+                                        letterSpacing: 1.0,
+                                        color: Colors.amber.shade200,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      AppConstants.formatAmount(taxSummary.totalCurrentYearMACRS, isPrivacy: isPrivacy),
+                                      style: GoogleFonts.jetBrainsMono(
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.bold,
+                                        color: Colors.amber.shade200,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
                       ],
                     ),
@@ -247,13 +309,48 @@ class _VaultPageState extends ConsumerState<VaultPage> {
                 ).animate().fade(duration: 400.ms).slideY(begin: 0.1, end: 0),
               ),
 
+              // Warranty Expiration Alert Banner (if any expiring in < 30 days)
+              if (taxSummary.expiringSoonWarrantyCount > 0)
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 4),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                      decoration: BoxDecoration(
+                        color: Colors.amber.withOpacity(0.12),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: Colors.amber.withOpacity(0.4)),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(Icons.warning_amber_rounded, color: Colors.amber.shade700, size: 20),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              '${taxSummary.expiringSoonWarrantyCount} asset warranty expiring within 30 days!',
+                              style: GoogleFonts.spaceGrotesk(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                                color: textColor,
+                              ),
+                            ),
+                          ),
+                          TextButton(
+                            onPressed: () => setState(() => _activeFilter = 'Expiring Soon (<30d)'),
+                            child: Text('Review', style: GoogleFonts.spaceGrotesk(fontWeight: FontWeight.bold, color: Colors.amber.shade800)),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ).animate().fade(duration: 300.ms),
+                ),
+
               // Search & Filters
               SliverToBoxAdapter(
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 24),
+                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
                   child: Column(
                     children: [
-                      // Search Bar
                       Container(
                         decoration: BoxDecoration(
                           color: cardColor,
@@ -264,17 +361,15 @@ class _VaultPageState extends ConsumerState<VaultPage> {
                           onChanged: (val) => setState(() => _searchQuery = val),
                           style: GoogleFonts.spaceGrotesk(color: textColor),
                           decoration: InputDecoration(
-                            hintText: 'Search vault...',
-                            hintStyle:
-                                GoogleFonts.spaceGrotesk(color: mutedTextColor),
+                            hintText: 'Search vault items or merchants...',
+                            hintStyle: GoogleFonts.spaceGrotesk(color: mutedTextColor),
                             prefixIcon: Icon(Icons.search, color: mutedTextColor),
                             border: InputBorder.none,
                             contentPadding: const EdgeInsets.all(16),
                           ),
                         ),
                       ),
-                      const SizedBox(height: 16),
-                      // Filters
+                      const SizedBox(height: 12),
                       SingleChildScrollView(
                         scrollDirection: Axis.horizontal,
                         child: Row(
@@ -284,22 +379,14 @@ class _VaultPageState extends ConsumerState<VaultPage> {
                               padding: const EdgeInsets.only(right: 8),
                               child: InkWell(
                                 borderRadius: BorderRadius.circular(12),
-                                onTap: () =>
-                                    setState(() => _activeFilter = filter),
+                                onTap: () => setState(() => _activeFilter = filter),
                                 child: AnimatedContainer(
                                   duration: const Duration(milliseconds: 200),
-                                  padding: const EdgeInsets.symmetric(
-                                      horizontal: 16, vertical: 8),
+                                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                                   decoration: BoxDecoration(
-                                    color: isActive
-                                        ? accentColor
-                                        : Colors.transparent,
+                                    color: isActive ? accentColor : Colors.transparent,
                                     borderRadius: BorderRadius.circular(12),
-                                    border: Border.all(
-                                      color: isActive
-                                          ? accentColor
-                                          : borderColor,
-                                    ),
+                                    border: Border.all(color: isActive ? accentColor : borderColor),
                                   ),
                                   child: Row(
                                     children: [
@@ -307,19 +394,15 @@ class _VaultPageState extends ConsumerState<VaultPage> {
                                         Icon(
                                           _getFilterIcon(filter),
                                           size: 14,
-                                          color: isActive
-                                              ? Colors.white
-                                              : mutedTextColor,
+                                          color: isActive ? Colors.white : mutedTextColor,
                                         ),
                                         const SizedBox(width: 6),
                                       ],
                                       Text(
                                         filter,
                                         style: GoogleFonts.spaceGrotesk(
-                                          color: isActive
-                                              ? Colors.white
-                                              : mutedTextColor,
-                                          fontSize: 13,
+                                          color: isActive ? Colors.white : mutedTextColor,
+                                          fontSize: 12,
                                           fontWeight: FontWeight.w500,
                                         ),
                                       ),
@@ -331,10 +414,9 @@ class _VaultPageState extends ConsumerState<VaultPage> {
                           }).toList(),
                         ),
                       ),
-                      const SizedBox(height: 24),
                     ],
                   ),
-                ).animate().fade(duration: 400.ms, delay: 100.ms).slideY(begin: 0.1, end: 0),
+                ),
               ),
 
               // Header Row
@@ -345,10 +427,10 @@ class _VaultPageState extends ConsumerState<VaultPage> {
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       Text(
-                        'VAULT INVENTORY',
+                        'VAULT ASSET INVENTORY',
                         style: GoogleFonts.spaceGrotesk(
                           color: mutedTextColor,
-                          fontSize: 12,
+                          fontSize: 11,
                           fontWeight: FontWeight.w600,
                           letterSpacing: 1.2,
                         ),
@@ -362,10 +444,10 @@ class _VaultPageState extends ConsumerState<VaultPage> {
                       ),
                     ],
                   ),
-                ).animate().fade(duration: 400.ms, delay: 200.ms),
+                ),
               ),
 
-              // Grid or Empty State
+              // Grid of Assets
               if (allAssets.isEmpty)
                 SliverFillRemaining(
                   hasScrollBody: false,
@@ -373,41 +455,30 @@ class _VaultPageState extends ConsumerState<VaultPage> {
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Icon(Icons.inventory_2_outlined,
-                            size: 64, color: mutedTextColor.withOpacity(0.5)),
+                        Icon(Icons.inventory_2_outlined, size: 64, color: mutedTextColor.withOpacity(0.5)),
                         const SizedBox(height: 16),
                         Text(
                           'Your vault is empty',
-                          style: GoogleFonts.spaceGrotesk(
-                            color: textColor,
-                            fontSize: 18,
-                            fontWeight: FontWeight.w600,
-                          ),
+                          style: GoogleFonts.spaceGrotesk(color: textColor, fontSize: 18, fontWeight: FontWeight.w600),
                         ),
                         const SizedBox(height: 8),
                         Padding(
                           padding: const EdgeInsets.symmetric(horizontal: 32),
                           child: Text(
-                            'Mark items as assets in receipts to track them here.',
+                            'Mark items as assets in receipts to calculate Section 179 / MACRS depreciation and track warranties.',
                             textAlign: TextAlign.center,
-                            style: GoogleFonts.spaceGrotesk(
-                              color: mutedTextColor,
-                              fontSize: 14,
-                            ),
+                            style: GoogleFonts.spaceGrotesk(color: mutedTextColor, fontSize: 13),
                           ),
                         ),
                       ],
                     ),
-                  ).animate().fade(),
+                  ),
                 )
               else if (filteredAssets.isEmpty)
                 SliverFillRemaining(
                   hasScrollBody: false,
                   child: Center(
-                    child: Text(
-                      'No items match your criteria.',
-                      style: GoogleFonts.spaceGrotesk(color: mutedTextColor),
-                    ),
+                    child: Text('No assets match your filter criteria.', style: GoogleFonts.spaceGrotesk(color: mutedTextColor)),
                   ),
                 )
               else
@@ -418,7 +489,7 @@ class _VaultPageState extends ConsumerState<VaultPage> {
                       crossAxisCount: 2,
                       crossAxisSpacing: 16,
                       mainAxisSpacing: 16,
-                      childAspectRatio: 0.70, // Spacious card layout
+                      childAspectRatio: 0.68,
                     ),
                     delegate: SliverChildBuilderDelegate(
                       (context, index) {
@@ -476,44 +547,45 @@ class _AssetCardWidgetState extends ConsumerState<_AssetCardWidget> {
     final expiry = widget.asset.warrantyExpiryDate;
     final daysLeft = expiry.difference(DateTime.now()).inDays;
     final isExpired = daysLeft <= 0;
+    final isExpiringSoon = daysLeft > 0 && daysLeft <= 30;
     final colorScheme = Theme.of(context).colorScheme;
+    final isPrivacy = ref.watch(privacyModeProvider);
 
-    return MouseRegion(
-      onEnter: (_) => setState(() => _isHovered = true),
-      onExit: (_) => setState(() => _isHovered = false),
-      child: AnimatedScale(
-        scale: _isHovered ? 1.03 : 1.0,
+    final sched = DepreciationEngine.calculateSchedule(asset: widget.asset);
+
+    return Dismissible(
+      key: Key(widget.asset.id),
+      direction: DismissDirection.endToStart,
+      background: Container(
+        alignment: Alignment.centerRight,
+        padding: const EdgeInsets.only(right: 20.0),
+        decoration: BoxDecoration(
+          color: widget.destructiveColor,
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: const Icon(Icons.delete_outline, color: Colors.white, size: 28),
+      ),
+      confirmDismiss: (direction) async {
+        return await showDestructiveConfirmationDialog(
+          context: context,
+          title: 'Delete Asset?',
+          message: 'Are you sure you want to remove "${widget.asset.name}" from your digital vault? This action cannot be undone.',
+          confirmLabel: 'Delete',
+        );
+      },
+      onDismissed: (direction) {
+        widget.onDelete();
+      },
+      child: MouseRegion(
+        onEnter: (_) => setState(() => _isHovered = true),
+        onExit: (_) => setState(() => _isHovered = false),
+        child: AnimatedScale(
+        scale: _isHovered ? 1.02 : 1.0,
         duration: const Duration(milliseconds: 200),
         curve: Curves.easeOutCubic,
-        child: Dismissible(
-          key: Key(widget.asset.id),
-          direction: DismissDirection.endToStart,
-          background: Container(
-            decoration: BoxDecoration(
-              color: widget.destructiveColor,
-              borderRadius: BorderRadius.circular(16),
-            ),
-            alignment: Alignment.centerRight,
-            padding: const EdgeInsets.only(right: 16),
-            child: const Icon(Icons.delete_outline, color: Colors.white),
-          ),
-          confirmDismiss: (direction) async {
-            return await showDestructiveConfirmationDialog(
-              context: context,
-              title: 'Delete Asset?',
-              message: 'Are you sure? This action cannot be undone.',
-              confirmLabel: 'Delete',
-            );
-          },
-          onDismissed: (_) {
-            widget.onDelete();
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text('Asset removed', style: GoogleFonts.spaceGrotesk()),
-                behavior: SnackBarBehavior.floating,
-              ),
-            );
-          },
+        child: InkWell(
+          borderRadius: BorderRadius.circular(16),
+          onTap: () => _showDepreciationModal(context, widget.asset, sched, isPrivacy),
           child: Container(
             decoration: BoxDecoration(
               color: widget.cardColor,
@@ -536,8 +608,6 @@ class _AssetCardWidgetState extends ConsumerState<_AssetCardWidget> {
                         fit: BoxFit.cover,
                         errorBuilder: (ctx, err, stack) => _buildFallbackImage(),
                       ),
-                      
-                      // Gradient Overlay
                       Positioned(
                         bottom: 0,
                         left: 0,
@@ -548,35 +618,42 @@ class _AssetCardWidgetState extends ConsumerState<_AssetCardWidget> {
                             gradient: LinearGradient(
                               begin: Alignment.bottomCenter,
                               end: Alignment.topCenter,
-                              colors: [
-                                Colors.black.withOpacity(0.7),
-                                Colors.transparent,
-                              ],
+                              colors: [Colors.black.withOpacity(0.7), Colors.transparent],
                             ),
                           ),
                         ),
                       ),
-                      
-                      // Price
                       Positioned(
                         bottom: 8,
                         left: 12,
-                        child: Text(
-                          '\$${widget.asset.price.toStringAsFixed(2)}',
-                          style: GoogleFonts.jetBrainsMono(
-                            color: Colors.white,
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
-                          ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Book: ' + AppConstants.formatAmount(sched.currentBookValue, isPrivacy: isPrivacy),
+                              style: GoogleFonts.jetBrainsMono(
+                                color: Colors.white,
+                                fontSize: 14,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            Text(
+                              'Cost: ' + AppConstants.formatAmount(widget.asset.price, isPrivacy: isPrivacy),
+                              style: GoogleFonts.jetBrainsMono(
+                                color: Colors.white.withOpacity(0.7),
+                                fontSize: 10,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     ],
                   ),
                 ),
-                
+
                 // Bottom half: Info
                 Expanded(
-                  flex: 4,
+                  flex: 5,
                   child: Padding(
                     padding: const EdgeInsets.all(12),
                     child: Column(
@@ -586,84 +663,63 @@ class _AssetCardWidgetState extends ConsumerState<_AssetCardWidget> {
                         Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: Text(
-                                    widget.asset.name,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: GoogleFonts.spaceGrotesk(
-                                      color: widget.textColor,
-                                      fontSize: 14,
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
-                                ),
-                              ],
+                            Text(
+                              widget.asset.name,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: GoogleFonts.spaceGrotesk(
+                                color: widget.textColor,
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                              ),
                             ),
                             const SizedBox(height: 2),
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Expanded(
-                                  child: Text(
-                                    widget.asset.merchantName,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: GoogleFonts.spaceGrotesk(
-                                      color: widget.mutedTextColor,
-                                      fontSize: 12,
-                                    ),
-                                  ),
-                                ),
-                                Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                  decoration: BoxDecoration(
-                                    color: colorScheme.primary.withOpacity(0.12),
-                                    borderRadius: BorderRadius.circular(6),
-                                  ),
-                                  child: Text(
-                                    '📦 Vault',
-                                    style: GoogleFonts.spaceGrotesk(
-                                      fontSize: 10,
-                                      color: colorScheme.primary,
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
-                                ),
-                              ],
+                            Text(
+                              widget.asset.merchantName,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: GoogleFonts.spaceGrotesk(
+                                color: widget.mutedTextColor,
+                                fontSize: 11,
+                              ),
                             ),
                           ],
                         ),
-                        const SizedBox(height: 6),
+                        
+                        // Method tag & Current Year Write-off
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: colorScheme.primary.withOpacity(0.12),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Text(
+                            sched.method == DepreciationMethod.macrs7Year ? 'MACRS 7-Yr' : 'MACRS 5-Yr',
+                            style: GoogleFonts.jetBrainsMono(fontSize: 9, fontWeight: FontWeight.bold, color: colorScheme.primary),
+                          ),
+                        ),
+
                         // Warranty chip & Action Row
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
                             Container(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 8, vertical: 4),
+                              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
                               decoration: BoxDecoration(
                                 color: isExpired
-                                    ? widget.destructiveColor.withOpacity(0.2)
-                                    : const Color(0xFF10B981).withOpacity(0.2),
+                                    ? widget.destructiveColor.withOpacity(0.15)
+                                    : (isExpiringSoon ? Colors.amber.withOpacity(0.18) : const Color(0xFF10B981).withOpacity(0.15)),
                                 borderRadius: BorderRadius.circular(8),
-                                border: Border.all(
-                                  color: isExpired
-                                      ? widget.destructiveColor.withOpacity(0.5)
-                                      : const Color(0xFF10B981).withOpacity(0.5),
-                                ),
                               ),
                               child: Text(
                                 isExpired
-                                    ? 'Expired ${daysLeft.abs()}d ago'
-                                    : '$daysLeft days remaining',
+                                    ? 'Expired'
+                                    : (isExpiringSoon ? '${daysLeft}d left ⚠️' : '${daysLeft}d warranty'),
                                 style: GoogleFonts.jetBrainsMono(
                                   color: isExpired
                                       ? widget.destructiveColor
-                                      : const Color(0xFF10B981),
-                                  fontSize: 10,
+                                      : (isExpiringSoon ? Colors.amber.shade800 : const Color(0xFF10B981)),
+                                  fontSize: 9,
                                   fontWeight: FontWeight.bold,
                                 ),
                               ),
@@ -679,10 +735,7 @@ class _AssetCardWidgetState extends ConsumerState<_AssetCardWidget> {
                                   context.push('/review', extra: matchingReceipt);
                                 } else {
                                   ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(
-                                      content: Text('Linked receipt details for "${widget.asset.name}" (${widget.asset.merchantName})'),
-                                      duration: const Duration(seconds: 2),
-                                    ),
+                                    SnackBar(content: Text('Linked receipt for "${widget.asset.name}"')),
                                   );
                                 }
                               },
@@ -703,18 +756,84 @@ class _AssetCardWidgetState extends ConsumerState<_AssetCardWidget> {
           ),
         ),
       ),
-    ).animate().scale(duration: 300.ms, curve: Curves.easeOut);
+    ),
+  );
+  }
+
+  void _showDepreciationModal(BuildContext context, AssetModel asset, AssetDepreciationSchedule sched, bool isPrivacy) {
+    final colorScheme = Theme.of(context).colorScheme;
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: colorScheme.surface,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      builder: (ctx) {
+        return Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Asset Depreciation Schedule',
+                style: GoogleFonts.spaceGrotesk(fontSize: 18, fontWeight: FontWeight.bold, color: colorScheme.onSurface),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                '${asset.name} (${asset.merchantName}) - Purchased ${asset.purchaseDate.year}',
+                style: GoogleFonts.spaceGrotesk(fontSize: 13, color: colorScheme.onSurfaceVariant),
+              ),
+              const SizedBox(height: 16),
+              ...sched.yearlyEntries.map((entry) {
+                return Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        'FY ${entry.fiscalYear} (Yr ${entry.scheduleYearIndex} - ${(entry.deductionRate * 100).toStringAsFixed(1)}%)',
+                        style: GoogleFonts.spaceGrotesk(fontSize: 13, color: colorScheme.onSurface),
+                      ),
+                      Text(
+                        'Deduction: ' + AppConstants.privacyMask('\$' + entry.deductionAmount.toStringAsFixed(2), isPrivacy: isPrivacy),
+                        style: GoogleFonts.jetBrainsMono(fontSize: 13, fontWeight: FontWeight.bold, color: colorScheme.primary),
+                      ),
+                    ],
+                  ),
+                );
+              }),
+              const Divider(height: 24),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text('Current Book Value:', style: GoogleFonts.spaceGrotesk(fontWeight: FontWeight.bold)),
+                  Text(
+                    AppConstants.privacyMask('\$' + sched.currentBookValue.toStringAsFixed(2), isPrivacy: isPrivacy),
+                    style: GoogleFonts.jetBrainsMono(fontWeight: FontWeight.bold, color: const Color(0xFF10B981)),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(backgroundColor: colorScheme.primary, foregroundColor: colorScheme.onPrimary),
+                  onPressed: () => Navigator.pop(ctx),
+                  child: const Text('Done'),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
   }
 
   Widget _buildFallbackImage() {
     return Container(
       color: widget.cardColor,
       child: Center(
-        child: Icon(
-          Icons.shield_outlined,
-          size: 40,
-          color: widget.mutedTextColor.withOpacity(0.3),
-        ),
+        child: Icon(Icons.shield_outlined, size: 40, color: widget.mutedTextColor.withOpacity(0.3)),
       ),
     );
   }

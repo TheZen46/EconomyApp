@@ -1,8 +1,9 @@
+import '../../features/mileage/presentation/pages/mileage_page.dart';
 import 'package:go_router/go_router.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../features/auth/presentation/providers/auth_provider.dart';
-import '../../features/receipt_scanning/presentation/pages/home_page.dart';
+import '../../features/dashboard/presentation/pages/dashboard_page.dart';
 import '../../features/receipt_scanning/presentation/pages/scan_page.dart';
 import '../../features/receipt_scanning/presentation/pages/review_page.dart';
 import '../../features/auth/presentation/pages/login_page.dart';
@@ -15,6 +16,9 @@ import '../../features/evault/presentation/pages/vault_page.dart';
 import '../../features/settings/presentation/pages/model_manager_page.dart';
 import '../../features/boxes/presentation/pages/boxes_page.dart';
 import '../../features/invoices/presentation/pages/invoices_page.dart';
+import '../../features/reconciliation/presentation/pages/reconciliation_page.dart';
+import '../../features/tax_compliance/presentation/pages/tax_compliance_hub_page.dart';
+import '../../features/onboarding/presentation/pages/air_gapped_vault_onboarding_page.dart';
 import '../../features/sync/presentation/pages/sync_progress_page.dart';
 import '../../features/sync/presentation/providers/sync_provider.dart';
 
@@ -35,6 +39,10 @@ abstract class AppRoutes {
   static const modelManager = '/model_manager';
   static const boxes = '/boxes';
   static const invoices = '/invoices';
+  static const reconciliation = '/reconciliation';
+  static const mileage = '/mileage';
+  static const taxHub = '/tax_hub';
+  static const onboarding = '/onboarding';
 }
 
 final routerProvider = Provider<GoRouter>((ref) {
@@ -230,6 +238,62 @@ final routerProvider = Provider<GoRouter>((ref) {
         pageBuilder: (context, state) => CustomTransitionPage(
           key: state.pageKey,
           child: const InvoicesPage(),
+          transitionsBuilder: (context, animation, secondaryAnimation, child) {
+            const begin = Offset(1.0, 0.0);
+            const end = Offset.zero;
+            const curve = Curves.easeOutExpo;
+            var tween = Tween(begin: begin, end: end).chain(CurveTween(curve: curve));
+            return SlideTransition(position: animation.drive(tween), child: child);
+          },
+        ),
+      ),
+      GoRoute(
+        path: AppRoutes.reconciliation,
+        pageBuilder: (context, state) => CustomTransitionPage(
+          key: state.pageKey,
+          child: const ReconciliationPage(),
+          transitionsBuilder: (context, animation, secondaryAnimation, child) {
+            const begin = Offset(1.0, 0.0);
+            const end = Offset.zero;
+            const curve = Curves.easeOutExpo;
+            var tween = Tween(begin: begin, end: end).chain(CurveTween(curve: curve));
+            return SlideTransition(position: animation.drive(tween), child: child);
+          },
+        ),
+      ),
+      GoRoute(
+        path: AppRoutes.mileage,
+        pageBuilder: (context, state) => CustomTransitionPage(
+          key: state.pageKey,
+          child: const MileagePage(),
+          transitionsBuilder: (context, animation, secondaryAnimation, child) {
+            const begin = Offset(1.0, 0.0);
+            const end = Offset.zero;
+            const curve = Curves.easeOutExpo;
+            var tween = Tween(begin: begin, end: end).chain(CurveTween(curve: curve));
+            return SlideTransition(position: animation.drive(tween), child: child);
+          },
+        ),
+      ),
+      GoRoute(
+        path: AppRoutes.taxHub,
+        pageBuilder: (context, state) => CustomTransitionPage(
+          key: state.pageKey,
+          child: const TaxComplianceHubPage(),
+          transitionsBuilder: (context, animation, secondaryAnimation, child) {
+            const begin = Offset(1.0, 0.0);
+            const end = Offset.zero;
+            const curve = Curves.easeOutExpo;
+            var tween = Tween(begin: begin, end: end).chain(CurveTween(curve: curve));
+            return SlideTransition(position: animation.drive(tween), child: child);
+          },
+        ),
+      ),
+      GoRoute(
+        path: AppRoutes.onboarding,
+        pageBuilder: (context, state) => CustomTransitionPage(
+          key: state.pageKey,
+          child: const AirGappedVaultOnboardingPage(),
           transitionsBuilder: (context, animation, secondaryAnimation, child) {
             const begin = Offset(1.0, 0.0);
             const end = Offset.zero;

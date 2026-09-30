@@ -5,10 +5,12 @@ import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:intl/intl.dart';
 
+import '../../../../core/constants/app_constants.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../core/services/export_service.dart';
 import '../../data/models/invoice_model.dart';
 import '../../data/providers/invoices_provider.dart';
+import '../../../receipt_scanning/presentation/providers/receipt_provider.dart';
 import '../widgets/create_invoice_sheet.dart';
 
 /// Full-featured invoice tracking and receivables management page.
@@ -126,6 +128,7 @@ class _InvoicesPageState extends ConsumerState<InvoicesPage> {
   Widget build(BuildContext context) {
     final invoices = ref.watch(invoicesProvider);
     final notifier = ref.watch(invoicesProvider.notifier);
+    final isPrivacy = ref.watch(privacyModeProvider);
 
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
@@ -251,7 +254,7 @@ class _InvoicesPageState extends ConsumerState<InvoicesPage> {
                                     Text('Outstanding Balance', style: GoogleFonts.spaceGrotesk(color: mutedTextCol, fontSize: 14)),
                                     const SizedBox(height: 8),
                                     Text(
-                                      NumberFormat.currency(symbol: '\$').format(totalOutstanding),
+                                      AppConstants.formatAmount(totalOutstanding, isPrivacy: isPrivacy),
                                       style: GoogleFonts.jetBrainsMono(color: textCol, fontSize: 32, fontWeight: FontWeight.bold),
                                     ),
                                     const SizedBox(height: 8),
@@ -275,7 +278,7 @@ class _InvoicesPageState extends ConsumerState<InvoicesPage> {
                                       children: [
                                         Text('Overdue', style: GoogleFonts.spaceGrotesk(color: mutedTextCol, fontSize: 12)),
                                         const SizedBox(height: 4),
-                                        Text(NumberFormat.currency(symbol: '\$').format(totalOverdue), style: GoogleFonts.jetBrainsMono(color: colorScheme.error, fontSize: 18, fontWeight: FontWeight.bold)),
+                                        Text(AppConstants.formatAmount(totalOverdue, isPrivacy: isPrivacy), style: GoogleFonts.jetBrainsMono(color: colorScheme.error, fontSize: 18, fontWeight: FontWeight.bold)),
                                       ],
                                     )),
                                   ),
@@ -286,7 +289,7 @@ class _InvoicesPageState extends ConsumerState<InvoicesPage> {
                                       children: [
                                         Text('Drafts', style: GoogleFonts.spaceGrotesk(color: mutedTextCol, fontSize: 12)),
                                         const SizedBox(height: 4),
-                                        Text(NumberFormat.currency(symbol: '\$').format(totalDraft), style: GoogleFonts.jetBrainsMono(color: textCol, fontSize: 18, fontWeight: FontWeight.bold)),
+                                        Text(AppConstants.formatAmount(totalDraft, isPrivacy: isPrivacy), style: GoogleFonts.jetBrainsMono(color: textCol, fontSize: 18, fontWeight: FontWeight.bold)),
                                       ],
                                     )),
                                   ),
@@ -304,7 +307,7 @@ class _InvoicesPageState extends ConsumerState<InvoicesPage> {
                                 const SizedBox(height: 16),
                                 SizedBox(
                                   height: 150,
-                                  child: _buildChart(invoices, colorScheme, accent),
+                                  child: _buildChart(invoices, colorScheme, accent, isPrivacy),
                                 ),
                                 const SizedBox(height: 8),
                                 Row(
@@ -464,7 +467,7 @@ class _InvoicesPageState extends ConsumerState<InvoicesPage> {
                             delegate: SliverChildBuilderDelegate(
                               (context, index) {
                                 final inv = filtered[index];
-                                return _buildInvoiceRow(inv, cardBg, borderCol, textCol, mutedTextCol)
+                                return _buildInvoiceRow(inv, cardBg, borderCol, textCol, mutedTextCol, isPrivacy)
                                     .animate()
                                     .fadeIn(duration: 300.ms)
                                     .slideY(begin: 0.2, duration: 300.ms);
@@ -503,7 +506,7 @@ class _InvoicesPageState extends ConsumerState<InvoicesPage> {
     );
   }
 
-  Widget _buildChart(List<InvoiceModel> invoices, ColorScheme colorScheme, Color accent) {
+  Widget _buildChart(List<InvoiceModel> invoices, ColorScheme colorScheme, Color accent, bool isPrivacy) {
     final now = DateTime.now();
     final months = List.generate(6, (i) => DateTime(now.year, now.month - 5 + i));
 
@@ -548,6 +551,18 @@ class _InvoicesPageState extends ConsumerState<InvoicesPage> {
     return BarChart(
       BarChartData(
         alignment: BarChartAlignment.spaceAround,
+        barTouchData: BarTouchData(
+          touchTooltipData: BarTouchTooltipData(
+            getTooltipItem: (group, groupIndex, rod, rodIndex) {
+              final type = rodIndex == 0 ? 'Invoiced' : 'Settled';
+              final amt = AppConstants.formatAmount(rod.toY, isPrivacy: isPrivacy);
+              return BarTooltipItem(
+                '$type\n$amt',
+                GoogleFonts.spaceGrotesk(color: Colors.white, fontWeight: FontWeight.bold),
+              );
+            },
+          ),
+        ),
         maxY: groups.fold(0.0, (m, g) {
           final maxRod = g.barRods.fold(0.0, (mr, r) => r.toY > mr ? r.toY : mr);
           return maxRod > m ? maxRod : m;
@@ -576,7 +591,7 @@ class _InvoicesPageState extends ConsumerState<InvoicesPage> {
     );
   }
 
-  Widget _buildInvoiceRow(InvoiceModel inv, Color cardBg, Color borderCol, Color textCol, Color mutedTextCol) {
+  Widget _buildInvoiceRow(InvoiceModel inv, Color cardBg, Color borderCol, Color textCol, Color mutedTextCol, bool isPrivacy) {
     final colorScheme = Theme.of(context).colorScheme;
     Color statusBg, statusText;
     IconData statusIcon;
@@ -662,7 +677,10 @@ class _InvoicesPageState extends ConsumerState<InvoicesPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
-                Text(NumberFormat.currency(symbol: '\$').format(inv.amount), style: GoogleFonts.jetBrainsMono(color: textCol, fontWeight: FontWeight.bold, fontSize: 16)),
+                Text(
+                  AppConstants.formatAmount(inv.amount, currency: inv.currency, isPrivacy: isPrivacy),
+                  style: GoogleFonts.jetBrainsMono(color: textCol, fontWeight: FontWeight.bold, fontSize: 16),
+                ),
                 const SizedBox(height: 4),
                 Text('Issued: ${DateFormat.yMd().format(inv.issuedDate)}', style: GoogleFonts.spaceGrotesk(color: mutedTextCol, fontSize: 12)),
               ],

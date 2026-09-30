@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -5,10 +6,12 @@ import '../../../../core/services/biometric_service.dart';
 
 class BiometricGuard extends ConsumerStatefulWidget {
   final Widget? child;
+  final Duration inactivityDuration;
 
   const BiometricGuard({
     super.key,
     required this.child,
+    this.inactivityDuration = const Duration(minutes: 5),
   });
 
   @override
@@ -18,7 +21,9 @@ class BiometricGuard extends ConsumerStatefulWidget {
 class _BiometricGuardState extends ConsumerState<BiometricGuard> with WidgetsBindingObserver {
   bool _isAuthenticated = false;
   bool _isAuthenticating = false;
+  bool _isTimedOut = false;
   String? _errorMessage;
+  Timer? _inactivityTimer;
 
   @override
   void initState() {
@@ -31,6 +36,7 @@ class _BiometricGuardState extends ConsumerState<BiometricGuard> with WidgetsBin
 
   @override
   void dispose() {
+    _inactivityTimer?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
@@ -46,7 +52,24 @@ class _BiometricGuardState extends ConsumerState<BiometricGuard> with WidgetsBin
     }
   }
 
+  void _resetInactivityTimer() {
+    _inactivityTimer?.cancel();
+    final isBiometricEnabled = ref.read(biometricEnabledProvider);
+    if (!isBiometricEnabled || !_isAuthenticated) return;
+
+    _inactivityTimer = Timer(widget.inactivityDuration, () {
+      if (mounted && _isAuthenticated) {
+        setState(() {
+          _isAuthenticated = false;
+          _isTimedOut = true;
+          _errorMessage = null;
+        });
+      }
+    });
+  }
+
   void _handlePause() {
+    _inactivityTimer?.cancel();
     final isBiometricEnabled = ref.read(biometricEnabledProvider);
     if (!isBiometricEnabled) return;
     if (mounted && _isAuthenticated) {
@@ -87,9 +110,10 @@ class _BiometricGuardState extends ConsumerState<BiometricGuard> with WidgetsBin
       if (mounted) {
         setState(() {
           _isAuthenticating = false;
-          // If device cannot authenticate, fall back to granting access or show warning
           _isAuthenticated = true;
+          _isTimedOut = false;
         });
+        _resetInactivityTimer();
       }
       return;
     }
@@ -102,7 +126,10 @@ class _BiometricGuardState extends ConsumerState<BiometricGuard> with WidgetsBin
       setState(() {
         _isAuthenticating = false;
         _isAuthenticated = success;
-        if (!success) {
+        if (success) {
+          _isTimedOut = false;
+          _resetInactivityTimer();
+        } else {
           _errorMessage = 'Biometric authentication canceled or failed. Please try again.';
         }
       });
@@ -112,111 +139,144 @@ class _BiometricGuardState extends ConsumerState<BiometricGuard> with WidgetsBin
   @override
   Widget build(BuildContext context) {
     final isBiometricEnabled = ref.watch(biometricEnabledProvider);
-
-    if (!isBiometricEnabled || _isAuthenticated) {
-      return widget.child ?? const SizedBox();
-    }
-
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
+    final isLocked = isBiometricEnabled && !_isAuthenticated;
 
     return Directionality(
       textDirection: TextDirection.ltr,
-      child: Scaffold(
-        backgroundColor: colorScheme.surface,
-        body: SafeArea(
-          child: Center(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.symmetric(horizontal: 32),
+      child: Listener(
+        behavior: HitTestBehavior.translucent,
+        onPointerDown: (_) => _resetInactivityTimer(),
+        onPointerMove: (_) => _resetInactivityTimer(),
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            // Preserves active form state and in-memory heap in encrypted RAM
+            if (widget.child != null)
+              Offstage(
+                offstage: isLocked,
+                child: widget.child!,
+              ),
+            // Minimal in-place security veil
+            if (isLocked)
+              _buildLockVeil(context),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildLockVeil(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFF0F172A),
+      body: SafeArea(
+        child: Center(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.symmetric(horizontal: 32),
+            child: Container(
+              padding: const EdgeInsets.all(24),
+              decoration: BoxDecoration(
+                color: const Color(0xFF1E293B),
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: const Color(0xFF334155)),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.3),
+                    blurRadius: 20,
+                    offset: const Offset(0, 8),
+                  ),
+                ],
+              ),
               child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
+                mainAxisSize: MainAxisSize.min,
                 children: [
                   Container(
-                    width: 88,
-                    height: 88,
+                    width: 72,
+                    height: 72,
                     decoration: BoxDecoration(
-                      color: colorScheme.primary.withOpacity(0.1),
+                      color: const Color(0xFF38BDF8).withValues(alpha: 0.12),
                       shape: BoxShape.circle,
-                      border: Border.all(color: colorScheme.primary.withOpacity(0.3), width: 2),
+                      border: Border.all(color: const Color(0xFF38BDF8).withValues(alpha: 0.3), width: 1.5),
                     ),
-                    child: Icon(
+                    child: const Icon(
                       Icons.fingerprint_rounded,
-                      size: 48,
-                      color: colorScheme.primary,
+                      size: 38,
+                      color: Color(0xFF38BDF8),
                     ),
                   ),
-                  const SizedBox(height: 24),
+                  const SizedBox(height: 20),
                   Text(
                     'tAIdy Locked',
-                    style: GoogleFonts.spaceGrotesk(
-                      fontSize: 26,
-                      fontWeight: FontWeight.bold,
-                      color: colorScheme.onSurface,
+                    style: GoogleFonts.inter(
+                      fontSize: 22,
+                      fontWeight: FontWeight.w800,
+                      color: Colors.white,
                     ),
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    'Biometric authentication is required to access your financial data.',
+                    _isTimedOut
+                        ? '5-minute session timeout. Unsaved form state securely preserved in encrypted RAM.'
+                        : 'Biometric authentication is required to access your financial data.',
                     textAlign: TextAlign.center,
-                    style: GoogleFonts.spaceGrotesk(
-                      fontSize: 14,
-                      color: colorScheme.onSurfaceVariant,
+                    style: GoogleFonts.inter(
+                      fontSize: 13,
+                      color: const Color(0xFF94A3B8),
                       height: 1.4,
                     ),
                   ),
                   if (_errorMessage != null) ...[
                     const SizedBox(height: 16),
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                       decoration: BoxDecoration(
-                        color: colorScheme.error.withOpacity(0.1),
+                        color: const Color(0xFFEF4444).withValues(alpha: 0.15),
                         borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: colorScheme.error.withOpacity(0.3)),
+                        border: Border.all(color: const Color(0xFFEF4444).withValues(alpha: 0.4)),
                       ),
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Icon(Icons.lock_outline, size: 16, color: colorScheme.error),
+                          const Icon(Icons.lock_outline, size: 16, color: Color(0xFFF87171)),
                           const SizedBox(width: 8),
                           Flexible(
                             child: Text(
                               _errorMessage!,
-                              style: TextStyle(fontSize: 12, color: colorScheme.error),
+                              style: GoogleFonts.inter(fontSize: 12, color: const Color(0xFFF87171)),
                             ),
                           ),
                         ],
                       ),
                     ),
                   ],
-                  const SizedBox(height: 36),
+                  const SizedBox(height: 28),
                   SizedBox(
                     width: double.infinity,
                     child: ElevatedButton.icon(
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: colorScheme.primary,
-                        foregroundColor: colorScheme.onPrimary,
-                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        backgroundColor: const Color(0xFF38BDF8),
+                        foregroundColor: const Color(0xFF0F172A),
+                        padding: const EdgeInsets.symmetric(vertical: 14),
                         shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(14),
+                          borderRadius: BorderRadius.circular(12),
                         ),
                         elevation: 0,
                       ),
                       onPressed: _isAuthenticating ? null : _authenticate,
                       icon: _isAuthenticating
-                          ? SizedBox(
+                          ? const SizedBox(
                               width: 18,
                               height: 18,
                               child: CircularProgressIndicator(
                                 strokeWidth: 2,
-                                color: colorScheme.onPrimary,
+                                color: Color(0xFF0F172A),
                               ),
                             )
                           : const Icon(Icons.lock_open_rounded, size: 18),
                       label: Text(
                         _isAuthenticating ? 'Authenticating...' : 'Unlock with Biometrics',
-                        style: GoogleFonts.spaceGrotesk(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w600,
+                        style: GoogleFonts.inter(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
                         ),
                       ),
                     ),

@@ -34,20 +34,22 @@ void main() async {
   await TelemetryService.instance.initialize();
   TelemetryService.instance.setupGlobalErrorHandlers();
 
-  // ── 1. Load environment variables from .env ────────────────────────────
+  // ── 1. Load environment variables (Compile-time defines & local dotenv) ──
+  const defineSupabaseUrl = String.fromEnvironment('SUPABASE_URL');
+  const defineSupabaseAnonKey = String.fromEnvironment('SUPABASE_ANON_KEY');
+
   try {
     await dotenv.load(fileName: '.env');
-  } catch (e) {
-    debugPrint('Warning: Could not load .env, attempting fallback: $e');
-    try {
-      await dotenv.load(fileName: '.env.example');
-    } catch (_) {
-      debugPrint('Notice: No environment asset bundle discovered.');
-    }
+  } catch (_) {
+    // Expected in release builds where .env is omitted from asset manifests for security.
   }
 
-  final supabaseUrl = dotenv.env['SUPABASE_URL'] ?? 'https://placeholder.supabase.co';
-  final supabaseAnonKey = dotenv.env['SUPABASE_ANON_KEY'] ?? 'placeholder-anon-key';
+  final supabaseUrl = defineSupabaseUrl.isNotEmpty
+      ? defineSupabaseUrl
+      : (dotenv.env['SUPABASE_URL'] ?? 'https://placeholder.supabase.co');
+  final supabaseAnonKey = defineSupabaseAnonKey.isNotEmpty
+      ? defineSupabaseAnonKey
+      : (dotenv.env['SUPABASE_ANON_KEY'] ?? 'placeholder-anon-key');
 
   // ── 2. Initialize Supabase with env-sourced credentials ────────────────
   try {
