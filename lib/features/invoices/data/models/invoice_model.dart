@@ -1,4 +1,4 @@
-﻿import 'package:flutter/foundation.dart';
+import 'package:flutter/foundation.dart';
 import 'package:hive/hive.dart';
 
 part 'invoice_model.g.dart';
@@ -77,21 +77,21 @@ class InvoiceModel {
 
   factory InvoiceModel.fromJson(Map<String, dynamic> json) {
     return InvoiceModel(
-      id: json['id'] as String,
+      id: json['id']?.toString() ?? DateTime.now().millisecondsSinceEpoch.toString(),
       invoiceNumber: json['invoice_number'] as String? ?? 'INV-001',
       clientName: json['client_name'] as String? ?? 'Unknown Client',
       amount: (json['amount'] as num?)?.toDouble() ?? 0.0,
       status: json['status'] as String? ?? InvoiceStatus.draft,
       issuedDate: json['issued_date'] != null
-          ? DateTime.tryParse(json['issued_date'] as String) ?? DateTime.now()
+          ? (DateTime.tryParse(json['issued_date'].toString()) ?? DateTime.now())
           : DateTime.now(),
-      dueDate: json['due_date'] != null ? DateTime.tryParse(json['due_date'] as String) : null,
+      dueDate: json['due_date'] != null ? DateTime.tryParse(json['due_date'].toString()) : null,
       notes: json['notes'] as String? ?? '',
       currency: json['currency'] as String? ?? 'USD',
-      userId: json['user_id'] as String?,
-      createdAt: json['created_at'] != null ? DateTime.tryParse(json['created_at'] as String) : null,
-      updatedAt: json['updated_at'] != null ? DateTime.tryParse(json['updated_at'] as String) : null,
-      deletedAt: json['deleted_at'] != null ? DateTime.tryParse(json['deleted_at'] as String) : null,
+      userId: json['user_id']?.toString(),
+      createdAt: json['created_at'] != null ? DateTime.tryParse(json['created_at'].toString()) : null,
+      updatedAt: json['updated_at'] != null ? DateTime.tryParse(json['updated_at'].toString()) : null,
+      deletedAt: json['deleted_at'] != null ? DateTime.tryParse(json['deleted_at'].toString()) : null,
       version: (json['version'] as num?)?.toInt() ?? 1,
     );
   }

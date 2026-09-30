@@ -405,27 +405,45 @@ class SyncEngine {
         for (final it in itemsRaw) {
           if (it is Map<String, dynamic>) {
             items.add(ReceiptItemModel(
-              description: it['description']?.toString() ?? '',
+              description: it['description']?.toString() ?? 'Item',
               unitPrice: (it['unit_price'] as num?)?.toDouble() ?? 0.0,
               quantity: (it['quantity'] as num?)?.toInt() ?? 1,
               totalPrice: (it['total_price'] as num?)?.toDouble(),
               category: it['category']?.toString(),
               necessity: it['necessity']?.toString() ?? 'essential',
+              mainCategory: it['main_category']?.toString() ?? it['category']?.toString(),
+              subCategory: it['sub_category']?.toString(),
               isAsset: it['is_asset'] == true,
+              boxId: it['box_id']?.toString() ?? row['box_id']?.toString() ?? 'main',
+              isUserCorrected: it['is_user_corrected'] == true,
+              confidenceScore: (it['confidence_score'] as num?)?.toDouble() ?? 1.0,
+              deletedAt: it['deleted_at'] != null ? DateTime.tryParse(it['deleted_at'].toString()) : null,
+              version: (it['version'] as num?)?.toInt() ?? 1,
             ));
           }
         }
       }
+
+      final dateStr = (row['scanned_date'] ?? row['date'])?.toString() ?? '';
+      final parsedDate = DateTime.tryParse(dateStr) ?? DateTime.now();
 
       return ReceiptModel(
         id: id,
         merchantName: row['merchant_name']?.toString() ?? 'Unknown Merchant',
         totalAmount: (row['total_amount'] as num?)?.toDouble() ?? 0.0,
         currency: row['currency']?.toString() ?? 'USD',
-        date: DateTime.tryParse(row['date']?.toString() ?? '') ?? DateTime.now(),
+        date: parsedDate,
         items: items,
         imagePath: row['image_path']?.toString(),
+        vatNumber: row['vat_number']?.toString() ?? '',
+        merchantAddress: row['merchant_address']?.toString() ?? '',
+        time: (row['transaction_time'] ?? row['time'])?.toString() ?? '00:00',
         boxId: row['box_id']?.toString() ?? 'main',
+        userId: row['user_id']?.toString(),
+        createdAt: row['created_at'] != null ? DateTime.tryParse(row['created_at'].toString()) : null,
+        updatedAt: row['updated_at'] != null ? DateTime.tryParse(row['updated_at'].toString()) : null,
+        deletedAt: row['deleted_at'] != null ? DateTime.tryParse(row['deleted_at'].toString()) : null,
+        version: (row['version'] as num?)?.toInt() ?? 1,
       );
     } catch (e) {
       debugPrint('SyncEngine: Error parsing receipt row: $e');
@@ -437,16 +455,27 @@ class SyncEngine {
     try {
       final id = row['id']?.toString();
       if (id == null) return null;
+      final colorVal = row['color_hex'] ?? row['color'];
+      final iconVal = row['icon_identifier'] ?? row['icon'];
       return BoxModel(
         id: id,
         name: row['name']?.toString() ?? 'Box',
         budget: (row['budget'] as num?)?.toDouble() ?? 0.0,
         spent: (row['spent'] as num?)?.toDouble() ?? 0.0,
         currency: row['currency']?.toString() ?? 'USD',
-        color: (row['color'] as num?)?.toInt() ?? 0xFF002FA7,
-        icon: row['icon']?.toString(),
+        color: (colorVal as num?)?.toInt() ?? 0xFF002FA7,
+        icon: iconVal?.toString(),
+        autoCategorize: row['auto_categorize'] as bool? ?? false,
+        keywords: row['keywords']?.toString() ?? '',
+        isPrivate: row['is_private'] as bool? ?? false,
+        userId: row['user_id']?.toString(),
+        createdAt: row['created_at'] != null ? DateTime.tryParse(row['created_at'].toString()) : null,
+        updatedAt: row['updated_at'] != null ? DateTime.tryParse(row['updated_at'].toString()) : null,
+        deletedAt: row['deleted_at'] != null ? DateTime.tryParse(row['deleted_at'].toString()) : null,
+        version: (row['version'] as num?)?.toInt() ?? 1,
       );
     } catch (e) {
+      debugPrint('SyncEngine: Error parsing box row: $e');
       return null;
     }
   }
@@ -463,9 +492,16 @@ class SyncEngine {
         price: (row['price'] as num?)?.toDouble() ?? 0.0,
         receiptImagePath: row['receipt_image_path']?.toString() ?? '',
         merchantName: row['merchant_name']?.toString() ?? '',
-        receiptId: row['receipt_id']?.toString() ?? '',
+        receiptId: row['receipt_id']?.toString(),
+        userId: row['user_id']?.toString(),
+        documentPath: row['document_path']?.toString() ?? '',
+        createdAt: row['created_at'] != null ? DateTime.tryParse(row['created_at'].toString()) : null,
+        updatedAt: row['updated_at'] != null ? DateTime.tryParse(row['updated_at'].toString()) : null,
+        deletedAt: row['deleted_at'] != null ? DateTime.tryParse(row['deleted_at'].toString()) : null,
+        version: (row['version'] as num?)?.toInt() ?? 1,
       );
     } catch (e) {
+      debugPrint('SyncEngine: Error parsing asset row: $e');
       return null;
     }
   }
@@ -484,8 +520,14 @@ class SyncEngine {
         dueDate: row['due_date'] != null ? DateTime.tryParse(row['due_date'].toString()) : null,
         notes: row['notes']?.toString() ?? '',
         currency: row['currency']?.toString() ?? 'USD',
+        userId: row['user_id']?.toString(),
+        createdAt: row['created_at'] != null ? DateTime.tryParse(row['created_at'].toString()) : null,
+        updatedAt: row['updated_at'] != null ? DateTime.tryParse(row['updated_at'].toString()) : null,
+        deletedAt: row['deleted_at'] != null ? DateTime.tryParse(row['deleted_at'].toString()) : null,
+        version: (row['version'] as num?)?.toInt() ?? 1,
       );
     } catch (e) {
+      debugPrint('SyncEngine: Error parsing invoice row: $e');
       return null;
     }
   }

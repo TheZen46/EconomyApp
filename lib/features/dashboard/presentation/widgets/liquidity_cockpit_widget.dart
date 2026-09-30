@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
+import 'package:t_aidy/core/routes/app_router.dart';
 
 import 'package:t_aidy/features/tax_compliance/domain/audit_risk_score_engine.dart';
 import 'package:t_aidy/features/invoices/domain/invoice_aging_engine.dart';
@@ -397,7 +398,7 @@ class LiquidityCockpitWidget extends ConsumerWidget {
                   ),
                   onPressed: () {
                     try {
-                      context.push('/tax-compliance');
+                      context.push(AppRoutes.taxHub);
                     } catch (_) {}
                   },
                   icon: const Icon(Icons.shield_outlined, size: 15),

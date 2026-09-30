@@ -1,4 +1,4 @@
-﻿import 'package:hive/hive.dart';
+import 'package:hive/hive.dart';
 
 part 'box_model.g.dart';
 
@@ -68,21 +68,23 @@ class BoxModel extends HiveObject {
   });
 
   factory BoxModel.fromJson(Map<String, dynamic> json) {
+    final colorVal = json['color_hex'] ?? json['color'];
+    final iconVal = json['icon_identifier'] ?? json['icon'];
     return BoxModel(
-      id: json['id'] as String,
+      id: json['id']?.toString() ?? DateTime.now().millisecondsSinceEpoch.toString(),
       name: json['name'] as String? ?? 'Untitled Box',
       budget: (json['budget'] as num?)?.toDouble() ?? 0.0,
       spent: (json['spent'] as num?)?.toDouble() ?? 0.0,
       currency: json['currency'] as String? ?? 'USD',
-      color: (json['color_hex'] as num?)?.toInt() ?? 0xFF002FA7,
-      icon: json['icon_identifier'] as String?,
+      color: (colorVal as num?)?.toInt() ?? 0xFF002FA7,
+      icon: iconVal as String?,
       autoCategorize: json['auto_categorize'] as bool? ?? false,
       keywords: json['keywords'] as String? ?? '',
       isPrivate: json['is_private'] as bool? ?? false,
-      userId: json['user_id'] as String?,
-      createdAt: json['created_at'] != null ? DateTime.tryParse(json['created_at'] as String) : null,
-      updatedAt: json['updated_at'] != null ? DateTime.tryParse(json['updated_at'] as String) : null,
-      deletedAt: json['deleted_at'] != null ? DateTime.tryParse(json['deleted_at'] as String) : null,
+      userId: json['user_id']?.toString(),
+      createdAt: json['created_at'] != null ? DateTime.tryParse(json['created_at'].toString()) : null,
+      updatedAt: json['updated_at'] != null ? DateTime.tryParse(json['updated_at'].toString()) : null,
+      deletedAt: json['deleted_at'] != null ? DateTime.tryParse(json['deleted_at'].toString()) : null,
       version: (json['version'] as num?)?.toInt() ?? 1,
     );
   }

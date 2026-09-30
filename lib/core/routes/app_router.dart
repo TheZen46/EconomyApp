@@ -42,6 +42,7 @@ abstract class AppRoutes {
   static const reconciliation = '/reconciliation';
   static const mileage = '/mileage';
   static const taxHub = '/tax_hub';
+  static const taxCompliance = '/tax-compliance';
   static const onboarding = '/onboarding';
 }
 
@@ -288,6 +289,14 @@ final routerProvider = Provider<GoRouter>((ref) {
             return SlideTransition(position: animation.drive(tween), child: child);
           },
         ),
+      ),
+      GoRoute(
+        path: AppRoutes.taxCompliance,
+        redirect: (context, state) => AppRoutes.taxHub,
+      ),
+      GoRoute(
+        path: '/tax_compliance',
+        redirect: (context, state) => AppRoutes.taxHub,
       ),
       GoRoute(
         path: AppRoutes.onboarding,

@@ -1,4 +1,4 @@
-﻿import 'package:hive/hive.dart';
+import 'package:hive/hive.dart';
 
 part 'asset_model.g.dart';
 
@@ -65,21 +65,21 @@ class AssetModel {
 
   factory AssetModel.fromJson(Map<String, dynamic> json) {
     return AssetModel(
-      id: json['id'] as String,
+      id: json['id']?.toString() ?? DateTime.now().millisecondsSinceEpoch.toString(),
       name: json['name'] as String? ?? 'Protected Item',
       purchaseDate: json['purchase_date'] != null
-          ? DateTime.tryParse(json['purchase_date'] as String) ?? DateTime.now()
+          ? (DateTime.tryParse(json['purchase_date'].toString()) ?? DateTime.now())
           : DateTime.now(),
       warrantyMonths: (json['warranty_months'] as num?)?.toInt() ?? 12,
       price: (json['price'] as num?)?.toDouble() ?? 0.0,
       receiptImagePath: json['receipt_image_path'] as String? ?? '',
       merchantName: json['merchant_name'] as String? ?? '',
-      receiptId: json['receipt_id'] as String?,
-      userId: json['user_id'] as String?,
+      receiptId: json['receipt_id']?.toString(),
+      userId: json['user_id']?.toString(),
       documentPath: json['document_path'] as String? ?? '',
-      createdAt: json['created_at'] != null ? DateTime.tryParse(json['created_at'] as String) : null,
-      updatedAt: json['updated_at'] != null ? DateTime.tryParse(json['updated_at'] as String) : null,
-      deletedAt: json['deleted_at'] != null ? DateTime.tryParse(json['deleted_at'] as String) : null,
+      createdAt: json['created_at'] != null ? DateTime.tryParse(json['created_at'].toString()) : null,
+      updatedAt: json['updated_at'] != null ? DateTime.tryParse(json['updated_at'].toString()) : null,
+      deletedAt: json['deleted_at'] != null ? DateTime.tryParse(json['deleted_at'].toString()) : null,
       version: (json['version'] as num?)?.toInt() ?? 1,
     );
   }

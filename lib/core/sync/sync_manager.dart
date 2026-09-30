@@ -214,70 +214,90 @@ class SyncManager {
   }
 
   void _applyReceiptDelta(Map<String, dynamic> row) {
-    final id = row['id'] as String;
-    final deletedAt = row['deleted_at'] != null ? DateTime.tryParse(row['deleted_at'] as String) : null;
+    try {
+      final id = row['id']?.toString();
+      if (id == null) return;
+      final deletedAt = row['deleted_at'] != null ? DateTime.tryParse(row['deleted_at'].toString()) : null;
 
-    if (deletedAt != null) {
-      receiptsBox.delete(id);
-      return;
-    }
+      if (deletedAt != null) {
+        receiptsBox.delete(id);
+        return;
+      }
 
-    final remoteModel = ReceiptModel.fromJson(row);
-    final localModel = receiptsBox.get(id);
+      final remoteModel = ReceiptModel.fromJson(row);
+      final localModel = receiptsBox.get(id);
 
-    if (localModel == null || _shouldRemoteOverwrite(localModel.updatedAt, localModel.version, remoteModel.updatedAt, remoteModel.version)) {
-      receiptsBox.put(id, remoteModel);
+      if (localModel == null || _shouldRemoteOverwrite(localModel.updatedAt, localModel.version, remoteModel.updatedAt, remoteModel.version)) {
+        receiptsBox.put(id, remoteModel);
+      }
+    } catch (e) {
+      debugPrint('SyncManager: Error applying receipt delta: $e');
     }
   }
 
   void _applyBoxDelta(Map<String, dynamic> row) {
-    final id = row['id'] as String;
-    final deletedAt = row['deleted_at'] != null ? DateTime.tryParse(row['deleted_at'] as String) : null;
+    try {
+      final id = row['id']?.toString();
+      if (id == null) return;
+      final deletedAt = row['deleted_at'] != null ? DateTime.tryParse(row['deleted_at'].toString()) : null;
 
-    if (deletedAt != null) {
-      boxesBox.delete(id);
-      return;
-    }
+      if (deletedAt != null) {
+        boxesBox.delete(id);
+        return;
+      }
 
-    final remoteModel = BoxModel.fromJson(row);
-    final localModel = boxesBox.get(id);
+      final remoteModel = BoxModel.fromJson(row);
+      final localModel = boxesBox.get(id);
 
-    if (localModel == null || _shouldRemoteOverwrite(localModel.updatedAt, localModel.version, remoteModel.updatedAt, remoteModel.version)) {
-      boxesBox.put(id, remoteModel);
+      if (localModel == null || _shouldRemoteOverwrite(localModel.updatedAt, localModel.version, remoteModel.updatedAt, remoteModel.version)) {
+        boxesBox.put(id, remoteModel);
+      }
+    } catch (e) {
+      debugPrint('SyncManager: Error applying box delta: $e');
     }
   }
 
   void _applyInvoiceDelta(Map<String, dynamic> row) {
-    final id = row['id'] as String;
-    final deletedAt = row['deleted_at'] != null ? DateTime.tryParse(row['deleted_at'] as String) : null;
+    try {
+      final id = row['id']?.toString();
+      if (id == null) return;
+      final deletedAt = row['deleted_at'] != null ? DateTime.tryParse(row['deleted_at'].toString()) : null;
 
-    if (deletedAt != null) {
-      invoicesBox.delete(id);
-      return;
-    }
+      if (deletedAt != null) {
+        invoicesBox.delete(id);
+        return;
+      }
 
-    final remoteModel = InvoiceModel.fromJson(row);
-    final localModel = invoicesBox.get(id);
+      final remoteModel = InvoiceModel.fromJson(row);
+      final localModel = invoicesBox.get(id);
 
-    if (localModel == null || _shouldRemoteOverwrite(localModel.updatedAt, localModel.version, remoteModel.updatedAt, remoteModel.version)) {
-      invoicesBox.put(id, remoteModel);
+      if (localModel == null || _shouldRemoteOverwrite(localModel.updatedAt, localModel.version, remoteModel.updatedAt, remoteModel.version)) {
+        invoicesBox.put(id, remoteModel);
+      }
+    } catch (e) {
+      debugPrint('SyncManager: Error applying invoice delta: $e');
     }
   }
 
   void _applyAssetDelta(Map<String, dynamic> row) {
-    final id = row['id'] as String;
-    final deletedAt = row['deleted_at'] != null ? DateTime.tryParse(row['deleted_at'] as String) : null;
+    try {
+      final id = row['id']?.toString();
+      if (id == null) return;
+      final deletedAt = row['deleted_at'] != null ? DateTime.tryParse(row['deleted_at'].toString()) : null;
 
-    if (deletedAt != null) {
-      assetsBox.delete(id);
-      return;
-    }
+      if (deletedAt != null) {
+        assetsBox.delete(id);
+        return;
+      }
 
-    final remoteModel = AssetModel.fromJson(row);
-    final localModel = assetsBox.get(id);
+      final remoteModel = AssetModel.fromJson(row);
+      final localModel = assetsBox.get(id);
 
-    if (localModel == null || _shouldRemoteOverwrite(localModel.updatedAt, localModel.version, remoteModel.updatedAt, remoteModel.version)) {
-      assetsBox.put(id, remoteModel);
+      if (localModel == null || _shouldRemoteOverwrite(localModel.updatedAt, localModel.version, remoteModel.updatedAt, remoteModel.version)) {
+        assetsBox.put(id, remoteModel);
+      }
+    } catch (e) {
+      debugPrint('SyncManager: Error applying asset delta: $e');
     }
   }
 

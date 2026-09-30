@@ -1,9 +1,11 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
+import 'package:t_aidy/core/routes/app_router.dart';
 
 import 'package:t_aidy/features/tax_compliance/domain/audit_risk_score_engine.dart';
 import 'package:t_aidy/features/tax_compliance/domain/contractor_compliance_engine.dart';
@@ -87,7 +89,7 @@ class _ContextualInterruptionBannerState extends ConsumerState<ContextualInterru
                 ),
               );
               try {
-                context.push('/tax-compliance');
+                unawaited(context.push(AppRoutes.taxHub));
               } catch (_) {}
             }
           },
@@ -117,7 +119,7 @@ class _ContextualInterruptionBannerState extends ConsumerState<ContextualInterru
         onAction: () {
           widget.onActionTriggered?.call();
           try {
-            context.push('/tax-compliance');
+            context.push(AppRoutes.taxHub);
           } catch (_) {}
         },
       );
@@ -145,7 +147,7 @@ class _ContextualInterruptionBannerState extends ConsumerState<ContextualInterru
         onAction: () {
           widget.onActionTriggered?.call();
           try {
-            context.push('/tax-compliance');
+            context.push(AppRoutes.taxHub);
           } catch (_) {}
         },
       );

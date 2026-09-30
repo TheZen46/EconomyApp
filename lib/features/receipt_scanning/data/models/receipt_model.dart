@@ -289,7 +289,7 @@ class ReceiptItemModel {
       boxId: json['box_id'] as String? ?? 'main',
       isUserCorrected: json['is_user_corrected'] as bool? ?? false,
       confidenceScore: (json['confidence_score'] as num?)?.toDouble() ?? 1.0,
-      deletedAt: json['deleted_at'] != null ? DateTime.tryParse(json['deleted_at'] as String) : null,
+      deletedAt: json['deleted_at'] != null ? DateTime.tryParse(json['deleted_at'].toString()) : null,
       version: (json['version'] as num?)?.toInt() ?? 1,
     );
   }
