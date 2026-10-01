@@ -39,73 +39,75 @@ Limitations: the Flutter and Dart SDKs were not available in the analysis enviro
 
 The most consequential themes are: (1) personal data leaves the device without consent and is served from a public bucket and an over-permissive table policy (TAIDY-C01, TAIDY-H01, TAIDY-H02, TAIDY-H17); (2) the synchronization layer consists of three engines whose contracts disagree with the database schema and with each other, which causes failed pushes, lost updates and silent overwrites (TAIDY-C02, TAIDY-C03, TAIDY-H03, TAIDY-H04, TAIDY-H05, TAIDY-A01); (3) the on-device inference stack ships placeholder native code that crashes or fabricates results, and several fallbacks present synthetic data as AI output (TAIDY-C04, TAIDY-H08 to TAIDY-H12, TAIDY-A05).
 
-| ID | Severity | Component | Title |
-|---|---|---|---|
-| [TAIDY-C01](#taidy-c01) | Critical | Supabase Storage / Training Upload | Receipt images and labels are uploaded to a public storage bucket for every saved receipt without a consent gate |
-| [TAIDY-C02](#taidy-c02) | Critical | Settings / Data Management | The "Device Only" clear-data action deletes cloud records through outbox tombstones |
-| [TAIDY-C03](#taidy-c03) | Critical | Sync / Outbox | Receipt outbox payload does not match the remote receipts schema, so receipt synchronization fails and blocks the queue |
-| [TAIDY-C04](#taidy-c04) | Critical | Native Engine / receipt_engine.cpp | Release native library compiles a stub llama.cpp API whose batch allocator leaves seq_id null, causing a segmentation fault on first inference |
-| [TAIDY-H01](#taidy-h01) | High | Supabase / Row Level Security | Training-label table is readable by every authenticated user and through an RLS-bypassing view; missing INSERT policy aborts receipt_items writes |
-| [TAIDY-H02](#taidy-h02) | High | Supabase / PII Anonymization | anonymize_text() uses \b, which PostgreSQL interprets as a backspace escape, so card-number redaction never matches |
-| [TAIDY-H03](#taidy-h03) | High | Sync / SyncManager | Delta pull watermark comes from the device clock after the pull and queries are unpaginated, causing lost and truncated updates |
-| [TAIDY-H04](#taidy-h04) | High | Sync / Conflict Resolution | Last-write-wins resolution degenerates to remote-always-wins and overwrites unsynchronized local edits |
-| [TAIDY-H05](#taidy-h05) | High | Sync / SyncEngine | SyncEngine rehydration reads non-existent columns, resurrects soft-deleted rows and overwrites local entities without conflict checks |
-| [TAIDY-H06](#taidy-h06) | High | Persistence / Hive | Hive typeId 12 is declared twice and generated adapters are hand-edited, so regenerating code breaks persistence |
-| [TAIDY-H07](#taidy-h07) | High | Bootstrap / Encrypted Storage | Hive open failures are unrecoverable because of a recovery loop, a desktop backup path mismatch and unguarded key retrieval |
-| [TAIDY-H08](#taidy-h08) | High | Native Engine / Lifecycle | receipt_engine_free unlocks a mutex owned by an object it has already deleted (use-after-free) |
-| [TAIDY-H09](#taidy-h09) | High | VLM / FFI Bindings | processImageStream awaits StreamController.close() before a listener exists and deadlocks when the native call ends without a completion callback |
-| [TAIDY-H10](#taidy-h10) | High | VLM / Worker Isolate | VLM worker initialization timeout leaks the isolate and the loaded model, and concurrent initialization spawns duplicate workers |
-| [TAIDY-H11](#taidy-h11) | High | AI / OTA Model Updater | OTA model updater downloads executable model binaries from remote configuration without integrity verification |
-| [TAIDY-H12](#taidy-h12) | High | AI / Extraction Fallbacks | Fallback extraction paths return fabricated receipts as successful AI results |
-| [TAIDY-H13](#taidy-h13) | High | Auth / BiometricGuard | Biometric guard fails open and its enable flag is stored in the unencrypted settings box |
-| [TAIDY-H14](#taidy-h14) | High | Import / CsvParserService | CSV import corrupts European-format amounts, discards transaction sign and assumes USD and month-first dates |
-| [TAIDY-H15](#taidy-h15) | High | AI / LLMService | Legacy on-device LLM path discards the extracted date and uses millisecond timestamps as receipt identifiers |
-| [TAIDY-H16](#taidy-h16) | High | AI / Model Repository | Model SHA-256 constants are not genuine digests, so verified downloads are discarded, and no vision projector is provisioned |
-| [TAIDY-H17](#taidy-h17) | High | Privacy / Isolation Controls | Privacy isolation mode and private boxes do not restrict network I/O or access as documented |
-| [TAIDY-M01](#taidy-m01) | Medium | Integrations / Webhook | Webhook URL is deleted from settings on every launch by the secret migration routine |
-| [TAIDY-M02](#taidy-m02) | Medium | Sync / Identifiers | Client-chosen non-unique primary keys collide across tenants in the shared remote tables |
-| [TAIDY-M03](#taidy-m03) | Medium | Sync / Outbox | Outbox processing has global head-of-line blocking, ignores backoff and routes unknown entity types to the receipts table |
-| [TAIDY-M04](#taidy-m04) | Medium | State Management / Riverpod | Provider dependency cascade recreates ReceiptListNotifier during in-flight operations, and sync services are never disposed |
-| [TAIDY-M05](#taidy-m05) | Medium | Bootstrap / Supabase Client | Providers access Supabase.instance.client without guards and startup post-frame tasks have no error handling |
-| [TAIDY-M06](#taidy-m06) | Medium | Auth / Session Management | AuthNotifier leaks its auth-state subscription, and session persistence bypasses secure storage |
-| [TAIDY-M07](#taidy-m07) | Medium | Routing / GoRouter | The /review route casts state.extra without validation and crashes on refresh or deep link |
-| [TAIDY-M08](#taidy-m08) | Medium | Sync / Initial Sync Gate | Post-login initial synchronization performs a full replication on every cold start and blocks entry while offline |
-| [TAIDY-M09](#taidy-m09) | Medium | Boxes / BoxesNotifier | Deleting a box leaves its receipts referencing a non-existent box and removes them from every dashboard view |
-| [TAIDY-M10](#taidy-m10) | Medium | Receipt Capture / Image Persistence | Receipt images are referenced at transient image_picker paths and are never copied to durable storage |
-| [TAIDY-M11](#taidy-m11) | Medium | Receipt Review / ReviewPage | Review save coerces locale-formatted totals to zero, reports failures as success and records unchanged items as corrections |
-| [TAIDY-M12](#taidy-m12) | Medium | AI / GeminiAIService | Gemini integration targets a retired model, mislabels image MIME types, is incompatible with web and requests currency symbols |
-| [TAIDY-M13](#taidy-m13) | Medium | Privacy / Data at Rest | Several stores of financial data bypass the encrypted Hive layer |
-| [TAIDY-M14](#taidy-m14) | Medium | Configuration / Environment | .env is bundled as a Flutter asset, embedding API keys and OAuth client secrets in distributed binaries |
-| [TAIDY-M15](#taidy-m15) | Medium | Native Build / CMake | Native build assumes AVX2 on all x86_64 targets, and the fallback image decoder fabricates pixels and permits large allocations |
-| [TAIDY-M16](#taidy-m16) | Medium | CI / GitHub Actions | CI does not fail on analyzer errors or test failures, and the release workflow uses a retired action and falls back to debug signing |
-| [TAIDY-M17](#taidy-m17) | Medium | Financial Core / Money | Money.roundIntegerDivision mis-rounds negative values, and awayFromZero and allocate() violate their documented contracts |
-| [TAIDY-M18](#taidy-m18) | Medium | Financial Core / Tax | Tax calculations are inconsistent across modules and treat VAT-inclusive receipt prices as net amounts |
-| [TAIDY-M19](#taidy-m19) | Medium | CRDT Engine | CRDT engine contains convergence defects (positional item identity, derived totals, HLC regression) and is not integrated |
-| [TAIDY-M20](#taidy-m20) | Medium | Privacy / Data Deletion | Receipt deletion does not erase non-JPEG images from storage and mixes hard and soft deletes |
-| [TAIDY-M21](#taidy-m21) | Medium | Invoices / Numbering | Invoice numbers are unique only per device, and automatic overdue transitions are not synchronized |
-| [TAIDY-M22](#taidy-m22) | Medium | ML Pipeline / Dataset Contribution | Training records contain fabricated tax data, placeholder identifiers and constant correction flags |
-| [TAIDY-M23](#taidy-m23) | Medium | AI / LLMService | LLMService.generate never completes when the model fails to load and leaks its receive port on cancellation |
-| [TAIDY-L01](#taidy-l01) | Low | Presentation / Resource Management | TextEditingController instances are not disposed in several pages and dialogs |
-| [TAIDY-L02](#taidy-l02) | Low | Export / CSV | CSV exports are vulnerable to spreadsheet formula injection |
-| [TAIDY-L03](#taidy-l03) | Low | Core Utilities / JsonParserUtils | JSON repair heuristics corrupt string content containing "//" or the words True, False and None |
-| [TAIDY-L04](#taidy-l04) | Low | Observability / TelemetryService | Global error handler suppresses every uncaught asynchronous error and the telemetry log grows without bound |
-| [TAIDY-L05](#taidy-l05) | Low | Presentation / Diagnostics | User-facing confidence, benchmark and verification indicators are synthetic |
-| [TAIDY-L06](#taidy-l06) | Low | AI / ModelUpdateService | UpdateState.copyWith cannot clear message or error, leaving stale notifications |
-| [TAIDY-L07](#taidy-l07) | Low | Repository Hygiene | Repository tracks node_modules, stray artifacts and an orphaned duplicate native engine |
-| [TAIDY-L08](#taidy-l08) | Low | Sync / SyncService | A dead-lettered upload blocks re-scheduling of the same receipt, and each upload scans every receipt |
-| [TAIDY-L09](#taidy-l09) | Low | Privacy / PiiScrubberService | PII scrubber over-redacts ordinary text and does not cover personal names |
-| [TAIDY-D01](#taidy-d01) | Low | Documentation / API Coverage | Public API documentation coverage is 36 percent, with several modules at zero |
-| [TAIDY-D02](#taidy-d02) | Low | Documentation / Accuracy | Existing documentation diverges from the implementation and from repository style policy |
-| [TAIDY-D03](#taidy-d03) | Low | Documentation / Operational Contracts | Operational contracts are undocumented (Hive type registry, outbox state machine, remote column mapping, conflict policy, data inventory) |
-| [TAIDY-A01](#taidy-a01) | Architectural | Sync / Architecture | Three overlapping synchronization subsystems operate on the same stores without a shared contract, and the CRDT engine is not wired in |
-| [TAIDY-A02](#taidy-a02) | Architectural | Layering / Dependency Graph | Core modules depend on feature modules, producing cyclic dependencies |
-| [TAIDY-A03](#taidy-a03) | Architectural | Data Contracts / Serialization | No single serialization contract exists between Dart models and the remote schema; at least seven hand-written mappers diverge |
-| [TAIDY-A04](#taidy-a04) | Architectural | Dependency Injection | Static singletons and exception-driven provider wiring impede testing and substitution |
-| [TAIDY-A05](#taidy-a05) | Architectural | Native Engine / Integration | On-device VLM pipeline is not integrated end to end |
-| [TAIDY-A06](#taidy-a06) | Architectural | Codebase Structure | Financial, tax, reconciliation and CRDT modules are unreachable from the application |
-| [TAIDY-A07](#taidy-a07) | Architectural | Financial Core / Monetary Representation | Monetary amounts are persisted and computed as double while the fixed-point Money type is unused |
-| [TAIDY-A08](#taidy-a08) | Architectural | AI / Backend Selection | AI backend selection is an implicit reactive cascade without capability negotiation, consent or provenance |
-| [TAIDY-A09](#taidy-a09) | Architectural | Dependencies | Core dependencies are unmaintained, deprecated or pinned to old exact versions |
+Each finding is tracked by a GitHub issue; the Issue column links to it.
+
+| ID | Severity | Component | Title | Issue |
+|---|---|---|---|---|
+| [TAIDY-C01](#taidy-c01) | Critical | Supabase Storage / Training Upload | Receipt images and labels are uploaded to a public storage bucket for every saved receipt without a consent gate | [#2](https://github.com/TheZen46/EconomyApp/issues/2) |
+| [TAIDY-C02](#taidy-c02) | Critical | Settings / Data Management | The "Device Only" clear-data action deletes cloud records through outbox tombstones | [#3](https://github.com/TheZen46/EconomyApp/issues/3) |
+| [TAIDY-C03](#taidy-c03) | Critical | Sync / Outbox | Receipt outbox payload does not match the remote receipts schema, so receipt synchronization fails and blocks the queue | [#4](https://github.com/TheZen46/EconomyApp/issues/4) |
+| [TAIDY-C04](#taidy-c04) | Critical | Native Engine / receipt_engine.cpp | Release native library compiles a stub llama.cpp API whose batch allocator leaves seq_id null, causing a segmentation fault on first inference | [#5](https://github.com/TheZen46/EconomyApp/issues/5) |
+| [TAIDY-H01](#taidy-h01) | High | Supabase / Row Level Security | Training-label table is readable by every authenticated user and through an RLS-bypassing view; missing INSERT policy aborts receipt_items writes | [#6](https://github.com/TheZen46/EconomyApp/issues/6) |
+| [TAIDY-H02](#taidy-h02) | High | Supabase / PII Anonymization | anonymize_text() uses \b, which PostgreSQL interprets as a backspace escape, so card-number redaction never matches | [#7](https://github.com/TheZen46/EconomyApp/issues/7) |
+| [TAIDY-H03](#taidy-h03) | High | Sync / SyncManager | Delta pull watermark comes from the device clock after the pull and queries are unpaginated, causing lost and truncated updates | [#8](https://github.com/TheZen46/EconomyApp/issues/8) |
+| [TAIDY-H04](#taidy-h04) | High | Sync / Conflict Resolution | Last-write-wins resolution degenerates to remote-always-wins and overwrites unsynchronized local edits | [#9](https://github.com/TheZen46/EconomyApp/issues/9) |
+| [TAIDY-H05](#taidy-h05) | High | Sync / SyncEngine | SyncEngine rehydration reads non-existent columns, resurrects soft-deleted rows and overwrites local entities without conflict checks | [#10](https://github.com/TheZen46/EconomyApp/issues/10) |
+| [TAIDY-H06](#taidy-h06) | High | Persistence / Hive | Hive typeId 12 is declared twice and generated adapters are hand-edited, so regenerating code breaks persistence | [#11](https://github.com/TheZen46/EconomyApp/issues/11) |
+| [TAIDY-H07](#taidy-h07) | High | Bootstrap / Encrypted Storage | Hive open failures are unrecoverable because of a recovery loop, a desktop backup path mismatch and unguarded key retrieval | [#12](https://github.com/TheZen46/EconomyApp/issues/12) |
+| [TAIDY-H08](#taidy-h08) | High | Native Engine / Lifecycle | receipt_engine_free unlocks a mutex owned by an object it has already deleted (use-after-free) | [#13](https://github.com/TheZen46/EconomyApp/issues/13) |
+| [TAIDY-H09](#taidy-h09) | High | VLM / FFI Bindings | processImageStream awaits StreamController.close() before a listener exists and deadlocks when the native call ends without a completion callback | [#14](https://github.com/TheZen46/EconomyApp/issues/14) |
+| [TAIDY-H10](#taidy-h10) | High | VLM / Worker Isolate | VLM worker initialization timeout leaks the isolate and the loaded model, and concurrent initialization spawns duplicate workers | [#15](https://github.com/TheZen46/EconomyApp/issues/15) |
+| [TAIDY-H11](#taidy-h11) | High | AI / OTA Model Updater | OTA model updater downloads executable model binaries from remote configuration without integrity verification | [#16](https://github.com/TheZen46/EconomyApp/issues/16) |
+| [TAIDY-H12](#taidy-h12) | High | AI / Extraction Fallbacks | Fallback extraction paths return fabricated receipts as successful AI results | [#17](https://github.com/TheZen46/EconomyApp/issues/17) |
+| [TAIDY-H13](#taidy-h13) | High | Auth / BiometricGuard | Biometric guard fails open and its enable flag is stored in the unencrypted settings box | [#18](https://github.com/TheZen46/EconomyApp/issues/18) |
+| [TAIDY-H14](#taidy-h14) | High | Import / CsvParserService | CSV import corrupts European-format amounts, discards transaction sign and assumes USD and month-first dates | [#19](https://github.com/TheZen46/EconomyApp/issues/19) |
+| [TAIDY-H15](#taidy-h15) | High | AI / LLMService | Legacy on-device LLM path discards the extracted date and uses millisecond timestamps as receipt identifiers | [#20](https://github.com/TheZen46/EconomyApp/issues/20) |
+| [TAIDY-H16](#taidy-h16) | High | AI / Model Repository | Model SHA-256 constants are not genuine digests, so verified downloads are discarded, and no vision projector is provisioned | [#21](https://github.com/TheZen46/EconomyApp/issues/21) |
+| [TAIDY-H17](#taidy-h17) | High | Privacy / Isolation Controls | Privacy isolation mode and private boxes do not restrict network I/O or access as documented | [#22](https://github.com/TheZen46/EconomyApp/issues/22) |
+| [TAIDY-M01](#taidy-m01) | Medium | Integrations / Webhook | Webhook URL is deleted from settings on every launch by the secret migration routine | [#23](https://github.com/TheZen46/EconomyApp/issues/23) |
+| [TAIDY-M02](#taidy-m02) | Medium | Sync / Identifiers | Client-chosen non-unique primary keys collide across tenants in the shared remote tables | [#24](https://github.com/TheZen46/EconomyApp/issues/24) |
+| [TAIDY-M03](#taidy-m03) | Medium | Sync / Outbox | Outbox processing has global head-of-line blocking, ignores backoff and routes unknown entity types to the receipts table | [#25](https://github.com/TheZen46/EconomyApp/issues/25) |
+| [TAIDY-M04](#taidy-m04) | Medium | State Management / Riverpod | Provider dependency cascade recreates ReceiptListNotifier during in-flight operations, and sync services are never disposed | [#26](https://github.com/TheZen46/EconomyApp/issues/26) |
+| [TAIDY-M05](#taidy-m05) | Medium | Bootstrap / Supabase Client | Providers access Supabase.instance.client without guards and startup post-frame tasks have no error handling | [#27](https://github.com/TheZen46/EconomyApp/issues/27) |
+| [TAIDY-M06](#taidy-m06) | Medium | Auth / Session Management | AuthNotifier leaks its auth-state subscription, and session persistence bypasses secure storage | [#28](https://github.com/TheZen46/EconomyApp/issues/28) |
+| [TAIDY-M07](#taidy-m07) | Medium | Routing / GoRouter | The /review route casts state.extra without validation and crashes on refresh or deep link | [#29](https://github.com/TheZen46/EconomyApp/issues/29) |
+| [TAIDY-M08](#taidy-m08) | Medium | Sync / Initial Sync Gate | Post-login initial synchronization performs a full replication on every cold start and blocks entry while offline | [#30](https://github.com/TheZen46/EconomyApp/issues/30) |
+| [TAIDY-M09](#taidy-m09) | Medium | Boxes / BoxesNotifier | Deleting a box leaves its receipts referencing a non-existent box and removes them from every dashboard view | [#31](https://github.com/TheZen46/EconomyApp/issues/31) |
+| [TAIDY-M10](#taidy-m10) | Medium | Receipt Capture / Image Persistence | Receipt images are referenced at transient image_picker paths and are never copied to durable storage | [#32](https://github.com/TheZen46/EconomyApp/issues/32) |
+| [TAIDY-M11](#taidy-m11) | Medium | Receipt Review / ReviewPage | Review save coerces locale-formatted totals to zero, reports failures as success and records unchanged items as corrections | [#33](https://github.com/TheZen46/EconomyApp/issues/33) |
+| [TAIDY-M12](#taidy-m12) | Medium | AI / GeminiAIService | Gemini integration targets a retired model, mislabels image MIME types, is incompatible with web and requests currency symbols | [#34](https://github.com/TheZen46/EconomyApp/issues/34) |
+| [TAIDY-M13](#taidy-m13) | Medium | Privacy / Data at Rest | Several stores of financial data bypass the encrypted Hive layer | [#35](https://github.com/TheZen46/EconomyApp/issues/35) |
+| [TAIDY-M14](#taidy-m14) | Medium | Configuration / Environment | .env is bundled as a Flutter asset, embedding API keys and OAuth client secrets in distributed binaries | [#36](https://github.com/TheZen46/EconomyApp/issues/36) |
+| [TAIDY-M15](#taidy-m15) | Medium | Native Build / CMake | Native build assumes AVX2 on all x86_64 targets, and the fallback image decoder fabricates pixels and permits large allocations | [#37](https://github.com/TheZen46/EconomyApp/issues/37) |
+| [TAIDY-M16](#taidy-m16) | Medium | CI / GitHub Actions | CI does not fail on analyzer errors or test failures, and the release workflow uses a retired action and falls back to debug signing | [#38](https://github.com/TheZen46/EconomyApp/issues/38) |
+| [TAIDY-M17](#taidy-m17) | Medium | Financial Core / Money | Money.roundIntegerDivision mis-rounds negative values, and awayFromZero and allocate() violate their documented contracts | [#39](https://github.com/TheZen46/EconomyApp/issues/39) |
+| [TAIDY-M18](#taidy-m18) | Medium | Financial Core / Tax | Tax calculations are inconsistent across modules and treat VAT-inclusive receipt prices as net amounts | [#40](https://github.com/TheZen46/EconomyApp/issues/40) |
+| [TAIDY-M19](#taidy-m19) | Medium | CRDT Engine | CRDT engine contains convergence defects (positional item identity, derived totals, HLC regression) and is not integrated | [#41](https://github.com/TheZen46/EconomyApp/issues/41) |
+| [TAIDY-M20](#taidy-m20) | Medium | Privacy / Data Deletion | Receipt deletion does not erase non-JPEG images from storage and mixes hard and soft deletes | [#42](https://github.com/TheZen46/EconomyApp/issues/42) |
+| [TAIDY-M21](#taidy-m21) | Medium | Invoices / Numbering | Invoice numbers are unique only per device, and automatic overdue transitions are not synchronized | [#43](https://github.com/TheZen46/EconomyApp/issues/43) |
+| [TAIDY-M22](#taidy-m22) | Medium | ML Pipeline / Dataset Contribution | Training records contain fabricated tax data, placeholder identifiers and constant correction flags | [#44](https://github.com/TheZen46/EconomyApp/issues/44) |
+| [TAIDY-M23](#taidy-m23) | Medium | AI / LLMService | LLMService.generate never completes when the model fails to load and leaks its receive port on cancellation | [#45](https://github.com/TheZen46/EconomyApp/issues/45) |
+| [TAIDY-L01](#taidy-l01) | Low | Presentation / Resource Management | TextEditingController instances are not disposed in several pages and dialogs | [#46](https://github.com/TheZen46/EconomyApp/issues/46) |
+| [TAIDY-L02](#taidy-l02) | Low | Export / CSV | CSV exports are vulnerable to spreadsheet formula injection | [#47](https://github.com/TheZen46/EconomyApp/issues/47) |
+| [TAIDY-L03](#taidy-l03) | Low | Core Utilities / JsonParserUtils | JSON repair heuristics corrupt string content containing "//" or the words True, False and None | [#48](https://github.com/TheZen46/EconomyApp/issues/48) |
+| [TAIDY-L04](#taidy-l04) | Low | Observability / TelemetryService | Global error handler suppresses every uncaught asynchronous error and the telemetry log grows without bound | [#49](https://github.com/TheZen46/EconomyApp/issues/49) |
+| [TAIDY-L05](#taidy-l05) | Low | Presentation / Diagnostics | User-facing confidence, benchmark and verification indicators are synthetic | [#50](https://github.com/TheZen46/EconomyApp/issues/50) |
+| [TAIDY-L06](#taidy-l06) | Low | AI / ModelUpdateService | UpdateState.copyWith cannot clear message or error, leaving stale notifications | [#51](https://github.com/TheZen46/EconomyApp/issues/51) |
+| [TAIDY-L07](#taidy-l07) | Low | Repository Hygiene | Repository tracks node_modules, stray artifacts and an orphaned duplicate native engine | [#52](https://github.com/TheZen46/EconomyApp/issues/52) |
+| [TAIDY-L08](#taidy-l08) | Low | Sync / SyncService | A dead-lettered upload blocks re-scheduling of the same receipt, and each upload scans every receipt | [#53](https://github.com/TheZen46/EconomyApp/issues/53) |
+| [TAIDY-L09](#taidy-l09) | Low | Privacy / PiiScrubberService | PII scrubber over-redacts ordinary text and does not cover personal names | [#54](https://github.com/TheZen46/EconomyApp/issues/54) |
+| [TAIDY-D01](#taidy-d01) | Low | Documentation / API Coverage | Public API documentation coverage is 36 percent, with several modules at zero | [#55](https://github.com/TheZen46/EconomyApp/issues/55) |
+| [TAIDY-D02](#taidy-d02) | Low | Documentation / Accuracy | Existing documentation diverges from the implementation and from repository style policy | [#56](https://github.com/TheZen46/EconomyApp/issues/56) |
+| [TAIDY-D03](#taidy-d03) | Low | Documentation / Operational Contracts | Operational contracts are undocumented (Hive type registry, outbox state machine, remote column mapping, conflict policy, data inventory) | [#57](https://github.com/TheZen46/EconomyApp/issues/57) |
+| [TAIDY-A01](#taidy-a01) | Architectural | Sync / Architecture | Three overlapping synchronization subsystems operate on the same stores without a shared contract, and the CRDT engine is not wired in | [#58](https://github.com/TheZen46/EconomyApp/issues/58) |
+| [TAIDY-A02](#taidy-a02) | Architectural | Layering / Dependency Graph | Core modules depend on feature modules, producing cyclic dependencies | [#59](https://github.com/TheZen46/EconomyApp/issues/59) |
+| [TAIDY-A03](#taidy-a03) | Architectural | Data Contracts / Serialization | No single serialization contract exists between Dart models and the remote schema; at least seven hand-written mappers diverge | [#60](https://github.com/TheZen46/EconomyApp/issues/60) |
+| [TAIDY-A04](#taidy-a04) | Architectural | Dependency Injection | Static singletons and exception-driven provider wiring impede testing and substitution | [#61](https://github.com/TheZen46/EconomyApp/issues/61) |
+| [TAIDY-A05](#taidy-a05) | Architectural | Native Engine / Integration | On-device VLM pipeline is not integrated end to end | [#62](https://github.com/TheZen46/EconomyApp/issues/62) |
+| [TAIDY-A06](#taidy-a06) | Architectural | Codebase Structure | Financial, tax, reconciliation and CRDT modules are unreachable from the application | [#63](https://github.com/TheZen46/EconomyApp/issues/63) |
+| [TAIDY-A07](#taidy-a07) | Architectural | Financial Core / Monetary Representation | Monetary amounts are persisted and computed as double while the fixed-point Money type is unused | [#64](https://github.com/TheZen46/EconomyApp/issues/64) |
+| [TAIDY-A08](#taidy-a08) | Architectural | AI / Backend Selection | AI backend selection is an implicit reactive cascade without capability negotiation, consent or provenance | [#65](https://github.com/TheZen46/EconomyApp/issues/65) |
+| [TAIDY-A09](#taidy-a09) | Architectural | Dependencies | Core dependencies are unmaintained, deprecated or pinned to old exact versions | [#66](https://github.com/TheZen46/EconomyApp/issues/66) |
 
 ## 4. Findings
 
@@ -119,6 +121,7 @@ The most consequential themes are: (1) personal data leaves the device without c
 |---|---|
 | Severity | Critical |
 | Component | Supabase Storage / Training Upload |
+| Tracking issue | [#2](https://github.com/TheZen46/EconomyApp/issues/2) |
 | Locations | `supabase/migrations/20260828_master_sync_schema.sql:506-508`<br>`supabase/schema.sql:506-508`<br>`lib/features/receipt_scanning/data/datasources/supabase_data_source.dart:79-198`<br>`lib/features/receipt_scanning/data/repositories/receipt_repository_impl.dart:76-78`<br>`lib/features/receipt_scanning/data/datasources/sync_service.dart:204-228` |
 
 **Root cause analysis.** ReceiptRepositoryImpl.saveReceipt schedules SyncService.scheduleUpload for every saved receipt. SyncService._uploadItem calls SupabaseDataSourceImpl.uploadTrainingData unless the Google Drive toggle is enabled. That method uploads the raw image bytes and a JSON label containing merchant, total, currency, date and every line item to the training_data bucket, obtains a URL with getPublicUrl, and writes it into receipts.image_url. The migration creates training_data with public = true.
@@ -144,6 +147,7 @@ The bucket that holds Tier-1 training material is declared public. Objects in pu
 |---|---|
 | Severity | Critical |
 | Component | Settings / Data Management |
+| Tracking issue | [#3](https://github.com/TheZen46/EconomyApp/issues/3) |
 | Locations | `lib/features/settings/presentation/pages/settings_page.dart:994-1013`<br>`lib/features/receipt_scanning/data/repositories/receipt_repository_impl.dart:139-171`<br>`lib/core/sync/sync_manager.dart:114-119`<br>`lib/core/sync/sync_manager.dart:216-223` |
 
 **Root cause analysis.** The Clear All Data dialog offers "Device Only" (includeCloud: false) and "Everywhere" (includeCloud: true). ReceiptRepositoryImpl.clearAllData skips direct Supabase deletion when includeCloud is false, but enqueues a delete outbox mutation for every local receipt id unconditionally before clearing the local box.
@@ -167,6 +171,7 @@ The tombstone enqueue loop is outside the includeCloud branch. SyncManager._flus
 |---|---|
 | Severity | Critical |
 | Component | Sync / Outbox |
+| Tracking issue | [#4](https://github.com/TheZen46/EconomyApp/issues/4) |
 | Locations | `lib/features/receipt_scanning/data/models/receipt_model.dart:75-142`<br>`lib/core/sync/sync_manager.dart:98-138`<br>`lib/core/sync/sync_manager.dart:216-231`<br>`supabase/migrations/20260828_master_sync_schema.sql:45-62`<br>`supabase/migrations/20260828_master_sync_schema.sql:84-137` |
 
 **Root cause analysis.** Receipt mutations are enqueued with payload ReceiptModel.toJson(), which emits `date` and `items` in addition to valid columns. SyncManager upserts the payload unchanged (plus user_id) into public.receipts. The schema defines scanned_date and transaction_time but has no `date` or `items` column; line items belong to public.receipt_items, which no client code writes.
@@ -190,6 +195,7 @@ No single schema contract governs the Dart serializer and the SQL schema. PostgR
 |---|---|
 | Severity | Critical |
 | Component | Native Engine / receipt_engine.cpp |
+| Tracking issue | [#5](https://github.com/TheZen46/EconomyApp/issues/5) |
 | Locations | `native/src/receipt_engine.cpp:28-195`<br>`native/src/receipt_engine.cpp:166-180`<br>`native/src/receipt_engine.cpp:334-345`<br>`native/src/receipt_engine.cpp:446-505`<br>`native/CMakeLists.txt:16-35`<br>`android/app/src/main/cpp/CMakeLists.txt:8-26` |
 
 **Root cause analysis.** receipt_engine.cpp includes llama.h only when `__has_include("llama.h")` succeeds. Neither CMake project adds a llama.cpp include directory or links llama/ggml, so the #else branch is always compiled. That branch defines exported extern "C" functions with llama.cpp names: llama_model_load_from_file returns `new int(42)`, llama_sample_token always returns token 2 (end-of-sequence), and llama_batch_init allocates token, pos, n_seq_id and logits but never seq_id.
@@ -217,6 +223,7 @@ Placeholder implementations are compiled into production artifacts instead of a 
 |---|---|
 | Severity | High |
 | Component | Supabase / Row Level Security |
+| Tracking issue | [#6](https://github.com/TheZen46/EconomyApp/issues/6) |
 | Locations | `supabase/migrations/20260828_master_sync_schema.sql:294-307`<br>`supabase/migrations/20260828_master_sync_schema.sql:331-376`<br>`supabase/migrations/20260828_master_sync_schema.sql:379-393`<br>`supabase/migrations/20260828_master_sync_schema.sql:489-492`<br>`lib/core/sync/sync_manager.dart:124-168` |
 
 **Root cause analysis.** receipt_training_labels has RLS enabled with a single SELECT policy whose USING clause admits `auth.jwt() ->> 'role' = 'authenticated'`. The view ai_training_dataset_v1 selects from the table. No INSERT policy exists. The trigger function stage_anonymized_training_item (not SECURITY DEFINER) inserts into the table after every INSERT or UPDATE on receipt_items. Each row carries receipt_id, which equals the primary key of the owner's row in public.receipts. SyncManager also inserts labels from the client in _stageTier1TrainingLabels.
@@ -241,6 +248,7 @@ The policy conflates the service role with every signed-in user. PostgreSQL view
 |---|---|
 | Severity | High |
 | Component | Supabase / PII Anonymization |
+| Tracking issue | [#7](https://github.com/TheZen46/EconomyApp/issues/7) |
 | Locations | `supabase/migrations/20260828_master_sync_schema.sql:315-329`<br>`lib/core/privacy/pii_scrubber_service.dart:12-32`<br>`supabase/seed_dummy_data.sql:44-49` |
 
 **Root cause analysis.** anonymize_text applies regexp_replace with `\b(?:\d[ -]*?){13,19}\b` to redact payment card numbers. The Dart scrubber uses the same pattern, where `\b` denotes a word boundary.
@@ -263,6 +271,7 @@ In PostgreSQL Advanced Regular Expressions `\b` is the backspace character-entry
 |---|---|
 | Severity | High |
 | Component | Sync / SyncManager |
+| Tracking issue | [#8](https://github.com/TheZen46/EconomyApp/issues/8) |
 | Locations | `lib/core/sync/sync_manager.dart:79-88`<br>`lib/core/sync/sync_manager.dart:171-214` |
 
 **Root cause analysis.** _pullDeltas filters each table with `updated_at > last_synced_at`, where last_synced_at is written as DateTime.now() on the device after the push and pull steps finish. updated_at is assigned by the server trigger handle_updated_at using the database clock. Each query is a single select without range().
@@ -287,6 +296,7 @@ The watermark is not derived from the data that was read. Rows committed on the 
 |---|---|
 | Severity | High |
 | Component | Sync / Conflict Resolution |
+| Tracking issue | [#9](https://github.com/TheZen46/EconomyApp/issues/9) |
 | Locations | `lib/core/sync/sync_manager.dart:65-95`<br>`lib/core/sync/sync_manager.dart:216-291`<br>`lib/features/receipt_scanning/data/models/receipt_model.dart:160-176`<br>`supabase/migrations/20260828_master_sync_schema.sql:13-20` |
 
 **Root cause analysis.** _shouldRemoteOverwrite compares integer versions first and updated_at second. The server trigger sets NEW.version = OLD.version + 1 on every UPDATE, including upserts that resolve to updates. ReceiptModel.fromEntity always sets version = 1 and leaves updatedAt null, so local receipt edits never advance the version. syncAll runs _pullDeltas even when _flushOutbox stopped at a failed mutation.
@@ -311,6 +321,7 @@ The version counter is owned by the server rather than the writer, so it does no
 |---|---|
 | Severity | High |
 | Component | Sync / SyncEngine |
+| Tracking issue | [#10](https://github.com/TheZen46/EconomyApp/issues/10) |
 | Locations | `lib/features/sync/data/datasources/sync_engine.dart:136-160`<br>`lib/features/sync/data/datasources/sync_engine.dart:192-241`<br>`lib/features/sync/data/datasources/sync_engine.dart:397-491`<br>`lib/features/sync/data/datasources/remote_replica_data_source.dart:119-201`<br>`supabase/migrations/20260828_master_sync_schema.sql:45-62`<br>`supabase/migrations/20260828_master_sync_schema.sql:140-156` |
 
 **Root cause analysis.** The initial-sync engine maps rows with private parsers that read `date` (receipts) and `color` / `icon` (boxes), whereas the schema defines scanned_date, color_hex and icon_identifier. RemoteReplicaDataSourceImpl selects all rows without filtering deleted_at. Boxes, assets and invoices are written to Hive unconditionally; receipts are imported only when the id is absent locally.
@@ -334,6 +345,7 @@ Duplicate row mappers (see TAIDY-A03) diverged from the model fromJson factories
 |---|---|
 | Severity | High |
 | Component | Persistence / Hive |
+| Tracking issue | [#11](https://github.com/TheZen46/EconomyApp/issues/11) |
 | Locations | `lib/features/receipt_scanning/data/models/sync_item_model.dart:6-19`<br>`lib/core/sync/models/sync_outbox_item.dart:6-7`<br>`lib/features/receipt_scanning/data/models/sync_item_model.g.dart:1-74`<br>`lib/core/sync/models/sync_outbox_item.g.dart:1-5`<br>`lib/main.dart:69-81` |
 
 **Root cause analysis.** The enum SyncStatus is annotated @HiveType(typeId: 12) and SyncOutboxItem is also @HiveType(typeId: 12). The checked-in SyncItemModelAdapter (labelled "GENERATED CODE - DO NOT MODIFY BY HAND") writes status as an integer index and therefore never requires a SyncStatus adapter. sync_outbox_item.g.dart is labelled "MANUAL HIVE ADAPTER". main.dart registers SyncOutboxItemAdapter and no SyncStatusAdapter.
@@ -357,6 +369,7 @@ Type identifiers are assigned without a registry, and generated sources were mod
 |---|---|
 | Severity | High |
 | Component | Bootstrap / Encrypted Storage |
+| Tracking issue | [#12](https://github.com/TheZen46/EconomyApp/issues/12) |
 | Locations | `lib/main.dart:62-67`<br>`lib/main.dart:83-138`<br>`lib/main.dart:264-271`<br>`lib/core/services/hive_migration_service.dart:61-97`<br>`lib/core/services/hive_migration_service.dart:155-218`<br>`lib/core/services/secure_storage_service.dart:20-31` |
 
 **Root cause analysis.** When a box fails to open, HiveMigrationService copies the .hive file to hive_backups/ and throws SchemaCorruptionException; main.dart shows _DataRecoveryScreen, which instructs the user to restart because "tAIdy will create a fresh database". getHiveDirectory returns getApplicationSupportDirectory on Windows, macOS and Linux, while Hive.initFlutter stores boxes under getApplicationDocumentsDirectory on all non-web platforms. getHiveEncryptionKey is awaited in main without error handling.
@@ -382,6 +395,7 @@ The failed box is copied, not moved, and nothing quarantines or deletes it, so t
 |---|---|
 | Severity | High |
 | Component | Native Engine / Lifecycle |
+| Tracking issue | [#13](https://github.com/TheZen46/EconomyApp/issues/13) |
 | Locations | `native/src/receipt_engine.cpp:688-710` |
 
 **Root cause analysis.** receipt_engine_free acquires `std::lock_guard<std::mutex> lock(engine->engine_mutex)`, releases resources and calls `delete engine` inside the same block scope.
@@ -404,6 +418,7 @@ The lock_guard destructor runs at the end of the scope, after `delete engine`, a
 |---|---|
 | Severity | High |
 | Component | VLM / FFI Bindings |
+| Tracking issue | [#14](https://github.com/TheZen46/EconomyApp/issues/14) |
 | Locations | `lib/core/services/vlm/vlm_ffi_bindings_ffi.dart:319-380`<br>`lib/core/services/vlm/vlm_worker_isolate_ffi.dart:171-215`<br>`lib/core/services/vlm/vlm_worker_isolate_ffi.dart:308-335`<br>`native/src/receipt_engine.cpp:806-845` |
 
 **Root cause analysis.** VlmFfiBindings.processImageStream collects tokens from a synchronous NativeCallable into a single-subscription StreamController, then executes `await controller.close()` when the controller was not closed by the callback, and reaches `yield* controller.stream` only afterwards.
@@ -427,6 +442,7 @@ The future returned by close() on a single-subscription controller completes onl
 |---|---|
 | Severity | High |
 | Component | VLM / Worker Isolate |
+| Tracking issue | [#15](https://github.com/TheZen46/EconomyApp/issues/15) |
 | Locations | `lib/core/services/vlm/vlm_worker_isolate_ffi.dart:77-168`<br>`lib/core/services/vlm/vlm_worker_isolate_ffi.dart:239-257`<br>`lib/core/services/vlm/vlm_engine_service.dart:30-84`<br>`lib/core/services/vlm/vlm_engine_service.dart:95-98`<br>`lib/core/services/vlm/vlm_engine_service.dart:128-133` |
 
 **Root cause analysis.** VlmWorkerIsolate.start spawns an isolate and waits 30 seconds for the initialization reply. VlmEngineService calls initialize() lazily from both extractReceiptData and streamReceiptTokens whenever the worker is not ready.
@@ -451,6 +467,7 @@ On timeout the catch block sets _isReady = false but neither terminates the isol
 |---|---|
 | Severity | High |
 | Component | AI / OTA Model Updater |
+| Tracking issue | [#16](https://github.com/TheZen46/EconomyApp/issues/16) |
 | Locations | `lib/features/receipt_scanning/presentation/providers/model_update_provider.dart:50-136`<br>`lib/features/receipt_scanning/data/repositories/model_repository.dart:152-171`<br>`lib/features/receipt_scanning/data/models/app_config.dart:19-28`<br>`lib/main.dart:334-335` |
 
 **Root cause analysis.** On every launch main.dart calls ModelUpdateService.checkForUpdates, which reads app_config.latest_model_version from Supabase and, when the remote version is newer than a SharedPreferences value, downloads metadata['download_url'] to models/qwen2_vl_v<version>.gguf with Dio.download.
@@ -476,6 +493,7 @@ The URL and version are trusted inputs. ModelMetadata.hash exists but is never c
 |---|---|
 | Severity | High |
 | Component | AI / Extraction Fallbacks |
+| Tracking issue | [#17](https://github.com/TheZen46/EconomyApp/issues/17) |
 | Locations | `lib/features/receipt_scanning/data/datasources/mock_ai_service.dart:18-57`<br>`lib/features/receipt_scanning/data/datasources/mock_ai_service.dart:165-286`<br>`lib/features/receipt_scanning/presentation/providers/receipt_provider.dart:90-115`<br>`lib/core/services/llm_service_mobile.dart:175-192`<br>`native/src/receipt_engine.cpp:446-505` |
 
 **Root cause analysis.** When neither the VLM nor the legacy LLM is ready and Gemini is disabled (the default configuration), aiServiceProvider returns MockAIService, a FallbackAIService subclass. On desktop, on web, or when ML Kit OCR produces no parsable text, FallbackAIService._parseHeuristically synthesizes a receipt from the file name (for example "Fresh Grocery Supplies" 2 x 18.50 and "Sparkling Mineral Water", or Apple Store items when the name contains "apple"). On non-mobile platforms LLMService.extractTextFromImage returns a fixed "Simulated Receipt Text", and on OCR failure it returns "Error extracting text"; both strings are passed to the model as receipt text.
@@ -499,6 +517,7 @@ Demonstration fixtures are wired into production code paths and are indistinguis
 |---|---|
 | Severity | High |
 | Component | Auth / BiometricGuard |
+| Tracking issue | [#18](https://github.com/TheZen46/EconomyApp/issues/18) |
 | Locations | `lib/features/auth/presentation/widgets/biometric_guard.dart:38-118`<br>`lib/core/services/biometric_service.dart:11-52`<br>`lib/main.dart:88-92` |
 
 **Root cause analysis.** _authenticate sets `_isAuthenticated = true` when canAuthenticate() returns false, and canAuthenticate returns false on any exception. The flag biometric_auth_enabled is read from the settings box, which is opened without an encryption cipher. When locked, build() returns the lock Scaffold instead of widget.child.
@@ -523,6 +542,7 @@ Demonstration fixtures are wired into production code paths and are indistinguis
 |---|---|
 | Severity | High |
 | Component | Import / CsvParserService |
+| Tracking issue | [#19](https://github.com/TheZen46/EconomyApp/issues/19) |
 | Locations | `lib/features/receipt_scanning/data/datasources/csv_parser_service.dart:147-168`<br>`lib/features/receipt_scanning/data/datasources/csv_parser_service.dart:208-246` |
 
 **Root cause analysis.** _tryParseAmount removes every character outside [0-9.-] and parses the remainder; importCsv stores parsedAmount.abs(); currency is fixed to 'USD'; _tryParseDate resolves ambiguous values month-first.
@@ -548,6 +568,7 @@ Locale-agnostic normalization deletes the decimal comma; there is no detection o
 |---|---|
 | Severity | High |
 | Component | AI / LLMService |
+| Tracking issue | [#20](https://github.com/TheZen46/EconomyApp/issues/20) |
 | Locations | `lib/core/services/llm_service_mobile.dart:146-173` |
 
 **Root cause analysis.** _mapToReceipt builds the Receipt with `date: DateTime.now()` although the prompt requests a date field and the example output contains one; the identifier is DateTime.now().millisecondsSinceEpoch.toString(); currency defaults to EUR and line totals are recomputed from unit price.
@@ -570,6 +591,7 @@ Incomplete mapping from the model output to the domain entity, implemented separ
 |---|---|
 | Severity | High |
 | Component | AI / Model Repository |
+| Tracking issue | [#21](https://github.com/TheZen46/EconomyApp/issues/21) |
 | Locations | `lib/features/receipt_scanning/data/repositories/model_repository.dart:27-61`<br>`lib/features/receipt_scanning/data/repositories/model_repository.dart:282-299`<br>`lib/core/services/vlm/vlm_engine_service.dart:30-56`<br>`lib/core/services/vlm/vlm_engine_service.dart:70-75` |
 
 **Root cause analysis.** qwen2vl2b.expectedSha256 is c78f921ea345b85a1a1415df8e4d9b62a6e9a65d79901309f7a77b8b40816bf3 and smolVlm500m.expectedSha256 is a19b8f21ca459b73d2a316df8e4d9b62a6e9a65d79901309f7a77b8b40816bf3; the two values share an identical 40-hexadecimal-digit suffix. downloadModelWithResume deletes the .part file when the digest does not match. Qwen2-VL and SmolVLM GGUF deployments require a separate multimodal projector (mmproj) file; no LocalModelInfo describes one and VlmEngineService passes mmprojPath = null. The Gemma entry is a text-only model listed as a VLM candidate.
@@ -593,6 +615,7 @@ Placeholder digests were committed as measured values, and the provisioning mode
 |---|---|
 | Severity | High |
 | Component | Privacy / Isolation Controls |
+| Tracking issue | [#22](https://github.com/TheZen46/EconomyApp/issues/22) |
 | Locations | `README.md:94`<br>`lib/features/receipt_scanning/presentation/providers/receipt_provider.dart:350-375`<br>`lib/features/receipt_scanning/presentation/pages/home_page.dart:545-560`<br>`lib/features/boxes/presentation/widgets/box_creator_sheet.dart:322-328`<br>`lib/core/sync/sync_manager.dart:65-95`<br>`lib/features/receipt_scanning/data/datasources/sync_service.dart:78-154` |
 
 **Root cause analysis.** README.md states that Data Privacy Isolation Mode "enforces strict local execution" and blocks all outbound network I/O to cloud endpoints. privacyModeProvider is read only by dashboard widgets to mask figures. The box editor offers "Private Box (requires auth)"; BoxModel.isPrivate is persisted and synchronized but no code path reads it to restrict access, synchronization or training upload.
@@ -616,6 +639,7 @@ The controls were implemented as presentation toggles while the documentation an
 |---|---|
 | Severity | Medium |
 | Component | Integrations / Webhook |
+| Tracking issue | [#23](https://github.com/TheZen46/EconomyApp/issues/23) |
 | Locations | `lib/main.dart:161-179`<br>`lib/features/settings/presentation/pages/integrations_page.dart:31-57`<br>`lib/features/settings/data/datasources/webhook_service.dart:21-50` |
 
 **Root cause analysis.** _migrateSecretsToSecureStorage runs on every startup and moves gemini_api_key, webhook_secret and webhook_url from the settings box to secure storage, deleting the Hive entries. IntegrationsPage persists the URL to the settings box (comment: "webhook_url and webhook_enabled are non-sensitive: keep in Hive"), and WebhookService reads the URL only from the settings box.
@@ -638,6 +662,7 @@ Two modules define contradictory storage contracts for the same key, and the mig
 |---|---|
 | Severity | Medium |
 | Component | Sync / Identifiers |
+| Tracking issue | [#24](https://github.com/TheZen46/EconomyApp/issues/24) |
 | Locations | `lib/features/boxes/data/providers/boxes_provider.dart:25-43`<br>`lib/core/services/llm_service_mobile.dart:146-149`<br>`lib/core/services/vlm/vlm_engine_service.dart:240-242`<br>`lib/features/receipt_scanning/data/models/receipt_model.dart:102-104`<br>`supabase/migrations/20260828_master_sync_schema.sql:45-47`<br>`supabase/migrations/20260828_master_sync_schema.sql:140-142` |
 
 **Root cause analysis.** Every installation seeds a box with id 'main'. The VLM and LLM paths create receipt identifiers from millisecond timestamps ("vlm_<ms>" and "<ms>"), and ReceiptModel.fromJson falls back to a millisecond identifier. Remote tables declare `id TEXT PRIMARY KEY`, which spans all tenants.
@@ -660,6 +685,7 @@ Identifier generation is not globally unique while the remote primary key is glo
 |---|---|
 | Severity | Medium |
 | Component | Sync / Outbox |
+| Tracking issue | [#25](https://github.com/TheZen46/EconomyApp/issues/25) |
 | Locations | `lib/core/sync/sync_manager.dart:98-138`<br>`lib/core/sync/sync_manager.dart:293-310`<br>`lib/core/sync/outbox_service.dart:47-97`<br>`lib/core/sync/models/sync_outbox_item.dart:11-12` |
 
 **Root cause analysis.** _flushOutbox calls getPendingMutations() without respectBackoff and stops at the first failure. _mapEntityTypeToTable maps unknown values, including the documented 'receipt_item', to 'receipts'. Every payload receives user_id, which user_profiles does not have (its key column is id). retryPermanentlyFailed has no caller.
@@ -683,6 +709,7 @@ No distinction between transient and permanent errors; ordering is enforced glob
 |---|---|
 | Severity | Medium |
 | Component | State Management / Riverpod |
+| Tracking issue | [#26](https://github.com/TheZen46/EconomyApp/issues/26) |
 | Locations | `lib/features/receipt_scanning/presentation/providers/receipt_provider.dart:54-67`<br>`lib/features/receipt_scanning/presentation/providers/receipt_provider.dart:90-115`<br>`lib/features/receipt_scanning/presentation/providers/receipt_provider.dart:147-178`<br>`lib/features/receipt_scanning/presentation/providers/receipt_provider.dart:210-254`<br>`lib/core/sync/sync_providers.dart:25-92`<br>`lib/main.dart:334-338` |
 
 **Root cause analysis.** receiptRepositoryProvider watches aiServiceProvider, which watches isVlmReadyProvider, isLlmLoadedProvider and geminiApiKeyProvider; receiptListProvider watches receiptRepositoryProvider. main.dart sets isLlmLoadedProvider after startup and geminiApiKeyProvider resolves asynchronously. syncServiceProvider and syncManagerProvider construct objects that subscribe to Connectivity().onConnectivityChanged but register no ref.onDispose callback.
@@ -705,9 +732,10 @@ The repository captures the AI backend at construction time, which couples the r
 |---|---|
 | Severity | Medium |
 | Component | Bootstrap / Supabase Client |
+| Tracking issue | [#27](https://github.com/TheZen46/EconomyApp/issues/27) |
 | Locations | `lib/main.dart:52-60`<br>`lib/main.dart:330-345`<br>`lib/features/receipt_scanning/presentation/providers/receipt_provider.dart:122-143`<br>`lib/features/sync/presentation/providers/sync_provider.dart:19-21`<br>`lib/features/auth/data/repositories/auth_repository_impl.dart:11-12` |
 
-**Root cause analysis.** main.dart tolerates Supabase.initialize failures ("deferred/offline mode"), but supabaseDataSourceProvider, modelRepositoryProvider, remoteReplicaDataSourceProvider and AuthRepositoryImpl dereference Supabase.instance.client unconditionally. The post-frame callback in _TAIDYAppState awaits checkForUpdates() and llmService.initialize() without try/catch.
+**Root cause analysis.** main.dart tolerates Supabase.initialize failures ("deferred/offline mode"), but supabaseDataSourceProvider, modelRepositoryProvider, remoteReplicaDataSourceProvider and AuthRepositoryImpl dereference Supabase.instance.client unconditionally. The post-frame callback in _TAIdyAppState awaits checkForUpdates() and llmService.initialize() without try/catch.
 
 Optional infrastructure is modelled as mandatory in the dependency graph.
 
@@ -728,6 +756,7 @@ Optional infrastructure is modelled as mandatory in the dependency graph.
 |---|---|
 | Severity | Medium |
 | Component | Auth / Session Management |
+| Tracking issue | [#28](https://github.com/TheZen46/EconomyApp/issues/28) |
 | Locations | `lib/features/auth/presentation/providers/auth_provider.dart:14-42`<br>`lib/features/auth/presentation/providers/auth_provider.dart:46-134`<br>`lib/features/auth/presentation/providers/auth_provider.dart:236-250`<br>`lib/features/auth/presentation/providers/auth_provider.dart:278-282`<br>`lib/features/auth/data/repositories/auth_repository_impl.dart:24-55`<br>`lib/main.dart:53-57` |
 
 **Root cause analysis.** _initialize calls _repository.authStateChanges.listen(...) and discards the returned subscription; the field _authSubscription, typed StreamSubscription<AuthState> where AuthState resolves to the local class rather than supabase_flutter's, is never assigned. Supabase.initialize is called without custom authOptions, so supabase_flutter persists the session (access and refresh tokens) through its default SharedPreferences-backed storage in addition to the copy written to flutter_secure_storage. When "remember me" is disabled, the notifier purges the secure-storage copy and reports unauthenticated, while the Supabase client restores its own persisted session.
@@ -751,6 +780,7 @@ A local class named AuthState shadows the imported type and hides the mismatch; 
 |---|---|
 | Severity | Medium |
 | Component | Routing / GoRouter |
+| Tracking issue | [#29](https://github.com/TheZen46/EconomyApp/issues/29) |
 | Locations | `lib/core/routes/app_router.dart:180-197` |
 
 **Root cause analysis.** The page builder executes `final receipt = state.extra as Receipt;`.
@@ -772,6 +802,7 @@ GoRouter does not persist extra across browser reloads, deep links or state rest
 |---|---|
 | Severity | Medium |
 | Component | Sync / Initial Sync Gate |
+| Tracking issue | [#30](https://github.com/TheZen46/EconomyApp/issues/30) |
 | Locations | `lib/core/routes/app_router.dart:81-97`<br>`lib/features/sync/presentation/providers/sync_provider.dart:66-96`<br>`lib/features/sync/data/datasources/sync_engine.dart:101-160`<br>`lib/features/sync/data/datasources/sync_engine.dart:309-328`<br>`lib/features/sync/data/datasources/remote_replica_data_source.dart:119-132` |
 
 **Root cause analysis.** initialSyncCompletedProvider is an in-memory StateProvider initialised to false, and the router redirects every authenticated session to /sync_progress until it becomes true. SyncEngine fetches every row of four tables and lists storage on each run, with up to five attempts, exponential backoff and 12-second timeouts per query. Fetch errors are converted to empty lists. The "Verifying bit-for-bit directory integrity" stage is a fixed 300 ms delay.
@@ -795,6 +826,7 @@ The gate is not persisted, SyncEngine has no delta mode, and data-source errors 
 |---|---|
 | Severity | Medium |
 | Component | Boxes / BoxesNotifier |
+| Tracking issue | [#31](https://github.com/TheZen46/EconomyApp/issues/31) |
 | Locations | `lib/features/boxes/data/providers/boxes_provider.dart:98-120`<br>`lib/features/receipt_scanning/presentation/providers/receipt_provider.dart:180-190`<br>`lib/features/boxes/presentation/widgets/box_creator_sheet.dart:130-135` |
 
 **Root cause analysis.** deleteBox removes the box and resets activeBoxIdProvider to 'main' but does not update receipts whose boxId equals the deleted identifier. filteredReceiptsByActiveBoxProvider shows only receipts whose boxId matches the active box ('main' matches null or 'main').
@@ -816,6 +848,7 @@ No referential integrity between receipts and boxes in the local store.
 |---|---|
 | Severity | Medium |
 | Component | Receipt Capture / Image Persistence |
+| Tracking issue | [#32](https://github.com/TheZen46/EconomyApp/issues/32) |
 | Locations | `lib/features/receipt_scanning/presentation/pages/scan_page.dart:149-177`<br>`lib/features/receipt_scanning/data/repositories/receipt_repository_impl.dart:86-105` |
 
 **Root cause analysis.** The XFile path returned by ImagePicker is passed through extraction and persisted as Receipt.imagePath and AssetModel.receiptImagePath.
@@ -838,6 +871,7 @@ On Android and iOS image_picker writes captures to the application cache or temp
 |---|---|
 | Severity | Medium |
 | Component | Receipt Review / ReviewPage |
+| Tracking issue | [#33](https://github.com/TheZen46/EconomyApp/issues/33) |
 | Locations | `lib/features/receipt_scanning/presentation/pages/review_page.dart:53-75`<br>`lib/features/receipt_scanning/presentation/pages/review_page.dart:322-366`<br>`lib/features/receipt_scanning/presentation/providers/receipt_provider.dart:210-226` |
 
 **Root cause analysis.** _saveReceipt computes totalAmount with `double.tryParse(_totalController.text) ?? 0.0`. ReceiptListNotifier.addReceipt logs repository failures and restores the previous state without signalling the caller, and _saveReceipt then navigates to /home. For every item with a mainCategory, recordUserCorrection is called with rawName equal to correctedName. The text controllers are never disposed.
@@ -861,6 +895,7 @@ Parsing is not locale-aware; the notifier swallows the error channel; the origin
 |---|---|
 | Severity | Medium |
 | Component | AI / GeminiAIService |
+| Tracking issue | [#34](https://github.com/TheZen46/EconomyApp/issues/34) |
 | Locations | `lib/features/receipt_scanning/data/datasources/gemini_ai_service.dart:14-33`<br>`lib/features/receipt_scanning/data/datasources/gemini_ai_service.dart:43-90`<br>`lib/features/receipt_scanning/data/datasources/gemini_ai_service.dart:96-114` |
 
 **Root cause analysis.** The service constructs GenerativeModel(model: 'gemini-1.5-flash') through the google_generative_ai package, reads the image with dart:io File, sends every image as DataPart('image/jpeg', ...), and instructs the model to return the currency as a symbol (€, $, £).
@@ -884,6 +919,7 @@ Hard-coded model identifier and MIME type; platform-specific file access; a prom
 |---|---|
 | Severity | Medium |
 | Component | Privacy / Data at Rest |
+| Tracking issue | [#35](https://github.com/TheZen46/EconomyApp/issues/35) |
 | Locations | `lib/main.dart:88-92`<br>`lib/core/services/vlm/episodic_memory_service_ffi.dart:77-100`<br>`lib/core/services/telemetry_service.dart:252-279`<br>`lib/core/services/export_service.dart:82-95`<br>`lib/core/services/export_service.dart:134-147`<br>`lib/core/services/vlm/dataset_contribution_service.dart:20-33` |
 
 **Root cause analysis.** The settings box stores the monthly budget, current balance, projected income, tax goal, invoice counter, webhook URL and biometric flag, and is opened without encryptionCipher. Episodic memory (merchant names and item corrections) uses an unencrypted SQLite file. Telemetry, dataset contributions and exports are written as plaintext files in the documents directory; exports are never removed and telemetry is never rotated.
@@ -908,6 +944,7 @@ Encryption is applied per Hive box rather than as a storage policy covering ever
 |---|---|
 | Severity | Medium |
 | Component | Configuration / Environment |
+| Tracking issue | [#36](https://github.com/TheZen46/EconomyApp/issues/36) |
 | Locations | `pubspec.yaml:115-119`<br>`lib/main.dart:37-50`<br>`lib/core/services/google_drive_service.dart:73-90`<br>`.github/workflows/ci.yml:21-22`<br>`.github/workflows/gh-pages.yml:30-31` |
 
 **Root cause analysis.** pubspec.yaml lists .env and .env.example under flutter.assets; main.dart loads .env and falls back to .env.example; GoogleDriveService reads GOOGLE_CLIENT_SECRET from the same source.
@@ -931,6 +968,7 @@ Runtime configuration and secrets share one mechanism that copies files verbatim
 |---|---|
 | Severity | Medium |
 | Component | Native Build / CMake |
+| Tracking issue | [#37](https://github.com/TheZen46/EconomyApp/issues/37) |
 | Locations | `native/CMakeLists.txt:53-75`<br>`android/app/src/main/cpp/CMakeLists.txt:28-50`<br>`native/src/image_preprocessor.cpp:26-158` |
 
 **Root cause analysis.** x86_64 builds add -mavx2 -mfma unconditionally (desktop and Android x86_64) and define __AVX2__, __ARM_NEON and _OPENMP manually. stb_image.h is not vendored, so the stub stbi_load_from_memory returns nullptr and decodeImage falls back to "header inspection": it reads dimensions from the JPEG SOF or PNG IHDR fields (up to 16384 x 16384), allocates width x height x 3 bytes and fills the buffer by repeating the compressed input.
@@ -954,6 +992,7 @@ The baseline instruction set is not distinguished from optional acceleration, an
 |---|---|
 | Severity | Medium |
 | Component | CI / GitHub Actions |
+| Tracking issue | [#38](https://github.com/TheZen46/EconomyApp/issues/38) |
 | Locations | `.github/workflows/ci.yml:26-32`<br>`.github/workflows/release.yml:13-38`<br>`android/app/build.gradle.kts:66-95`<br>`test/core/sync/live_supabase_seeder_test.dart:12-60` |
 
 **Root cause analysis.** ci.yml sets continue-on-error: true on flutter analyze and runs `flutter test || echo "No tests defined yet"`. release.yml uses actions/upload-artifact@v3 and actions/setup-java@v3. build.gradle.kts selects the debug signing configuration for the release build type when no keystore is configured. The default test suite includes a test that requires live Supabase credentials.
@@ -978,6 +1017,7 @@ Quality gates were relaxed to obtain green builds.
 |---|---|
 | Severity | Medium |
 | Component | Financial Core / Money |
+| Tracking issue | [#39](https://github.com/TheZen46/EconomyApp/issues/39) |
 | Locations | `lib/core/financial/money.dart:133-201`<br>`lib/core/financial/currency_ratio.dart:56-82` |
 
 **Root cause analysis.** roundIntegerDivision computes `q = numerator ~/ denominator` (truncation) and `rem = (numerator % denominator).abs()`. allocate() distributes the remainder with `for (i = 0; i < remainder; i++)`. awayFromZero returns q plus or minus one whenever rem > 0.
@@ -1001,6 +1041,7 @@ Dart's `%` operator returns the Euclidean (non-negative) modulus, not the remain
 |---|---|
 | Severity | Medium |
 | Component | Financial Core / Tax |
+| Tracking issue | [#40](https://github.com/TheZen46/EconomyApp/issues/40) |
 | Locations | `lib/core/services/tax_compliance_service.dart:28-75`<br>`lib/core/services/tax_compliance_service.dart:86-143`<br>`lib/core/financial/tax_engine.dart:179-201`<br>`lib/core/financial/tax_engine.dart:216-259`<br>`lib/features/receipt_scanning/data/datasources/tax_report_service.dart:89-112`<br>`lib/features/receipt_scanning/data/datasources/tax_report_service.dart:116-209` |
 
 **Root cause analysis.** TaxComplianceService.exportFatturaPaXml maps receipt item unitPrice directly to the net unit price and adds VAT; TaxReportService treats item totals as gross and extracts VAT. TaxEngine.inferTaxRateBps and TaxReportService.inferVatRateFromCategory use different keyword tables (for example "dairy" maps to 10% in one and to the 22% default in the other). TaxReportService labels a report with the first receipt's currency and sums amounts across currencies. TaxEngine's invariant compares totals derived from the same sums and cannot fail. The FatturaPA exporter embeds placeholder identifiers (VAT 01234567890, Via Roma 1, buyer address in Rome).
@@ -1025,6 +1066,7 @@ Duplicate domain logic without a shared tax model; consumer receipts are VAT-inc
 |---|---|
 | Severity | Medium |
 | Component | CRDT Engine |
+| Tracking issue | [#41](https://github.com/TheZen46/EconomyApp/issues/41) |
 | Locations | `lib/core/crdt/receipt_crdt.dart:123-144`<br>`lib/core/crdt/receipt_crdt.dart:194-212`<br>`lib/core/crdt/crdt_sync_engine.dart:63-155`<br>`lib/core/crdt/crdt_sync_engine.dart:238-256`<br>`lib/core/crdt/crdt_sync_engine.dart:275-279` |
 
 **Root cause analysis.** Line item identifiers are `${receipt.id}_item_$index`; updateLineItem recomputes totalAmountCents locally and stores it as an LWW register; mergeDeltaPayload advances the local HLC with Hlc(generatedAtMillis, 0, sender) rather than the maximum HLC carried in the payload; toModel sets deletedAt to DateTime.now(); pruneTombstones removes tombstones by wall-clock age; the store is held in memory only. No production code instantiates CrdtSyncEngine.
@@ -1049,6 +1091,7 @@ Items have no stable identity, derived values are stored as independent register
 |---|---|
 | Severity | Medium |
 | Component | Privacy / Data Deletion |
+| Tracking issue | [#42](https://github.com/TheZen46/EconomyApp/issues/42) |
 | Locations | `lib/features/receipt_scanning/data/datasources/supabase_data_source.dart:225-268`<br>`lib/features/receipt_scanning/data/repositories/receipt_repository_impl.dart:139-200` |
 
 **Root cause analysis.** deleteData derives the storage object path with a '.jpg' extension when imagePaths is not supplied, and both call sites omit imagePaths. clearAllData(includeCloud: true) hard-deletes rows with deleteReceipts, whereas the outbox and other devices rely on soft deletes (deleted_at).
@@ -1071,6 +1114,7 @@ The storage key depends on the original file extension at upload time but is not
 |---|---|
 | Severity | Medium |
 | Component | Invoices / Numbering |
+| Tracking issue | [#43](https://github.com/TheZen46/EconomyApp/issues/43) |
 | Locations | `lib/features/invoices/data/providers/invoices_provider.dart:29-44`<br>`lib/features/invoices/data/providers/invoices_provider.dart:51-117` |
 
 **Root cause analysis.** generateNextInvoiceNumber derives the next sequence from local Hive contents and a local settings counter. _load marks sent invoices as overdue by writing to Hive without updating updatedAt or version and without enqueueing an outbox mutation.
@@ -1092,6 +1136,7 @@ Sequential numbering requires a single authority, and the overdue transition byp
 |---|---|
 | Severity | Medium |
 | Component | ML Pipeline / Dataset Contribution |
+| Tracking issue | [#44](https://github.com/TheZen46/EconomyApp/issues/44) |
 | Locations | `lib/core/services/vlm/dataset_contribution_service.dart:56-89`<br>`lib/features/receipt_scanning/data/datasources/supabase_data_source.dart:117-144`<br>`native/grammars/receipt.gbnf:1-47`<br>`native/src/receipt_engine.cpp:497-507` |
 
 **Root cause analysis.** stageVerifiedReceipt writes vat_number 'IT12345678901' and a tax_breakdown of 22% with taxable 82% and tax 18% of the total for every receipt, using the keys rate_percent and taxable_amount, whereas the engine output uses rate and tax_amount. uploadTrainingData marks every label with is_user_corrected: true and original_ai_prediction_was_wrong: true.
@@ -1114,6 +1159,7 @@ Placeholder values are substituted for missing data instead of being omitted, an
 |---|---|
 | Severity | Medium |
 | Component | AI / LLMService |
+| Tracking issue | [#45](https://github.com/TheZen46/EconomyApp/issues/45) |
 | Locations | `lib/core/services/llm_service_mobile.dart:196-241` |
 
 **Root cause analysis.** _streamLlamaInIsolate constructs Llama(request.modelPath) before the try block, and the completion signal (null) is sent from finally. generate() closes the ReceivePort only after the await-for loop finishes normally.
@@ -1138,6 +1184,7 @@ The constructor is outside the protected region, and the consumer loop has no tr
 |---|---|
 | Severity | Low |
 | Component | Presentation / Resource Management |
+| Tracking issue | [#46](https://github.com/TheZen46/EconomyApp/issues/46) |
 | Locations | `lib/features/settings/presentation/pages/integrations_page.dart:16-19`<br>`lib/features/receipt_scanning/presentation/pages/review_page.dart:31-75`<br>`lib/features/settings/presentation/pages/settings_page.dart:916`<br>`lib/features/settings/presentation/pages/taxonomy_settings_page.dart:114` |
 
 **Root cause analysis.** _IntegrationsPageState and _ReviewPageState create controllers (and ReviewPage adds listeners) without overriding dispose(); dialog builders in SettingsPage and TaxonomySettingsPage allocate controllers that are never released.
@@ -1159,6 +1206,7 @@ Missing lifecycle teardown.
 |---|---|
 | Severity | Low |
 | Component | Export / CSV |
+| Tracking issue | [#47](https://github.com/TheZen46/EconomyApp/issues/47) |
 | Locations | `lib/core/services/export_service.dart:18-96`<br>`lib/core/services/export_service.dart:150-200`<br>`lib/features/receipt_scanning/data/datasources/tax_report_service.dart:224-260` |
 
 **Root cause analysis.** Merchant names, item descriptions and client names, which originate from OCR, AI output, CSV imports or user input, are written to CSV cells without neutralisation.
@@ -1180,6 +1228,7 @@ No escaping of cells that begin with =, +, -, @, tab or carriage return.
 |---|---|
 | Severity | Low |
 | Component | Core Utilities / JsonParserUtils |
+| Tracking issue | [#48](https://github.com/TheZen46/EconomyApp/issues/48) |
 | Locations | `lib/core/utils/json_parser_utils.dart:124-152` |
 
 **Root cause analysis.** repairJson removes text matching `//.*$` and replaces \bNone\b, \bTrue\b and \bFalse\b across the entire payload, including inside string literals.
@@ -1201,6 +1250,7 @@ Regular-expression substitutions are not aware of string boundaries, unlike the 
 |---|---|
 | Severity | Low |
 | Component | Observability / TelemetryService |
+| Tracking issue | [#49](https://github.com/TheZen46/EconomyApp/issues/49) |
 | Locations | `lib/core/services/telemetry_service.dart:136-160`<br>`lib/core/services/telemetry_service.dart:244-279` |
 
 **Root cause analysis.** PlatformDispatcher.instance.onError records the error and returns true for every error, marking it fatal while allowing execution to continue. Events are appended to telemetry_events.jsonl indefinitely. A Sentry DSN parameter exists but nothing transmits events.
@@ -1223,6 +1273,7 @@ Regular-expression substitutions are not aware of string boundaries, unlike the 
 |---|---|
 | Severity | Low |
 | Component | Presentation / Diagnostics |
+| Tracking issue | [#50](https://github.com/TheZen46/EconomyApp/issues/50) |
 | Locations | `lib/features/receipt_scanning/presentation/pages/scan_page.dart:202-224`<br>`lib/core/services/vlm/vlm_engine_service.dart:274-303`<br>`lib/features/sync/data/datasources/sync_engine.dart:309-316`<br>`lib/core/services/vlm/vlm_engine_service.dart:158-170` |
 
 **Root cause analysis.** The scan page displays a confidence value that starts at 92% and adds fixed increments when fields are non-empty; benchmarkInference reports tokens per second from a clamped formula unrelated to inference and always returns status PASSED; SyncEngine reports "Verifying bit-for-bit directory integrity" during a fixed 300 ms delay; inference telemetry always reports model Qwen2-VL-2B-Instruct regardless of the loaded model.
@@ -1246,6 +1297,7 @@ Placeholder values are presented as measurements.
 |---|---|
 | Severity | Low |
 | Component | AI / ModelUpdateService |
+| Tracking issue | [#51](https://github.com/TheZen46/EconomyApp/issues/51) |
 | Locations | `lib/features/receipt_scanning/presentation/providers/model_update_provider.dart:24-38`<br>`lib/features/receipt_scanning/presentation/providers/model_update_provider.dart:50-80`<br>`lib/main.dart:401-422` |
 
 **Root cause analysis.** copyWith uses `message ?? this.message` and `error ?? this.error`, yet callers pass message: null to clear the message.
@@ -1266,6 +1318,7 @@ Nullable fields cannot be reset through a null-coalescing copyWith.
 |---|---|
 | Severity | Low |
 | Component | Repository Hygiene |
+| Tracking issue | [#52](https://github.com/TheZen46/EconomyApp/issues/52) |
 | Locations | `node_modules/`<br>`package.json:1-7`<br>`git_error2.txt:1-35`<br>`flutter_01.png`<br>`native/receipt_vlm/`<br>`native/grammars/receipt.gbnf`<br>`native/receipt_vlm/grammar/receipt.gbnf` |
 
 **Root cause analysis.** 2,227 files under node_modules/ (puppeteer and dependencies) are committed; git_error2.txt is a captured push-protection log; flutter_01.png is a zero-byte file; native/receipt_vlm/ is a second engine implementation and grammar not referenced by any build file.
@@ -1288,6 +1341,7 @@ Missing ignore rules and no ownership of experimental trees.
 |---|---|
 | Severity | Low |
 | Component | Sync / SyncService |
+| Tracking issue | [#53](https://github.com/TheZen46/EconomyApp/issues/53) |
 | Locations | `lib/features/receipt_scanning/data/datasources/sync_service.dart:54-72`<br>`lib/features/receipt_scanning/data/datasources/sync_service.dart:204-228` |
 
 **Root cause analysis.** scheduleUpload returns early when any queue item has the same receiptId, including items in the permanentlyFailed state. _uploadItem loads all receipts and searches linearly for each queued item.
@@ -1309,6 +1363,7 @@ The duplicate check does not consider item state; no keyed lookup.
 |---|---|
 | Severity | Low |
 | Component | Privacy / PiiScrubberService |
+| Tracking issue | [#54](https://github.com/TheZen46/EconomyApp/issues/54) |
 | Locations | `lib/core/privacy/pii_scrubber_service.dart:28-32`<br>`lib/core/privacy/pii_scrubber_service.dart:64-66`<br>`lib/features/receipt_scanning/data/datasources/mock_ai_service.dart:74-94` |
 
 **Root cause analysis.** The address pattern matches "Via", "Dr." or "St." anywhere and redacts the remainder of the line; there is no rule for personal names (for example "Cashier: Mario Rossi"). Separately, the OCR heuristic date parser assumes day-first order and does not validate overflow.
@@ -1333,6 +1388,7 @@ Keyword patterns without context, and no named-entity handling.
 |---|---|
 | Severity | Low |
 | Component | Documentation / API Coverage |
+| Tracking issue | [#55](https://github.com/TheZen46/EconomyApp/issues/55) |
 | Locations | `lib/core/error/failures.dart`<br>`lib/core/routes/app_router.dart`<br>`lib/core/theme/theme_notifier.dart`<br>`lib/core/sync/sync_providers.dart`<br>`lib/features/settings/presentation/providers/llm_provider.dart`<br>`lib/features/receipt_scanning/presentation/providers/receipt_provider.dart`<br>`lib/features/invoices/data/providers/invoices_provider.dart`<br>`lib/main.dart` |
 
 **Root cause analysis.** A static count of public top-level declarations (classes, enums, typedefs, top-level providers and functions) found 105 of 295 preceded by a /// documentation comment. Modules at 0 percent: lib/core/error, lib/core/routes, lib/core/theme, lib/features/settings and lib/main.dart. lib/features/receipt_scanning is at 24 percent, lib/features/invoices at 14 percent and lib/features/evault at 20 percent. The per-module table is included in audit/findings_report.md.
@@ -1354,6 +1410,7 @@ No documentation lint is enabled (public_member_api_docs is not in analysis_opti
 |---|---|
 | Severity | Low |
 | Component | Documentation / Accuracy |
+| Tracking issue | [#56](https://github.com/TheZen46/EconomyApp/issues/56) |
 | Locations | `README.md:18-21`<br>`README.md:91-95`<br>`docs/architecture.md:56-155`<br>`docs/architecture.md:247-316`<br>`docs/api_reference.md:1-178`<br>`docs/troubleshooting.md:1-136`<br>`docs/release_0.1.3_guide.md:16-60` |
 
 **Root cause analysis.** docs/architecture.md presents code excerpts that differ from the source (AuthNotifier is shown taking a SupabaseClient; the backup routine is shown writing next to the box file). README and docs describe bit-for-bit verification, delta hashing, network isolation, CRDT-based synchronization, zero-copy inference and legally compliant fiscal export, none of which is implemented as described (see TAIDY-M08, TAIDY-H17, TAIDY-A01, TAIDY-A05, TAIDY-M18). Headings in docs/troubleshooting.md and docs/api_reference.md contain emoji, which AGENTS.md prohibits.
@@ -1376,6 +1433,7 @@ Documentation was written from intended design rather than generated from or che
 |---|---|
 | Severity | Low |
 | Component | Documentation / Operational Contracts |
+| Tracking issue | [#57](https://github.com/TheZen46/EconomyApp/issues/57) |
 | Locations | `lib/main.dart:69-81`<br>`lib/core/sync/models/sync_outbox_item.dart:1-82`<br>`supabase/migrations/20260828_master_sync_schema.sql`<br>`lib/core/sync/sync_manager.dart:284-291` |
 
 **Root cause analysis.** Hive type identifiers, box names and settings keys, the outbox status lifecycle, the mapping between Dart fields and SQL columns, the conflict resolution policy and the inventory of stored personal data are not written down anywhere.
@@ -1399,6 +1457,7 @@ Contracts exist only implicitly in code.
 |---|---|
 | Severity | Architectural |
 | Component | Sync / Architecture |
+| Tracking issue | [#58](https://github.com/TheZen46/EconomyApp/issues/58) |
 | Locations | `lib/core/sync/sync_manager.dart:1-311`<br>`lib/features/receipt_scanning/data/datasources/sync_service.dart:1-233`<br>`lib/features/sync/data/datasources/sync_engine.dart:1-498`<br>`lib/core/crdt/crdt_sync_engine.dart:1-280`<br>`lib/features/receipt_scanning/data/repositories/receipt_repository_impl.dart:59-126` |
 
 **Root cause analysis.** SyncManager (outbox push plus delta pull with version-based LWW), SyncService (sync_queue upload of images, labels and a receipts row with a different column set) and SyncEngine (full replication on login with its own row parsers) each write to the same Hive boxes and remote tables. Each has its own lock, connectivity subscription and retry policy. saveReceipt feeds two of them for every receipt. CrdtSyncEngine is documented as the mechanism but is not referenced by application code.
@@ -1422,6 +1481,7 @@ Incremental feature additions without consolidation; no single owner of the repl
 |---|---|
 | Severity | Architectural |
 | Component | Layering / Dependency Graph |
+| Tracking issue | [#59](https://github.com/TheZen46/EconomyApp/issues/59) |
 | Locations | `lib/core/sync/sync_providers.dart:7-14`<br>`lib/core/sync/sync_manager.dart:10-13`<br>`lib/core/services/biometric_service.dart:5`<br>`lib/core/theme/theme_notifier.dart:4`<br>`lib/core/crdt/receipt_crdt.dart:3-4`<br>`lib/core/privacy/pii_scrubber_service.dart:1`<br>`lib/core/services/export_service.dart:6-7`<br>`lib/features/receipt_scanning/presentation/providers/receipt_provider.dart:39-47` |
 
 **Root cause analysis.** core/sync imports feature models and providers; core/services/biometric_service.dart and core/theme/theme_notifier.dart import the receipt feature's provider file to obtain settingsBoxProvider; infrastructure providers (hiveBoxProvider, settingsBoxProvider, syncBoxProvider) are declared in the receipt feature, which in turn imports core/sync.
@@ -1444,6 +1504,7 @@ Shared infrastructure was placed in the first feature that needed it.
 |---|---|
 | Severity | Architectural |
 | Component | Data Contracts / Serialization |
+| Tracking issue | [#60](https://github.com/TheZen46/EconomyApp/issues/60) |
 | Locations | `lib/features/receipt_scanning/data/models/receipt_model.dart:75-142`<br>`lib/features/sync/data/datasources/sync_engine.dart:397-491`<br>`lib/features/receipt_scanning/data/datasources/supabase_data_source.dart:117-176`<br>`lib/core/services/vlm/vlm_engine_service.dart:195-253`<br>`lib/core/services/llm_service_mobile.dart:146-173`<br>`lib/features/receipt_scanning/data/datasources/gemini_ai_service.dart:105-109`<br>`lib/core/services/export_service.dart:106-127`<br>`supabase/migrations/20260828_master_sync_schema.sql:45-307` |
 
 **Root cause analysis.** Receipt rows and AI outputs are converted by independent functions that disagree on field names (date vs scanned_date, color vs color_hex), on defaults (currency USD vs EUR, necessity essential vs unknown), and on which fields exist (items, image_url, version).
@@ -1466,6 +1527,7 @@ Models are hand-written with ad-hoc fromJson/toJson; no generated or validated s
 |---|---|
 | Severity | Architectural |
 | Component | Dependency Injection |
+| Tracking issue | [#61](https://github.com/TheZen46/EconomyApp/issues/61) |
 | Locations | `lib/core/services/secure_storage_service.dart:9-111`<br>`lib/core/services/secure_storage_service.dart:125-127`<br>`lib/core/services/telemetry_service.dart:103-112`<br>`lib/core/services/google_drive_service.dart:254`<br>`lib/features/receipt_scanning/presentation/providers/receipt_provider.dart:39-47`<br>`lib/core/sync/sync_providers.dart:25-66` |
 
 **Root cause analysis.** SecureStorageService exposes only static members while secureStorageProvider returns an instance with no usable API; TelemetryService.instance, the global googleDriveService and Supabase.instance are referenced directly from services. Providers that must be overridden throw UnimplementedError, and consumers wrap ref.watch in try/catch to detect absence.
@@ -1488,6 +1550,7 @@ Mixed service-locator and provider patterns; absence is signalled by exceptions 
 |---|---|
 | Severity | Architectural |
 | Component | Native Engine / Integration |
+| Tracking issue | [#62](https://github.com/TheZen46/EconomyApp/issues/62) |
 | Locations | `native/src/receipt_engine.cpp:276-282`<br>`native/src/receipt_engine.cpp:783-793`<br>`native/CMakeLists.txt:1-182`<br>`linux/CMakeLists.txt`<br>`windows/CMakeLists.txt`<br>`ios/receipt_engine.podspec:1-25`<br>`lib/core/services/vlm/vlm_ffi_bindings_ffi.dart:190-218`<br>`lib/features/settings/presentation/pages/model_manager_page.dart:80-100` |
 
 **Root cause analysis.** execute_grammar_constrained_sampling receives the preprocessed image but never uses it; the normalized CLIP tensor computed in receipt_engine_process_image is discarded; no CLIP or mtmd API is called. The desktop runners do not build or bundle libreceipt_engine; the iOS podspec is not referenced by any Podfile (none is tracked). VLM readiness is set only from the model manager page, not at startup. Documentation describes zero-copy GPU buffers and a paged KV cache whose structures are allocated but not connected to inference.
@@ -1511,6 +1574,7 @@ Native scaffolding was written ahead of the inference integration, and the stubs
 |---|---|
 | Severity | Architectural |
 | Component | Codebase Structure |
+| Tracking issue | [#63](https://github.com/TheZen46/EconomyApp/issues/63) |
 | Locations | `lib/core/services/tax_compliance_service.dart:1-446`<br>`lib/core/financial/tax_engine.dart:1-277`<br>`lib/core/financial/money.dart:1-288`<br>`lib/core/financial/currency_ratio.dart:1-149`<br>`lib/features/receipt_scanning/data/datasources/bank_reconciliation_service.dart:1-341`<br>`lib/features/receipt_scanning/data/datasources/tax_report_service.dart:1-346`<br>`lib/core/crdt/`<br>`lib/features/boxes/data/providers/boxes_provider.dart:122-131` |
 
 **Root cause analysis.** No file under lib/ outside these modules references TaxComplianceService, TaxEngine, Money, CurrencyRatio, BankReconciliationService, TaxReportService or CrdtSyncEngine. BoxesNotifier.addSpent has no caller, so BoxModel.spent never reflects receipts. The CHANGELOG and release guide describe these capabilities as shipped.
@@ -1532,6 +1596,7 @@ Modules were developed and unit-tested in isolation without integration into use
 |---|---|
 | Severity | Architectural |
 | Component | Financial Core / Monetary Representation |
+| Tracking issue | [#64](https://github.com/TheZen46/EconomyApp/issues/64) |
 | Locations | `lib/features/receipt_scanning/data/models/receipt_model.dart:17-18`<br>`lib/features/receipt_scanning/data/models/receipt_model.dart:222-229`<br>`lib/features/invoices/data/models/invoice_model.dart:29-30`<br>`lib/features/boxes/data/models/box_model.dart:1-60`<br>`lib/core/financial/money.dart:16-38` |
 
 **Root cause analysis.** ReceiptModel.totalAmount, item prices, invoice amounts and box budgets are double values in Hive, in JSON and in UI aggregation. Money (integer minor units with banker's rounding) is used only by the unreachable tax export module.
@@ -1553,6 +1618,7 @@ The fixed-point type was introduced after the persistence model and was never ad
 |---|---|
 | Severity | Architectural |
 | Component | AI / Backend Selection |
+| Tracking issue | [#65](https://github.com/TheZen46/EconomyApp/issues/65) |
 | Locations | `lib/features/receipt_scanning/presentation/providers/receipt_provider.dart:85-115`<br>`lib/main.dart:330-345`<br>`lib/features/settings/presentation/providers/llm_provider.dart:1-29`<br>`lib/features/settings/presentation/pages/model_manager_page.dart:80-150` |
 
 **Root cause analysis.** aiServiceProvider chooses VLM, LLM, Gemini or the fallback from four independent flags; readiness flags are mutable StateProviders set from different pages; cloud processing is enabled by a settings flag without recording consent; results carry no indication of which backend produced them.
@@ -1575,6 +1641,7 @@ Backend availability, user preference and privacy policy are encoded as loosely 
 |---|---|
 | Severity | Architectural |
 | Component | Dependencies |
+| Tracking issue | [#66](https://github.com/TheZen46/EconomyApp/issues/66) |
 | Locations | `pubspec.yaml:33-96` |
 
 **Root cause analysis.** hive 2.2.3 and hive_flutter 1.1.0 have not received releases since 2022 (a community fork, hive_ce, is maintained); google_generative_ai is deprecated by its publisher; json_annotation 4.8.1, freezed_annotation 2.4.1 and freezed 2.5.2 are pinned to exact older versions.
