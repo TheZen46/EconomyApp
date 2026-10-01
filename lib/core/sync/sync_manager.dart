@@ -85,7 +85,8 @@ class SyncManager {
         // ── STEP 2: Pull Deltas (Pull) ───────────────────────────────────────
         await _pullDeltas(user.id);
 
-        // Update last synced timestamp
+        // Time of the last completed cycle, for display only; the pull itself
+        // uses the per-table server watermarks (see _pullTable).
         await settingsBox.put('last_synced_at', DateTime.now().toUtc().toIso8601String());
         debugPrint('SyncManager: Synchronization cycle completed successfully.');
         onSyncCompleted?.call();
@@ -170,6 +171,19 @@ class SyncManager {
     await syncAll();
   }
 
+  /// Rows requested per page during the delta pull.
+  static const int pullPageSize = 500;
+
+  /// The first page of a pull starts this far before the stored watermark, so
+  /// that a row whose transaction committed after a later one was read (its
+  /// updated_at is the transaction start time) is still picked up. Re-applying
+  /// a row is idempotent.
+  static const Duration pullOverlap = Duration(minutes: 1);
+
+  /// Settings key holding the delta-pull watermark of [table]: the largest
+  /// server-assigned updated_at already applied from it.
+  static String watermarkKey(String table) => 'sync_watermark_$table';
+
   /// Pulls remote delta updates from Supabase and applies them with Last-Write-Wins (LWW).
   ///
   /// Entities that still have a mutation in the outbox keep their local state:
@@ -178,59 +192,73 @@ class SyncManager {
   /// push succeeds.
   Future<void> _pullDeltas(String userId) async {
     final unsynced = outboxService.entitiesWithUnsyncedChanges();
-    bool hasUnsyncedChange(String entityType, Map<String, dynamic> row) =>
-        unsynced.contains(OutboxService.entityKey(entityType, row['id'] as String));
 
-    final lastSyncedStr = settingsBox.get('last_synced_at') as String?;
-    final lastSyncedAt = lastSyncedStr != null ? DateTime.tryParse(lastSyncedStr) : null;
+    await _pullTable('receipts', 'receipt', userId, unsynced, _applyReceiptDelta);
+    await _pullTable('boxes', 'box', userId, unsynced, _applyBoxDelta);
+    await _pullTable('invoices', 'invoice', userId, unsynced, _applyInvoiceDelta);
+    await _pullTable('vault_assets', 'asset', userId, unsynced, _applyAssetDelta);
+  }
 
-    // 1. Pull Receipts
-    var receiptsQuery = supabase.from('receipts').select().eq('user_id', userId);
-    if (lastSyncedAt != null) {
-      receiptsQuery = receiptsQuery.gt('updated_at', lastSyncedAt.toUtc().toIso8601String());
-    }
-    final remoteReceipts = await receiptsQuery;
-    for (final row in remoteReceipts) {
-      if (!hasUnsyncedChange('receipt', row)) _applyReceiptDelta(row);
-    }
+  /// Reads the rows of [table] changed since its watermark, page by page.
+  ///
+  /// The watermark comes from the server timestamps of the rows actually
+  /// applied, never from the device clock, and is saved after each page.
+  /// Pages are ordered by (updated_at, id) and each continues strictly after
+  /// the last (updated_at, id) seen, so rows updated during the pull cannot
+  /// shift a page boundary and many rows sharing one timestamp cannot stall it.
+  /// A table without a watermark (first pull, or after upgrading from the
+  /// device-clock watermark) is read in full, which also backfills rows that
+  /// earlier versions skipped or truncated.
+  Future<void> _pullTable(
+    String table,
+    String entityType,
+    String userId,
+    Set<String> unsynced,
+    Future<void> Function(Map<String, dynamic> row) apply,
+  ) async {
+    final stored = DateTime.tryParse(settingsBox.get(watermarkKey(table)) as String? ?? '');
+    final since = stored?.subtract(pullOverlap).toUtc().toIso8601String();
 
-    // 2. Pull Boxes
-    var boxesQuery = supabase.from('boxes').select().eq('user_id', userId);
-    if (lastSyncedAt != null) {
-      boxesQuery = boxesQuery.gt('updated_at', lastSyncedAt.toUtc().toIso8601String());
-    }
-    final remoteBoxes = await boxesQuery;
-    for (final row in remoteBoxes) {
-      if (!hasUnsyncedChange('box', row)) _applyBoxDelta(row);
-    }
+    String? cursorUpdatedAt;
+    String? cursorId;
+    while (true) {
+      var query = supabase.from(table).select().eq('user_id', userId);
+      if (cursorUpdatedAt != null && cursorId != null) {
+        final ts = _filterValue(cursorUpdatedAt);
+        query = query.or('updated_at.gt.$ts,and(updated_at.eq.$ts,id.gt.${_filterValue(cursorId)})');
+      } else if (since != null) {
+        query = query.gte('updated_at', since);
+      }
+      final page = await query
+          .order('updated_at', ascending: true)
+          .order('id', ascending: true)
+          .limit(pullPageSize);
 
-    // 3. Pull Invoices
-    var invoicesQuery = supabase.from('invoices').select().eq('user_id', userId);
-    if (lastSyncedAt != null) {
-      invoicesQuery = invoicesQuery.gt('updated_at', lastSyncedAt.toUtc().toIso8601String());
-    }
-    final remoteInvoices = await invoicesQuery;
-    for (final row in remoteInvoices) {
-      if (!hasUnsyncedChange('invoice', row)) _applyInvoiceDelta(row);
-    }
+      for (final row in page) {
+        if (!unsynced.contains(OutboxService.entityKey(entityType, row['id'] as String))) {
+          await apply(row);
+        }
+      }
+      if (page.isEmpty) break;
 
-    // 4. Pull Assets
-    var assetsQuery = supabase.from('vault_assets').select().eq('user_id', userId);
-    if (lastSyncedAt != null) {
-      assetsQuery = assetsQuery.gt('updated_at', lastSyncedAt.toUtc().toIso8601String());
-    }
-    final remoteAssets = await assetsQuery;
-    for (final row in remoteAssets) {
-      if (!hasUnsyncedChange('asset', row)) _applyAssetDelta(row);
+      cursorUpdatedAt = page.last['updated_at'] as String?;
+      cursorId = page.last['id'] as String?;
+      if (cursorUpdatedAt == null || cursorId == null) break; // cannot paginate without a key
+      await settingsBox.put(watermarkKey(table), cursorUpdatedAt);
+      if (page.length < pullPageSize) break;
     }
   }
 
-  void _applyReceiptDelta(Map<String, dynamic> row) {
+  /// Quotes a value for a PostgREST logical filter, where `,.:()` are reserved.
+  static String _filterValue(String value) =>
+      '"${value.replaceAll(r'\', r'\\').replaceAll('"', r'\"')}"';
+
+  Future<void> _applyReceiptDelta(Map<String, dynamic> row) async {
     final id = row['id'] as String;
     final deletedAt = row['deleted_at'] != null ? DateTime.tryParse(row['deleted_at'] as String) : null;
 
     if (deletedAt != null) {
-      receiptsBox.delete(id);
+      await receiptsBox.delete(id);
       return;
     }
 
@@ -244,16 +272,16 @@ class SyncManager {
     }
 
     if (localModel == null || _shouldRemoteOverwrite(localModel.updatedAt, localModel.version, remoteModel.updatedAt, remoteModel.version)) {
-      receiptsBox.put(id, remoteModel);
+      await receiptsBox.put(id, remoteModel);
     }
   }
 
-  void _applyBoxDelta(Map<String, dynamic> row) {
+  Future<void> _applyBoxDelta(Map<String, dynamic> row) async {
     final id = row['id'] as String;
     final deletedAt = row['deleted_at'] != null ? DateTime.tryParse(row['deleted_at'] as String) : null;
 
     if (deletedAt != null) {
-      boxesBox.delete(id);
+      await boxesBox.delete(id);
       return;
     }
 
@@ -261,16 +289,16 @@ class SyncManager {
     final localModel = boxesBox.get(id);
 
     if (localModel == null || _shouldRemoteOverwrite(localModel.updatedAt, localModel.version, remoteModel.updatedAt, remoteModel.version)) {
-      boxesBox.put(id, remoteModel);
+      await boxesBox.put(id, remoteModel);
     }
   }
 
-  void _applyInvoiceDelta(Map<String, dynamic> row) {
+  Future<void> _applyInvoiceDelta(Map<String, dynamic> row) async {
     final id = row['id'] as String;
     final deletedAt = row['deleted_at'] != null ? DateTime.tryParse(row['deleted_at'] as String) : null;
 
     if (deletedAt != null) {
-      invoicesBox.delete(id);
+      await invoicesBox.delete(id);
       return;
     }
 
@@ -278,16 +306,16 @@ class SyncManager {
     final localModel = invoicesBox.get(id);
 
     if (localModel == null || _shouldRemoteOverwrite(localModel.updatedAt, localModel.version, remoteModel.updatedAt, remoteModel.version)) {
-      invoicesBox.put(id, remoteModel);
+      await invoicesBox.put(id, remoteModel);
     }
   }
 
-  void _applyAssetDelta(Map<String, dynamic> row) {
+  Future<void> _applyAssetDelta(Map<String, dynamic> row) async {
     final id = row['id'] as String;
     final deletedAt = row['deleted_at'] != null ? DateTime.tryParse(row['deleted_at'] as String) : null;
 
     if (deletedAt != null) {
-      assetsBox.delete(id);
+      await assetsBox.delete(id);
       return;
     }
 
@@ -295,7 +323,7 @@ class SyncManager {
     final localModel = assetsBox.get(id);
 
     if (localModel == null || _shouldRemoteOverwrite(localModel.updatedAt, localModel.version, remoteModel.updatedAt, remoteModel.version)) {
-      assetsBox.put(id, remoteModel);
+      await assetsBox.put(id, remoteModel);
     }
   }
 
