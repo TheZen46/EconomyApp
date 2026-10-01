@@ -209,27 +209,41 @@ $text
     final receivePort = ReceivePort();
     final modelPath = _modelPath!;
 
-    // Spawn an isolate that sends tokens one by one via SendPort.
-    await Isolate.spawn(
-      _streamLlamaInIsolate,
-      _StreamRequest(modelPath: modelPath, prompt: prompt, sendPort: receivePort.sendPort),
-    );
+    try {
+      // Spawn an isolate that sends tokens one by one via SendPort. Its exit
+      // (null, the same signal as normal completion) and uncaught errors (a
+      // [message, stack] list) arrive on the same port, so the stream ends
+      // even if the isolate dies.
+      await Isolate.spawn(
+        _streamLlamaInIsolate,
+        _StreamRequest(modelPath: modelPath, prompt: prompt, sendPort: receivePort.sendPort),
+        onExit: receivePort.sendPort,
+        onError: receivePort.sendPort,
+      );
 
-    // Yield tokens as they arrive; the isolate sends null when done.
-    await for (final message in receivePort) {
-      if (message == null) break;
-      yield message as String;
+      await for (final message in receivePort) {
+        if (message == null) break;
+        if (message is List) {
+          yield 'Error: ${message.isNotEmpty ? message.first : 'generation isolate failed'}';
+          break;
+        }
+        yield message as String;
+      }
+    } finally {
+      // Also runs when the consumer cancels the subscription.
+      receivePort.close();
     }
-
-    receivePort.close();
   }
 
   /// Top-level isolate entrypoint for streaming generation.
   /// Sends each token individually via [sendPort], then sends null to signal
   /// completion, matching the `Stream<String>` contract of [generate].
   static void _streamLlamaInIsolate(_StreamRequest request) {
-    final llama = Llama(request.modelPath);
+    Llama? llama;
     try {
+      // Inside the try block: a model that fails to load must still produce
+      // the completion signal below.
+      llama = Llama(request.modelPath);
       llama.setPrompt(request.prompt);
 
       while (true) {
@@ -240,7 +254,7 @@ $text
     } catch (e) {
       request.sendPort.send("Error: $e");
     } finally {
-      llama.dispose();
+      llama?.dispose();
       request.sendPort.send(null); // Signal completion
     }
   }
