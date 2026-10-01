@@ -70,6 +70,16 @@ class OutboxService {
     return !now.isAfter(nextRetry);
   }
 
+  /// Keys (`entityType:entityId`) of every entity with a mutation still in the
+  /// outbox, whatever its status. Such an entity holds local changes the server
+  /// has not accepted yet.
+  Set<String> entitiesWithUnsyncedChanges() {
+    return {for (final item in outboxBox.values) entityKey(item.entityType, item.entityId)};
+  }
+
+  /// Identifies an entity across the outbox and the pull step.
+  static String entityKey(String entityType, String entityId) => '$entityType:$entityId';
+
   /// Mutations that were dead-lettered and are no longer retried automatically.
   List<SyncOutboxItem> getPermanentlyFailed() {
     return outboxBox.values.where((item) => item.status == 'permanently_failed').toList();

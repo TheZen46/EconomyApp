@@ -116,7 +116,7 @@ class SyncManager {
     final heldEntities = <String>{};
 
     for (final item in queued) {
-      final entityKey = '${item.entityType}:${item.entityId}';
+      final entityKey = OutboxService.entityKey(item.entityType, item.entityId);
       if (heldEntities.contains(entityKey)) continue;
       if (outboxService.isBackingOff(item, now)) {
         heldEntities.add(entityKey);
@@ -171,7 +171,16 @@ class SyncManager {
   }
 
   /// Pulls remote delta updates from Supabase and applies them with Last-Write-Wins (LWW).
+  ///
+  /// Entities that still have a mutation in the outbox keep their local state:
+  /// the server has not seen that change yet, so a remote row (including a
+  /// tombstone) must neither overwrite nor delete it. The change wins once its
+  /// push succeeds.
   Future<void> _pullDeltas(String userId) async {
+    final unsynced = outboxService.entitiesWithUnsyncedChanges();
+    bool hasUnsyncedChange(String entityType, Map<String, dynamic> row) =>
+        unsynced.contains(OutboxService.entityKey(entityType, row['id'] as String));
+
     final lastSyncedStr = settingsBox.get('last_synced_at') as String?;
     final lastSyncedAt = lastSyncedStr != null ? DateTime.tryParse(lastSyncedStr) : null;
 
@@ -182,7 +191,7 @@ class SyncManager {
     }
     final remoteReceipts = await receiptsQuery;
     for (final row in remoteReceipts) {
-      _applyReceiptDelta(row);
+      if (!hasUnsyncedChange('receipt', row)) _applyReceiptDelta(row);
     }
 
     // 2. Pull Boxes
@@ -192,7 +201,7 @@ class SyncManager {
     }
     final remoteBoxes = await boxesQuery;
     for (final row in remoteBoxes) {
-      _applyBoxDelta(row);
+      if (!hasUnsyncedChange('box', row)) _applyBoxDelta(row);
     }
 
     // 3. Pull Invoices
@@ -202,7 +211,7 @@ class SyncManager {
     }
     final remoteInvoices = await invoicesQuery;
     for (final row in remoteInvoices) {
-      _applyInvoiceDelta(row);
+      if (!hasUnsyncedChange('invoice', row)) _applyInvoiceDelta(row);
     }
 
     // 4. Pull Assets
@@ -212,7 +221,7 @@ class SyncManager {
     }
     final remoteAssets = await assetsQuery;
     for (final row in remoteAssets) {
-      _applyAssetDelta(row);
+      if (!hasUnsyncedChange('asset', row)) _applyAssetDelta(row);
     }
   }
 
