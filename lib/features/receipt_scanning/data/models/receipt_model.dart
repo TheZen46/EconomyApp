@@ -141,6 +141,47 @@ class ReceiptModel extends HiveObject {
     };
   }
 
+  /// Columns of `public.receipts` (see `supabase/migrations/`).
+  ///
+  /// PostgREST rejects a request body that contains any key outside this set
+  /// with `PGRST204`, so every payload sent to the table must be restricted to it.
+  static const Set<String> remoteColumns = {
+    'id',
+    'user_id',
+    'merchant_name',
+    'total_amount',
+    'currency',
+    'scanned_date',
+    'image_path',
+    'vat_number',
+    'merchant_address',
+    'transaction_time',
+    'box_id',
+    'items',
+    'is_synced',
+    'version',
+    'created_at',
+    'updated_at',
+    'deleted_at',
+  };
+
+  /// Row representation for `public.receipts`.
+  ///
+  /// Unlike [toJson], which also serves webhook consumers, this omits keys that
+  /// have no column, such as `date` (carried by `scanned_date`).
+  Map<String, dynamic> toRemoteJson() => sanitizeRemotePayload(toJson());
+
+  /// Returns a copy of [payload] restricted to [remoteColumns].
+  ///
+  /// Applied at push time as well, so that outbox items enqueued before the
+  /// payload was restricted are still accepted by the server.
+  static Map<String, dynamic> sanitizeRemotePayload(Map<String, dynamic> payload) {
+    return {
+      for (final entry in payload.entries)
+        if (remoteColumns.contains(entry.key)) entry.key: entry.value,
+    };
+  }
+
   Receipt toEntity() {
     return Receipt(
       id: id,

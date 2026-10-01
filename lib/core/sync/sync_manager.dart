@@ -106,8 +106,11 @@ class SyncManager {
 
     for (final item in pending) {
       try {
-        final payload = Map<String, dynamic>.from(item.payload);
+        var payload = Map<String, dynamic>.from(item.payload);
         payload['user_id'] = userId;
+        if (item.entityType == 'receipt') {
+          payload = ReceiptModel.sanitizeRemotePayload(payload);
+        }
 
         final table = _mapEntityTypeToTable(item.entityType);
 
@@ -222,8 +225,14 @@ class SyncManager {
       return;
     }
 
-    final remoteModel = ReceiptModel.fromJson(row);
+    var remoteModel = ReceiptModel.fromJson(row);
     final localModel = receiptsBox.get(id);
+
+    // A row without an items array (written before the column existed, or by
+    // another tool) carries no information about line items; keep the local ones.
+    if (localModel != null && row['items'] is! List) {
+      remoteModel = remoteModel.copyWith(items: localModel.items);
+    }
 
     if (localModel == null || _shouldRemoteOverwrite(localModel.updatedAt, localModel.version, remoteModel.updatedAt, remoteModel.version)) {
       receiptsBox.put(id, remoteModel);

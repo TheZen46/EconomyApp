@@ -152,45 +152,9 @@ class SupabaseDataSourceImpl implements SupabaseDataSource {
         fileOptions: const FileOptions(cacheControl: '3600', upsert: true),
       );
 
-      // 3. Upsert into Supabase database 'receipts' table if configured
-      try {
-        final receiptRow = {
-          'id': receipt.id,
-          'merchant_name': receipt.merchantName,
-          'total_amount': receipt.totalAmount,
-          'currency': receipt.currency,
-          'date': receipt.date.toIso8601String(),
-          'box_id': receipt.boxId,
-          'image_path': storagePathImage,
-          'image_url': publicImageUrl ?? client.storage.from('training_data').getPublicUrl(storagePathImage),
-          if (userId != null) 'user_id': userId,
-          'items': receipt.items.map((e) => {
-            'description': e.description,
-            'unit_price': e.unitPrice,
-            'quantity': e.quantity,
-            'total_price': e.totalPrice,
-            'category': e.category,
-            'necessity': e.necessity.name,
-            'is_asset': e.isAsset,
-          }).toList(),
-        };
-        try {
-          await client.from('receipts').upsert(receiptRow);
-        } on PostgrestException catch (pgrst) {
-          // If table schema lacks image_path/image_url (PGRST204), fallback to base schema
-          if (pgrst.code == 'PGRST204') {
-            final fallbackRow = Map<String, dynamic>.from(receiptRow)
-              ..remove('image_path')
-              ..remove('image_url');
-            await client.from('receipts').upsert(fallbackRow);
-          } else {
-            rethrow;
-          }
-        }
-      } catch (dbError) {
-        debugPrint('Supabase database receipts table upsert notice: $dbError');
-      }
-
+      // The receipts row is written only by the outbox (SyncManager), which sends
+      // the schema-conformant payload. Writing it here as well would race with the
+      // outbox and send keys that public.receipts does not define.
     } catch (e) {
       debugPrint('Supabase upload failed: $e');
       rethrow;

@@ -69,7 +69,7 @@ class ReceiptRepositoryImpl implements ReceiptRepository {
           entityType: 'receipt',
           entityId: model.id,
           mutationType: 'upsert',
-          payload: model.toJson(),
+          payload: model.toRemoteJson(),
         );
       }
 

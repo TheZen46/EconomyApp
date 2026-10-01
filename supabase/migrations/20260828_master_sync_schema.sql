@@ -54,6 +54,7 @@ CREATE TABLE IF NOT EXISTS public.receipts (
     merchant_address TEXT DEFAULT '',
     transaction_time TEXT DEFAULT '',
     box_id TEXT DEFAULT 'main',
+    items JSONB,
     is_synced BOOLEAN DEFAULT true,
     version INT NOT NULL DEFAULT 1,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -71,6 +72,7 @@ ALTER TABLE public.receipts ADD COLUMN IF NOT EXISTS vat_number TEXT DEFAULT '';
 ALTER TABLE public.receipts ADD COLUMN IF NOT EXISTS merchant_address TEXT DEFAULT '';
 ALTER TABLE public.receipts ADD COLUMN IF NOT EXISTS transaction_time TEXT DEFAULT '';
 ALTER TABLE public.receipts ADD COLUMN IF NOT EXISTS box_id TEXT DEFAULT 'main';
+ALTER TABLE public.receipts ADD COLUMN IF NOT EXISTS items JSONB;
 ALTER TABLE public.receipts ADD COLUMN IF NOT EXISTS is_synced BOOLEAN DEFAULT true;
 ALTER TABLE public.receipts ADD COLUMN IF NOT EXISTS version INT NOT NULL DEFAULT 1;
 ALTER TABLE public.receipts ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT now();
