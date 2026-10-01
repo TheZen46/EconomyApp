@@ -1,7 +1,9 @@
 ﻿import 'dart:async';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:t_aidy/core/error/failures.dart';
 import 'package:t_aidy/features/receipt_scanning/data/datasources/supabase_data_source.dart';
+import 'package:t_aidy/features/receipt_scanning/domain/entities/receipt.dart';
 
 class FakeSupabaseClientForBatch extends Fake implements SupabaseClient {
   final List<List<String>> deletedIdBatches = [];
@@ -167,6 +169,26 @@ void main() {
       expect(results.length, 340);
       expect(results.first['id'], 'rec-0');
       expect(results.last['id'], 'rec-339');
+    });
+  });
+
+  group('SupabaseDataSourceImpl - training upload', () {
+    test('refuses to upload without a signed-in user instead of using a shared prefix', () async {
+      // The fake client has no auth session, so the current user id resolves to null.
+      final dataSource = SupabaseDataSourceImpl(FakeSupabaseClientForBatch());
+      final receipt = Receipt(
+        id: 'rec-anon',
+        merchantName: 'Store',
+        totalAmount: 1.0,
+        date: DateTime.utc(2026, 9, 1),
+        items: const [],
+        currency: 'EUR',
+      );
+
+      await expectLater(
+        dataSource.uploadTrainingData(receipt, ''),
+        throwsA(isA<ServerFailure>()),
+      );
     });
   });
 }

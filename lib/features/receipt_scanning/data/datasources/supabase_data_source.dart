@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:image_picker/image_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../../../../core/error/failures.dart';
 import '../../domain/entities/receipt.dart';
 
 abstract class SupabaseDataSource {
@@ -78,9 +79,13 @@ class SupabaseDataSourceImpl implements SupabaseDataSource {
   @override
   Future<void> uploadTrainingData(Receipt receipt, String imagePath) async {
     final userId = _currentUserId;
+    // Storage policies only admit objects under the owner's folder; never fall
+    // back to the shared prefix used by the path helpers when signed out.
+    if (userId == null || userId.isEmpty) {
+      throw const ServerFailure('Training upload requires a signed-in user');
+    }
 
     try {
-      String? publicImageUrl;
       final storagePathImage = _imagePath(receipt.id, imagePath, userId: userId);
 
       // 1. Upload Image -> training_data/{userId}/images/{uuid}.ext (Web + Native)
@@ -107,7 +112,6 @@ class SupabaseDataSourceImpl implements SupabaseDataSource {
             imageBytes,
             fileOptions: const FileOptions(cacheControl: '3600', upsert: true),
           );
-          publicImageUrl = client.storage.from('training_data').getPublicUrl(storagePathImage);
           debugPrint('Supabase upload: Image successfully uploaded to $storagePathImage');
         } else {
           debugPrint('Supabase upload: Image file empty or not found at "$imagePath", proceeding with metadata.');
@@ -118,8 +122,7 @@ class SupabaseDataSourceImpl implements SupabaseDataSource {
       final labelJson = {
         "image_id": receipt.id,
         "image_path": storagePathImage,
-        if (publicImageUrl != null) "image_url": publicImageUrl,
-        if (userId != null) "user_id": userId,
+        "user_id": userId,
         "timestamp": DateTime.now().toIso8601String(),
         "ground_truth": {
           "merchant": receipt.merchantName,

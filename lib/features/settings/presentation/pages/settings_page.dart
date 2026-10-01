@@ -11,6 +11,7 @@ import '../../../../core/theme/theme_notifier.dart';
 import '../../../../core/services/secure_storage_service.dart';
 import '../../../receipt_scanning/presentation/providers/receipt_provider.dart';
 import '../../../receipt_scanning/data/datasources/csv_parser_service.dart';
+import '../../../receipt_scanning/data/datasources/sync_service.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../../receipt_scanning/data/models/sync_item_model.dart';
 import '../../../../core/services/google_drive_service.dart';
@@ -529,7 +530,7 @@ class _SettingsPanelWidgetState extends ConsumerState<SettingsPanelWidget> {
                             // AI Data Training Contribution Toggle + Info
                             Consumer(builder: (context, ref, _) {
                               final box = ref.watch(settingsBoxProvider);
-                              final isContributionEnabled = box.get('ai_dataset_contribution_enabled', defaultValue: true) as bool;
+                              final isContributionEnabled = SyncService.isTrainingContributionEnabled(box);
                               return _row(
                                 label: 'AI Model Training Contribution',
                                 fgCol: fgCol,
@@ -544,9 +545,10 @@ class _SettingsPanelWidgetState extends ConsumerState<SettingsPanelWidget> {
                                           context: context,
                                           builder: (ctx) => AlertDialog(
                                             backgroundColor: colorScheme.surface,
-                                            title: Text('Privacy Governance & PII Scrubbing', style: GoogleFonts.spaceGrotesk(color: fgCol, fontWeight: FontWeight.bold)),
+                                            title: Text('AI Model Training Contribution', style: GoogleFonts.spaceGrotesk(color: fgCol, fontWeight: FontWeight.bold)),
                                             content: Text(
-                                              'All personal identifying information (PII) including customer names, credit card numbers, and physical street addresses are strictly stripped on-device before any receipt taxonomy is shared. Only tokenized line-item categories and price structures are utilized for procedural fine-tuning.',
+                                              'When this is on, every receipt you save is uploaded to a private folder in your tAIdy cloud account: the receipt photo, unaltered, and the extracted data (merchant, date, total, currency and line items). The tAIdy team may use these files to improve receipt recognition. They are not publicly accessible.\n\n'
+                                              'When this is off, nothing is uploaded and receipt photos stay on this device. Turning it off does not delete files that were already uploaded.',
                                               style: GoogleFonts.spaceGrotesk(color: muted, fontSize: 13),
                                             ),
                                             actions: [
@@ -562,7 +564,7 @@ class _SettingsPanelWidgetState extends ConsumerState<SettingsPanelWidget> {
                                     _FigmaToggle(
                                       value: isContributionEnabled,
                                       onChanged: (val) {
-                                        box.put('ai_dataset_contribution_enabled', val);
+                                        box.put(SyncService.trainingContributionKey, val);
                                         setState(() {});
                                       },
                                     ),

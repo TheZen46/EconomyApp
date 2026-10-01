@@ -508,8 +508,10 @@ VALUES ('asset_documents', 'asset_documents', false)
 ON CONFLICT (id) DO NOTHING;
 
 INSERT INTO storage.buckets (id, name, public)
-VALUES ('training_data', 'training_data', true)
+VALUES ('training_data', 'training_data', false)
 ON CONFLICT (id) DO NOTHING;
+-- Projects created while the bucket was public keep the old flag through ON CONFLICT.
+UPDATE storage.buckets SET public = false WHERE id = 'training_data';
 
 DROP POLICY IF EXISTS "Users can manage their own receipt images" ON storage.objects;
 CREATE POLICY "Users can manage their own receipt images"
