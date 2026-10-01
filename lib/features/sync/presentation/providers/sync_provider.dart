@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hive/hive.dart';
 
+import '../../../../core/privacy/network_policy.dart';
 import '../../../../core/providers/supabase_providers.dart';
 import '../../../boxes/data/models/box_model.dart';
 import '../../../boxes/data/providers/boxes_provider.dart';
@@ -55,6 +56,13 @@ final syncEngineProvider = Provider<SyncEngine>((ref) {
     boxesBox: boxesBox,
     invoicesBox: invoicesBox,
     uploadSyncService: uploadSyncService,
+    isCloudAllowed: () {
+      try {
+        return NetworkPolicy.isCloudAllowed(ref.read(settingsBoxProvider));
+      } catch (_) {
+        return true;
+      }
+    },
   );
 
   ref.onDispose(() {

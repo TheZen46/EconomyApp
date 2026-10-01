@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:hive/hive.dart';
 import '../../../receipt_scanning/domain/entities/receipt.dart';
 import '../../../receipt_scanning/data/models/receipt_model.dart';
+import '../../../../core/privacy/network_policy.dart';
 import '../../../../core/services/secure_storage_service.dart';
 import '../../../../core/error/failures.dart';
 import '../../../../core/utils/error_handler.dart';
@@ -27,6 +28,9 @@ class WebhookService {
   Future<void> sendWebhook(Receipt receipt) async {
     if (!settingsBox.get('webhook_enabled', defaultValue: false)) {
       throw const WebhookFailure('Webhook is disabled');
+    }
+    if (!NetworkPolicy.isCloudAllowed(settingsBox)) {
+      throw const WebhookFailure('Isolation mode is on; webhooks are not sent');
     }
 
     final url = await _configuredUrl();
@@ -58,6 +62,9 @@ class WebhookService {
   Future<void> sendTestEvent() async {
     if (!settingsBox.get('webhook_enabled', defaultValue: false)) {
       throw const WebhookFailure('Webhook is disabled');
+    }
+    if (!NetworkPolicy.isCloudAllowed(settingsBox)) {
+      throw const WebhookFailure('Isolation mode is on; webhooks are not sent');
     }
 
     final url = await _configuredUrl();

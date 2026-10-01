@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hive/hive.dart';
 import 'package:t_aidy/core/error/failures.dart';
+import 'package:t_aidy/core/privacy/network_policy.dart';
 import 'package:t_aidy/features/receipt_scanning/domain/entities/receipt.dart';
 import 'package:t_aidy/features/settings/data/datasources/webhook_service.dart';
 
@@ -152,6 +153,34 @@ void main() {
 
       secureStore['webhook_url'] = 'http://127.0.0.1:54321/webhook';
       await expectLater(webhookService.sendTestEvent(), throwsA(isA<NetworkFailure>()));
+    });
+  });
+
+  group('WebhookService - isolation mode', () {
+    test('sends nothing while isolation mode is on', () async {
+      final requests = <RequestOptions>[];
+      final dio = Dio()
+        ..interceptors.add(InterceptorsWrapper(onRequest: (options, handler) {
+          requests.add(options);
+          handler.reject(DioException(requestOptions: options));
+        }));
+      final webhookService = WebhookService(settingsBox, dio);
+      await settingsBox.put('webhook_enabled', true);
+      await settingsBox.put(NetworkPolicy.isolationModeKey, true);
+      secureStore['webhook_url'] = 'https://hooks.example.com/receipts';
+
+      await expectLater(webhookService.sendTestEvent(), throwsA(isA<WebhookFailure>()));
+      await expectLater(
+        webhookService.sendWebhook(Receipt(
+          id: 'r1',
+          merchantName: 'Shop',
+          date: DateTime.utc(2026, 9, 1),
+          totalAmount: 1,
+          currency: 'EUR',
+        )),
+        throwsA(isA<WebhookFailure>()),
+      );
+      expect(requests, isEmpty);
     });
   });
 }

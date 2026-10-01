@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hive/hive.dart';
 import 'package:supabase_flutter/supabase_flutter.dart' show User;
+import 'package:t_aidy/core/privacy/network_policy.dart';
 import 'package:t_aidy/core/providers/supabase_providers.dart';
 import 'package:t_aidy/features/auth/presentation/providers/auth_provider.dart';
 import 'package:t_aidy/features/receipt_scanning/data/datasources/hive_receipt_data_source.dart';
@@ -20,6 +21,16 @@ class _EmptyRemote implements RemoteReplicaDataSource {
 
   @override
   dynamic noSuchMethod(Invocation invocation) => Future.value(<Map<String, dynamic>>[]);
+}
+
+class _CountingRemote implements RemoteReplicaDataSource {
+  int calls = 0;
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) {
+    calls++;
+    return Future.value(<Map<String, dynamic>>[]);
+  }
 }
 
 class _EmptyLocal implements LocalReceiptDataSource {
@@ -90,6 +101,23 @@ void main() {
     c.read(syncProgressProvider.notifier).continueOffline();
 
     expect(c.read(initialSyncCompletedProvider), isTrue);
+    expect(isInitialSyncRecorded(settings, 'user-a'), isFalse);
+  });
+
+  test('isolation mode stops replication before any remote request', () async {
+    await settings.put(NetworkPolicy.isolationModeKey, true);
+    final remote = _CountingRemote();
+    final c = ProviderContainer(overrides: [
+      settingsBoxProvider.overrideWithValue(settings),
+      authProvider.overrideWith((ref) => _FakeAuth('user-a')),
+      remoteReplicaDataSourceProvider.overrideWithValue(remote),
+      localDataSourceProvider.overrideWithValue(_EmptyLocal()),
+    ]);
+    addTearDown(c.dispose);
+
+    expect(await c.read(syncProgressProvider.notifier).startInitialSync('user-a'), isFalse);
+    expect(remote.calls, 0);
+    expect(c.read(syncProgressProvider).canContinueOffline, isTrue);
     expect(isInitialSyncRecorded(settings, 'user-a'), isFalse);
   });
 

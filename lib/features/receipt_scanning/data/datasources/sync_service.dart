@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:hive/hive.dart';
 import 'package:synchronized/synchronized.dart';
 
+import '../../../../core/privacy/network_policy.dart';
 import '../../../../core/services/google_drive_service.dart';
 import '../models/sync_item_model.dart';
 import 'hive_receipt_data_source.dart';
@@ -25,6 +26,10 @@ class SyncService {
   final SupabaseDataSource supabaseDataSource;
   final Box settingsBox;
   final GoogleDriveService googleDriveService;
+
+  /// Whether the box with the given id is private. Receipts in private boxes
+  /// are never uploaded for model training.
+  final bool Function(String? boxId) isPrivateBox;
   final math.Random _random = math.Random();
 
   StreamSubscription<List<ConnectivityResult>>? _connectivitySubscription;
@@ -42,7 +47,8 @@ class SyncService {
     required this.supabaseDataSource,
     required this.settingsBox,
     required this.googleDriveService,
-  }) {
+    bool Function(String? boxId)? isPrivateBox,
+  }) : isPrivateBox = isPrivateBox ?? _noPrivateBoxes {
     // Listen to network changes (v6.0 API returns List)
     try {
       _connectivitySubscription = Connectivity().onConnectivityChanged.listen((List<ConnectivityResult> results) {
@@ -58,6 +64,8 @@ class SyncService {
     // Initial check
     syncPendingItems();
   }
+
+  static bool _noPrivateBoxes(String? boxId) => false;
 
   /// Add item to upload queue
   Future<void> scheduleUpload(String receiptId, String imagePath) async {
@@ -94,6 +102,12 @@ class SyncService {
   Future<void> syncPendingItems() async {
     await _syncLock.synchronized(() async {
       if (queueBox.isEmpty) return;
+
+      // Isolation mode: items stay queued until it is turned off.
+      if (!NetworkPolicy.isCloudAllowed(settingsBox)) {
+        debugPrint('SyncService: Isolation mode is on - skipping syncPendingItems.');
+        return;
+      }
 
       // Check network connectivity before processing
       try {
@@ -233,6 +247,8 @@ class SyncService {
     if (useDrive) {
       // The user's own Google Drive: a personal backup, not the training corpus.
       await googleDriveService.uploadReceiptData(receiptModel.toJson(), receipt.id, item.imagePath);
+    } else if (isPrivateBox(receiptModel.boxId)) {
+      debugPrint('SyncService: ${item.receiptId} is in a private box, not uploading it for training.');
     } else if (isTrainingContributionEnabled(settingsBox)) {
       await supabaseDataSource.uploadTrainingData(receipt, item.imagePath);
     } else {

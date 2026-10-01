@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hive/hive.dart';
+import 'package:t_aidy/core/privacy/network_policy.dart';
 import 'package:t_aidy/core/sync/models/sync_outbox_item.dart';
 import 'package:t_aidy/core/sync/outbox_service.dart';
 import 'package:t_aidy/core/sync/sync_manager.dart';
@@ -122,5 +123,16 @@ void main() {
     await manager.syncAll();
 
     expect(boxesBox.containsKey('box-missed'), isTrue);
+  });
+
+  test('isolation mode skips the sync cycle without any request', () async {
+    serverRows.add(_boxRow('box-a', _ts(1)));
+    await settingsBox.put(NetworkPolicy.isolationModeKey, true);
+
+    await manager.syncAll();
+
+    expect(client.selectCount, isEmpty);
+    expect(client.upserts, isEmpty);
+    expect(boxesBox.containsKey('box-a'), isFalse);
   });
 }

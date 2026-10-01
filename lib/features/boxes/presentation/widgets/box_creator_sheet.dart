@@ -330,7 +330,7 @@ class _BoxCreatorSheetState extends ConsumerState<BoxCreatorSheet> {
               SwitchListTile(
                 value: _isPrivate,
                 onChanged: (val) => setState(() => _isPrivate = val),
-                title: Text('Private Box (requires auth)', style: GoogleFonts.spaceGrotesk(color: isDark ? Colors.white : Colors.black)),
+                title: Text('Private Box (never used for AI training)', style: GoogleFonts.spaceGrotesk(color: isDark ? Colors.white : Colors.black)),
                 activeColor: const Color(0xFF002FA7),
                 contentPadding: EdgeInsets.zero,
               ),

@@ -66,9 +66,16 @@ class ModelUpdateService extends StateNotifier<UpdateState> {
     this._repository, {
     Dio? dio,
     Future<Directory> Function()? modelsDirectory,
+    bool Function()? isCloudAllowed,
   })  : _dio = dio ?? Dio(),
         _modelsDirectory = modelsDirectory ?? _defaultModelsDirectory,
+        _isCloudAllowed = isCloudAllowed ?? _alwaysAllowed,
         super(const UpdateState());
+
+  /// Whether cloud requests are allowed (isolation mode is off).
+  final bool Function() _isCloudAllowed;
+
+  static bool _alwaysAllowed() => true;
 
   static Future<Directory> _defaultModelsDirectory() async {
     final dir = await getApplicationDocumentsDirectory();
@@ -91,6 +98,8 @@ class ModelUpdateService extends StateNotifier<UpdateState> {
   }
 
   Future<void> checkForUpdates() async {
+    // Isolation mode: no update check, no download.
+    if (!_isCloudAllowed()) return;
     state = state.copyWith(isChecking: true, message: 'Checking for AI updates...', error: null);
 
     try {

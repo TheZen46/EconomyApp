@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 
+import '../../../../core/privacy/network_policy.dart';
 import '../../../../core/theme/theme_notifier.dart';
 import '../../../../core/services/secure_storage_service.dart';
 import '../../../receipt_scanning/presentation/providers/receipt_provider.dart';
@@ -541,6 +542,54 @@ class _SettingsPanelWidgetState extends ConsumerState<SettingsPanelWidget> {
                                     ),
                                   ],
                                 ],
+                              );
+                            }),
+                            Divider(color: divider, height: 1, indent: 20, endIndent: 20),
+                            // Isolation mode: keeps all data on this device (NetworkPolicy).
+                            Consumer(builder: (context, ref, _) {
+                              final box = ref.watch(settingsBoxProvider);
+                              final isIsolated = NetworkPolicy.isIsolated(box);
+                              return _row(
+                                label: 'Isolation Mode (no cloud access)',
+                                fgCol: fgCol,
+                                muted: muted,
+                                trailing: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    IconButton(
+                                      icon: Icon(Icons.info_outline, size: 16, color: muted),
+                                      onPressed: () {
+                                        showDialog(
+                                          context: context,
+                                          builder: (ctx) => AlertDialog(
+                                            backgroundColor: colorScheme.surface,
+                                            title: Text('Isolation Mode', style: GoogleFonts.spaceGrotesk(color: fgCol, fontWeight: FontWeight.bold)),
+                                            content: Text(
+                                              'When this is on, tAIdy keeps all data on this device: cloud synchronization, uploads (training contribution and Google Drive backup), webhooks, Gemini cloud AI and model update checks are skipped. Changes made meanwhile stay queued on the device and are synchronized after you turn it off.\n\n'
+                                              'The eye icon on the dashboard is separate: it only hides figures on screen.',
+                                              style: GoogleFonts.spaceGrotesk(color: muted, fontSize: 13),
+                                            ),
+                                            actions: [
+                                              TextButton(
+                                                onPressed: () => Navigator.pop(ctx),
+                                                child: Text('Understood', style: GoogleFonts.spaceGrotesk(color: _accent, fontWeight: FontWeight.bold)),
+                                              ),
+                                            ],
+                                          ),
+                                        );
+                                      },
+                                    ),
+                                    _FigmaToggle(
+                                      value: isIsolated,
+                                      onChanged: (val) async {
+                                        await box.put(NetworkPolicy.isolationModeKey, val);
+                                        // The AI service is chosen from settings; re-evaluate it.
+                                        ref.invalidate(aiServiceProvider);
+                                        setState(() {});
+                                      },
+                                    ),
+                                  ],
+                                ),
                               );
                             }),
                             Divider(color: divider, height: 1, indent: 20, endIndent: 20),

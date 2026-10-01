@@ -32,6 +32,9 @@ class SyncEngine {
   final Box<TaxonomyConfigModel>? taxonomyBox;
   final SyncService? uploadSyncService;
 
+  /// Whether cloud requests are allowed (isolation mode is off).
+  final bool Function() isCloudAllowed;
+
   final Lock _engineLock = Lock();
   final math.Random _random = math.Random();
 
@@ -54,9 +57,12 @@ class SyncEngine {
     this.invoicesBox,
     this.taxonomyBox,
     this.uploadSyncService,
-  }) {
+    bool Function()? isCloudAllowed,
+  }) : isCloudAllowed = isCloudAllowed ?? _alwaysAllowed {
     _initConnectivityListener();
   }
+
+  static bool _alwaysAllowed() => true;
 
   void _initConnectivityListener() {
     try {
@@ -104,6 +110,16 @@ class SyncEngine {
     bool isInitial = true,
   }) async {
     return await _engineLock.synchronized(() async {
+      if (!isCloudAllowed()) {
+        _emit(SyncProgressState(
+          stage: SyncStage.failed,
+          isInitialSync: isInitial,
+          message: 'Isolation mode is on. Cloud synchronization is disabled.',
+          errorMessage: 'Turn off isolation mode in Settings to synchronize.',
+          canContinueOffline: true,
+        ));
+        return false;
+      }
       _shouldCancel = false;
       int attempt = 0;
       const maxAttempts = 5;
