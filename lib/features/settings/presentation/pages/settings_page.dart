@@ -19,6 +19,7 @@ import '../../../../core/services/biometric_service.dart';
 import '../../../../core/utils/error_handler.dart';
 import '../../../../core/routes/app_router.dart';
 import '../../../sync/presentation/providers/sync_provider.dart';
+import '../../../../core/sync/sync_providers.dart';
 import '../providers/llm_provider.dart';
 import '../widgets/dataset_export_dialog.dart';
 
@@ -762,6 +763,27 @@ class _SettingsPanelWidgetState extends ConsumerState<SettingsPanelWidget> {
                                   ),
                                 ),
                               ],
+                              Consumer(builder: (context, ref, _) {
+                                final deadLettered = ref.watch(deadLetteredMutationCountProvider).valueOrNull ?? 0;
+                                if (deadLettered == 0) return const SizedBox.shrink();
+                                return Column(
+                                  children: [
+                                    Divider(color: divider, height: 1, indent: 20, endIndent: 20),
+                                    _row(
+                                      label: '$deadLettered unsynced ${deadLettered == 1 ? 'change' : 'changes'} rejected by the server',
+                                      fgCol: const Color(0xFFD4183D),
+                                      muted: muted,
+                                      trailing: _chip('Retry', _accent, divider),
+                                      onTap: () {
+                                        ref.read(syncManagerProvider)?.retryDeadLettered();
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          const SnackBar(content: Text('Retrying rejected changes…')),
+                                        );
+                                      },
+                                    ),
+                                  ],
+                                );
+                              }),
                             ],
                           ),
                         );

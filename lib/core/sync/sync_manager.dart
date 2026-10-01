@@ -8,6 +8,7 @@ import 'package:synchronized/synchronized.dart';
 import '../privacy/pii_scrubber_service.dart';
 import 'conflict_policy.dart';
 import 'outbox_service.dart';
+import 'sync_error_policy.dart';
 import '../../features/boxes/data/models/box_model.dart';
 import '../../features/invoices/data/models/invoice_model.dart';
 import '../../features/evault/data/models/asset_model.dart';
@@ -96,24 +97,50 @@ class SyncManager {
   }
 
   /// Flushes pending outbox items to Supabase.
+  ///
+  /// Mutations of one entity are applied in creation order. A mutation that fails,
+  /// or is still waiting out its retry backoff, holds back the later mutations of
+  /// the same entity only, so unrelated entities keep synchronizing. Errors that
+  /// cannot succeed on retry are dead-lettered immediately.
   Future<void> _flushOutbox(String userId) async {
-    final pending = outboxService.getPendingMutations();
-    if (pending.isEmpty) {
+    final queued = outboxService.getPendingMutations();
+    if (queued.isEmpty) {
       debugPrint('SyncManager: Outbox is empty.');
       return;
     }
 
-    debugPrint('SyncManager: Processing ${pending.length} pending outbox items...');
+    debugPrint('SyncManager: Processing ${queued.length} pending outbox items...');
 
-    for (final item in pending) {
+    final now = DateTime.now();
+    final heldEntities = <String>{};
+
+    for (final item in queued) {
+      final entityKey = '${item.entityType}:${item.entityId}';
+      if (heldEntities.contains(entityKey)) continue;
+      if (outboxService.isBackingOff(item, now)) {
+        heldEntities.add(entityKey);
+        continue;
+      }
+
+      final table = _mapEntityTypeToTable(item.entityType);
+      if (table == null) {
+        await outboxService.markFailed(
+          item.id,
+          'Unknown entity type "${item.entityType}"',
+          permanent: true,
+        );
+        continue;
+      }
+
       try {
         var payload = Map<String, dynamic>.from(item.payload);
-        payload['user_id'] = userId;
+        // user_profiles is keyed by the user id itself and has no user_id column.
+        if (item.entityType != 'profile') {
+          payload['user_id'] = userId;
+        }
         if (item.entityType == 'receipt') {
           payload = ReceiptModel.sanitizeRemotePayload(payload);
         }
-
-        final table = _mapEntityTypeToTable(item.entityType);
 
         if (item.mutationType == 'delete') {
           // Soft-delete tombstone
@@ -134,11 +161,17 @@ class SyncManager {
         await outboxService.markCompleted(item.id);
       } catch (e) {
         debugPrint('SyncManager: Failed to sync outbox item ${item.id}: $e');
-        await outboxService.markFailed(item.id, e.toString());
-        // Preserve FIFO ordering and causality: abort remaining flush for this cycle
-        break;
+        await outboxService.markFailed(item.id, e.toString(), permanent: isPermanentSyncError(e));
+        heldEntities.add(entityKey);
       }
     }
+  }
+
+  /// Resets dead-lettered mutations and runs a synchronization cycle, for use
+  /// after the cause (for example a missing migration) has been corrected.
+  Future<void> retryDeadLettered() async {
+    await outboxService.retryPermanentlyFailed();
+    await syncAll();
   }
 
   /// Staging anonymized training data to Tier 1 tables.
@@ -301,7 +334,8 @@ class SyncManager {
     );
   }
 
-  String _mapEntityTypeToTable(String entityType) {
+  /// Remote table for [entityType], or null when the type is not synchronized.
+  String? _mapEntityTypeToTable(String entityType) {
     switch (entityType) {
       case 'receipt':
         return 'receipts';
@@ -316,7 +350,7 @@ class SyncManager {
       case 'taxonomy':
         return 'taxonomies';
       default:
-        return 'receipts';
+        return null;
     }
   }
 }

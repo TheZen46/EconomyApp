@@ -53,16 +53,26 @@ class OutboxService {
     final list = outboxBox.values.where((item) {
       if (item.status == 'pending') return true;
       if (item.status == 'failed') {
-        if (!respectBackoff || item.lastAttemptAt == null) return true;
-        // Exponential backoff: 2s, 4s, 8s, 16s, 32s, 64s
-        final backoffSeconds = 1 << item.retryCount.clamp(0, 6);
-        final nextRetry = item.lastAttemptAt!.add(Duration(seconds: backoffSeconds));
-        return now.isAfter(nextRetry);
+        return !respectBackoff || !isBackingOff(item, now);
       }
       return false;
     }).toList();
     list.sort((a, b) => a.timestamp.compareTo(b.timestamp));
     return list;
+  }
+
+  /// Whether a failed [item] is still inside its exponential backoff window
+  /// (2s, 4s, 8s, 16s, 32s, 64s after the last attempt) at [now].
+  bool isBackingOff(SyncOutboxItem item, DateTime now) {
+    if (item.status != 'failed' || item.lastAttemptAt == null) return false;
+    final backoffSeconds = 1 << item.retryCount.clamp(0, 6);
+    final nextRetry = item.lastAttemptAt!.add(Duration(seconds: backoffSeconds));
+    return !now.isAfter(nextRetry);
+  }
+
+  /// Mutations that were dead-lettered and are no longer retried automatically.
+  List<SyncOutboxItem> getPermanentlyFailed() {
+    return outboxBox.values.where((item) => item.status == 'permanently_failed').toList();
   }
 
   /// Marks a mutation as successfully synchronized and removes it from the queue.

@@ -1,10 +1,8 @@
-import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hive/hive.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:t_aidy/core/sync/models/sync_outbox_item.dart';
 import 'package:t_aidy/core/sync/outbox_service.dart';
 import 'package:t_aidy/core/sync/sync_manager.dart';
@@ -12,6 +10,8 @@ import 'package:t_aidy/features/boxes/data/models/box_model.dart';
 import 'package:t_aidy/features/evault/data/models/asset_model.dart';
 import 'package:t_aidy/features/invoices/data/models/invoice_model.dart';
 import 'package:t_aidy/features/receipt_scanning/data/models/receipt_model.dart';
+
+import 'support/fake_supabase.dart';
 
 /// Collects the column names of [table] from every migration in `supabase/migrations/`,
 /// from both its `CREATE TABLE` block and its `ADD COLUMN IF NOT EXISTS` statements.
@@ -56,76 +56,6 @@ ReceiptModel _receipt({String id = 'rec-1', List<ReceiptItemModel>? items, int v
         [ReceiptItemModel(description: 'Bread', unitPrice: 2.5, quantity: 5)],
     version: version,
   );
-}
-
-class _FakeAuth extends Fake implements GoTrueClient {
-  @override
-  User? get currentUser => User(
-        id: 'user-1',
-        appMetadata: const {},
-        userMetadata: const {},
-        aud: 'authenticated',
-        createdAt: '2026-01-01T00:00:00Z',
-      );
-}
-
-/// Records writes and serves canned rows for selects.
-class _FakeSupabase extends Fake implements SupabaseClient {
-  final Map<String, List<Map<String, dynamic>>> rowsByTable;
-  final List<MapEntry<String, Object>> upserts = [];
-
-  _FakeSupabase({this.rowsByTable = const {}});
-
-  @override
-  GoTrueClient get auth => _FakeAuth();
-
-  @override
-  SupabaseQueryBuilder from(String table) => _FakeQueryBuilder(this, table);
-}
-
-class _FakeQueryBuilder extends Fake implements SupabaseQueryBuilder {
-  final _FakeSupabase client;
-  final String table;
-
-  _FakeQueryBuilder(this.client, this.table);
-
-  @override
-  PostgrestFilterBuilder<dynamic> upsert(
-    Object values, {
-    String? onConflict,
-    bool ignoreDuplicates = false,
-    bool defaultToNull = true,
-  }) {
-    client.upserts.add(MapEntry(table, values));
-    return _FakeFilterBuilder<dynamic>(null);
-  }
-
-  @override
-  PostgrestFilterBuilder<dynamic> insert(Object values, {bool defaultToNull = true}) {
-    return _FakeFilterBuilder<dynamic>(null);
-  }
-
-  @override
-  PostgrestFilterBuilder<PostgrestList> select([String columns = '*']) {
-    return _FakeFilterBuilder<PostgrestList>(client.rowsByTable[table] ?? <Map<String, dynamic>>[]);
-  }
-}
-
-class _FakeFilterBuilder<T> extends Fake implements PostgrestFilterBuilder<T> {
-  final Object? result;
-
-  _FakeFilterBuilder(this.result);
-
-  @override
-  PostgrestFilterBuilder<T> eq(String column, Object value) => this;
-
-  @override
-  PostgrestFilterBuilder<T> gt(String column, Object value) => this;
-
-  @override
-  Future<R> then<R>(FutureOr<R> Function(T value) onValue, {Function? onError}) async {
-    return onValue(result as T);
-  }
 }
 
 void main() {
@@ -199,7 +129,7 @@ void main() {
       if (tempDir.existsSync()) tempDir.deleteSync(recursive: true);
     });
 
-    SyncManager createManager(_FakeSupabase client) {
+    SyncManager createManager(FakeSupabase client) {
       return SyncManager(
         supabase: client,
         outboxService: outboxService,
@@ -218,15 +148,15 @@ void main() {
         mutationType: 'upsert',
         payload: _receipt().toJson(), // pre-fix payload shape, still containing `date`
       );
-      final client = _FakeSupabase();
+      final client = FakeSupabase();
       final manager = createManager(client);
 
       await manager.syncAll();
       manager.dispose();
 
-      final receiptUpserts = client.upserts.where((u) => u.key == 'receipts').toList();
+      final receiptUpserts = client.upserts.where((u) => u.table == 'receipts').toList();
       expect(receiptUpserts, hasLength(1));
-      final body = receiptUpserts.single.value as Map<String, dynamic>;
+      final body = receiptUpserts.single.values as Map<String, dynamic>;
       expect(body.keys.toSet().difference(ReceiptModel.remoteColumns), isEmpty);
       expect(body['user_id'], 'user-1');
       expect(body['items'], hasLength(1));
@@ -236,7 +166,7 @@ void main() {
     test('pull keeps local line items when the remote row has no items array', () async {
       await receiptsBox.put('rec-1', _receipt());
       final remoteRow = _receipt(version: 2).toRemoteJson()..remove('items');
-      final client = _FakeSupabase(rowsByTable: {'receipts': [remoteRow]});
+      final client = FakeSupabase(rowsByTable: {'receipts': [remoteRow]});
       final manager = createManager(client);
 
       await manager.syncAll();
@@ -253,7 +183,7 @@ void main() {
         version: 2,
         items: [ReceiptItemModel(description: 'Milk', unitPrice: 1.2, quantity: 1)],
       ).toRemoteJson();
-      final client = _FakeSupabase(rowsByTable: {'receipts': [remoteRow]});
+      final client = FakeSupabase(rowsByTable: {'receipts': [remoteRow]});
       final manager = createManager(client);
 
       await manager.syncAll();

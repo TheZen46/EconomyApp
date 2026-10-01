@@ -740,7 +740,7 @@ void main() {
       expect(outboxService.getPendingMutations().length, 1);
     });
 
-    test('SyncManager flushes outbox in FIFO order and aborts immediately on partial failure preserving causality', () async {
+    test('SyncManager flushes outbox in FIFO order and holds back only the failing entity', () async {
       final mockUser = const User(
         id: 'sync-user-1',
         appMetadata: {},
@@ -751,10 +751,11 @@ void main() {
 
       final receiptsBox = await Hive.openBox<ReceiptModel>('receipts_sync_test');
 
-      // Create 3 queued items:
+      // Create 4 queued items:
       // Item 1: Box upsert (succeeds)
       // Item 2: Box upsert (fails)
-      // Item 3: Box upsert (should NOT be processed after Item 2 failure)
+      // Item 3: Upsert of an unrelated box (proceeds despite Item 2 failure)
+      // Item 4: Later mutation of the failing box (held back to preserve its order)
       final item1 = await outboxService.enqueue(
         entityType: 'box',
         entityId: 'box-1',
@@ -771,7 +772,13 @@ void main() {
         entityType: 'box',
         entityId: 'box-3',
         mutationType: 'upsert',
-        payload: {'id': 'box-3', 'name': 'Dependent Third Box'},
+        payload: {'id': 'box-3', 'name': 'Unrelated Third Box'},
+      );
+      final item4 = await outboxService.enqueue(
+        entityType: 'box',
+        entityId: 'box-2',
+        mutationType: 'upsert',
+        payload: {'id': 'box-2', 'name': 'Failing Box (renamed)'},
       );
 
       final fakeSupabase = FakeSyncSupabaseClient(
@@ -801,10 +808,13 @@ void main() {
       expect(item2Status?.status, 'failed');
       expect(item2Status?.retryCount, 1);
 
-      // Item 3 was NOT processed (preserved causality, status still pending)
-      final item3Status = outboxBox.get(item3.id);
-      expect(item3Status?.status, 'pending');
-      expect(item3Status?.retryCount, 0);
+      // Item 3 belongs to another entity and was not blocked
+      expect(outboxBox.containsKey(item3.id), isFalse);
+
+      // Item 4 was NOT processed (preserved causality for box-2, status still pending)
+      final item4Status = outboxBox.get(item4.id);
+      expect(item4Status?.status, 'pending');
+      expect(item4Status?.retryCount, 0);
 
       await receiptsBox.close();
     });
