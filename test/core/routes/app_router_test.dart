@@ -104,6 +104,9 @@ class FakeLocalReceiptDataSource implements LocalReceiptDataSource {
   Future<List<ReceiptModel>> getReceipts() async => [];
 
   @override
+  Future<ReceiptModel?> getReceipt(String id) async => null;
+
+  @override
   Future<void> saveReceipt(ReceiptModel receipt) async {}
 
   @override

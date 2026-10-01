@@ -43,6 +43,12 @@ class FakeLocalDataSource implements LocalReceiptDataSource {
   }
 
   @override
+  Future<ReceiptModel?> getReceipt(String id) async {
+    if (shouldFail) throw const CacheFailure();
+    return store[id];
+  }
+
+  @override
   Future<void> saveReceipt(ReceiptModel receipt) async {
     if (shouldFail) throw const CacheFailure();
     store[receipt.id] = receipt;

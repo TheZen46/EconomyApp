@@ -62,6 +62,9 @@ class FakeLocalReceiptDataSource implements LocalReceiptDataSource {
   Future<List<ReceiptModel>> getReceipts() async => receipts.values.toList();
 
   @override
+  Future<ReceiptModel?> getReceipt(String id) async => receipts[id];
+
+  @override
   Future<void> saveReceipt(ReceiptModel receipt) async {
     receipts[receipt.id] = receipt;
   }
