@@ -64,9 +64,11 @@ void main() {
       expect(find.text('Daily Velocity'), findsOneWidget);
       expect(find.textContaining('/ day'), findsOneWidget);
       expect(find.textContaining('Projected EOM:'), findsOneWidget);
-      expect(find.textContaining('7d'), findsOneWidget);
-      expect(find.textContaining('14d'), findsOneWidget);
-      expect(find.textContaining('30d'), findsOneWidget);
+      // Exact matches: "30d left in month" (on the first of a 31-day month) or
+      // "27d left in month" also contain the chip labels.
+      expect(find.text('7d'), findsOneWidget);
+      expect(find.text('14d'), findsOneWidget);
+      expect(find.text('30d'), findsOneWidget);
       expect(find.textContaining('left in month'), findsOneWidget);
     });
 
