@@ -10,6 +10,7 @@ import 'package:path_provider/path_provider.dart';
 import '../../features/receipt_scanning/domain/entities/receipt.dart';
 import '../error/failures.dart';
 import 'ai_service.dart';
+import 'llm_receipt_mapper.dart';
 import '../../core/constants/taxonomy_constants.dart';
 import '../utils/json_parser_utils.dart';
 
@@ -103,7 +104,7 @@ $text
         return const Left(AIProcessingFailure('Failed to parse AI output'));
       }
 
-      return Right(_mapToReceipt(data, imagePath));
+      return Right(LlmReceiptMapper.map(data, imagePath));
     } catch (e) {
       debugPrint('LLM Extract Error: $e');
       return const Left(AIProcessingFailure('Failed to parse AI output'));
@@ -146,35 +147,6 @@ $text
     }
   }
 
-
-  Receipt _mapToReceipt(Map<String, dynamic> json, String imagePath) {
-    return Receipt(
-      id: DateTime.now().millisecondsSinceEpoch.toString(),
-      merchantName: json['merchantName'] ?? 'Unknown',
-      date: DateTime.now(),
-      totalAmount: (json['totalAmount'] is num) ? (json['totalAmount'] as num).toDouble() : 0.0,
-      currency: json['currency'] ?? 'EUR',
-      items: _mapItems(json['items']),
-      imagePath: imagePath,
-    );
-  }
-
-  List<ReceiptItem> _mapItems(dynamic itemsJson) {
-    if (itemsJson is! List) return [];
-
-    return itemsJson.map((item) {
-      final desc = item['description']?.toString() ?? 'Unknown Item';
-      final qty = (item['quantity'] is num) ? (item['quantity'] as num).toInt() : 1;
-      final unitPrice = (item['unitPrice'] is num) ? (item['unitPrice'] as num).toDouble() : 0.0;
-
-      return ReceiptItem(
-        description: desc,
-        quantity: qty,
-        unitPrice: unitPrice,
-        totalPrice: qty * unitPrice,
-      );
-    }).toList();
-  }
 
   // OCR Step — must stay on main isolate (uses platform channels)
   Future<String> extractTextFromImage(String path) async {

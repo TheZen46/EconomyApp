@@ -3,6 +3,7 @@
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:t_aidy/core/error/failures.dart';
+import 'package:t_aidy/core/services/llm_receipt_mapper.dart';
 import 'package:t_aidy/core/services/llm_service.dart';
 import 'package:t_aidy/core/utils/json_parser_utils.dart';
 
@@ -88,6 +89,57 @@ Hope this helps!
 
       expect(tokens, isNotEmpty);
       expect(tokens.last, startsWith('Error'));
+    });
+  });
+
+  group('LlmReceiptMapper.map', () {
+    final now = DateTime(2026, 10, 1, 15, 30);
+
+    test('uses the purchase date from the model output', () {
+      final receipt = LlmReceiptMapper.map(
+        {'merchantName': 'Walmart', 'date': '2024-01-15', 'totalAmount': 25.5, 'currency': 'usd'},
+        '/img.jpg',
+        now: now,
+      );
+
+      expect(receipt.date, DateTime(2024, 1, 15));
+      expect(receipt.dateUncertain, isFalse);
+      expect(receipt.currency, 'USD');
+    });
+
+    test('flags the date when it is missing, invalid or in the future', () {
+      for (final date in [null, '', 'yesterday', '2026-02-30', '2027-01-01']) {
+        final receipt = LlmReceiptMapper.map({'merchantName': 'X', 'date': date}, '', now: now);
+        expect(receipt.dateUncertain, isTrue, reason: '$date');
+        expect(receipt.date, DateTime(2026, 10, 1), reason: '$date');
+      }
+    });
+
+    test('assigns UUID v4 identifiers that do not collide', () {
+      final ids = {
+        for (var i = 0; i < 50; i++) LlmReceiptMapper.map({'merchantName': 'X'}, '', now: now).id,
+      };
+
+      expect(ids, hasLength(50));
+      expect(
+        ids.first,
+        matches(RegExp(r'^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$')),
+      );
+    });
+
+    test('keeps a printed line total and skips malformed items', () {
+      final receipt = LlmReceiptMapper.map({
+        'merchantName': 'X',
+        'items': [
+          {'description': 'Cheese 0.43 kg', 'quantity': 1, 'unitPrice': 18.9, 'totalPrice': 8.13},
+          {'description': 'Bread', 'quantity': 2, 'unitPrice': 1.5},
+          'not an item',
+        ],
+      }, '', now: now);
+
+      expect(receipt.items, hasLength(2));
+      expect(receipt.items[0].totalPrice, 8.13);
+      expect(receipt.items[1].totalPrice, 3.0);
     });
   });
 }

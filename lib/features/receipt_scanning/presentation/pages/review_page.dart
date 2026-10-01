@@ -33,6 +33,8 @@ class _ReviewPageState extends ConsumerState<ReviewPage> {
   late TextEditingController _totalController;
   late List<_UiReceiptItem> _items; 
   late DateTime _currentDate;
+  /// The extraction found no purchase date and the user has not set one yet.
+  late bool _dateUncertain;
   
   bool _isTotalLocked = true;
   bool _isSaving = false;
@@ -60,6 +62,7 @@ class _ReviewPageState extends ConsumerState<ReviewPage> {
       }
     });
     _currentDate = widget.receipt.date;
+    _dateUncertain = widget.receipt.dateUncertain;
     _items = widget.receipt.items.map((i) => _UiReceiptItem(const Uuid().v4(), i)).toList();
     _selectedCurrency = widget.receipt.currency;
     if (_selectedCurrency.isEmpty) _selectedCurrency = 'USD';
@@ -558,29 +561,45 @@ class _ReviewPageState extends ConsumerState<ReviewPage> {
                                             firstDate: DateTime(2000),
                                             lastDate: DateTime.now(),
                                           );
-                                          if (picked != null) setState(() => _currentDate = picked);
+                                          if (picked != null) {
+                                            setState(() {
+                                              _currentDate = picked;
+                                              _dateUncertain = false;
+                                            });
+                                          }
                                         },
-                                        child: Container(
-                                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                                          decoration: BoxDecoration(
-                                            color: _getCardColor(context),
-                                            borderRadius: BorderRadius.circular(12),
-                                            border: Border.all(color: _getBorderColor(context)),
-                                          ),
-                                          child: Row(
-                                            mainAxisSize: MainAxisSize.min,
-                                            children: [
-                                              Icon(Icons.calendar_today, size: 14, color: _getTextColor(context)),
-                                              const SizedBox(width: 6),
-                                              Text(
-                                                DateFormat('dd MMM').format(_currentDate),
-                                                style: GoogleFonts.spaceGrotesk(
-                                                  color: _getTextColor(context),
-                                                  fontWeight: FontWeight.w600,
-                                                  fontSize: 14,
-                                                ),
+                                        child: Tooltip(
+                                          message: _dateUncertain
+                                              ? 'The purchase date could not be read. Tap to set it.'
+                                              : 'Purchase date',
+                                          child: Container(
+                                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                            decoration: BoxDecoration(
+                                              color: _getCardColor(context),
+                                              borderRadius: BorderRadius.circular(12),
+                                              border: Border.all(
+                                                color: _dateUncertain ? _destructiveColor : _getBorderColor(context),
                                               ),
-                                            ],
+                                            ),
+                                            child: Row(
+                                              mainAxisSize: MainAxisSize.min,
+                                              children: [
+                                                Icon(
+                                                  _dateUncertain ? Icons.event_busy : Icons.calendar_today,
+                                                  size: 14,
+                                                  color: _dateUncertain ? _destructiveColor : _getTextColor(context),
+                                                ),
+                                                const SizedBox(width: 6),
+                                                Text(
+                                                  _dateUncertain ? 'Set date' : DateFormat('dd MMM').format(_currentDate),
+                                                  style: GoogleFonts.spaceGrotesk(
+                                                    color: _getTextColor(context),
+                                                    fontWeight: FontWeight.w600,
+                                                    fontSize: 14,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
                                           ),
                                         ),
                                       ),
