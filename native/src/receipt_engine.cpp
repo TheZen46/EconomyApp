@@ -28,7 +28,12 @@
 
 #if __has_include("llama.h")
 #include "llama.h"
+#define RECEIPT_ENGINE_HAS_LLAMA 1
 #else
+// llama.cpp is not available to this build. The declarations below only let the
+// translation unit compile; they do not implement inference, so
+// receipt_engine_init refuses to create an engine (RECEIPT_ENGINE_HAS_LLAMA == 0).
+#define RECEIPT_ENGINE_HAS_LLAMA 0
 
 struct llama_model;
 struct llama_context;
@@ -443,84 +448,16 @@ static std::string execute_grammar_constrained_sampling(
         return generated_json;
     }
 
-    // High-performance deterministic fallback generator for headless test environments
-    if (!prefix_hit && engine->kv_cache) {
-        int bid1 = engine->kv_cache->allocate_block();
-        int bid2 = engine->kv_cache->allocate_block();
-        std::vector<int> b = {bid1, bid2};
-        engine->kv_cache->register_prefix_cache(prompt_hash, b, 32);
+    // No model is loaded. Report the failure and signal completion to streaming
+    // consumers instead of producing output.
+    set_error(engine, "No language model is loaded");
+    if (engine->token_ring) {
+        engine->token_ring->try_push("", 1);
     }
-
-    std::ostringstream json;
-    json << "{\n"
-         << "  \"merchant_name\": \"ESSELUNGA S.P.A.\",\n"
-         << "  \"merchant_address\": \"Via Carlo De Angeli 3, 20141 Milano (MI)\",\n"
-         << "  \"vat_number\": \"IT01234567890\",\n"
-         << "  \"date\": \"2026-09-02\",\n"
-         << "  \"time\": \"10:30\",\n"
-         << "  \"currency\": \"EUR\",\n"
-         << "  \"items\": [\n"
-         << "    {\n"
-         << "      \"raw_name\": \"BANANE BIO CHIQUITA KG\",\n"
-         << "      \"normalized_name\": \"Bananas\",\n"
-         << "      \"main_category\": \"Fresh Produce\",\n"
-         << "      \"sub_category\": \"Fruits\",\n"
-         << "      \"necessity\": \"essential\",\n"
-         << "      \"quantity\": 1,\n"
-         << "      \"unit_price\": 2.19,\n"
-         << "      \"total_price\": 2.19,\n"
-         << "      \"is_asset\": false\n"
-         << "    },\n"
-         << "    {\n"
-         << "      \"raw_name\": \"LATTE FRESCO INTERO 1L\",\n"
-         << "      \"normalized_name\": \"Milk (Whole/Skim)\",\n"
-         << "      \"main_category\": \"Proteins & Dairy\",\n"
-         << "      \"sub_category\": \"Dairy & Alternatives\",\n"
-         << "      \"necessity\": \"essential\",\n"
-         << "      \"quantity\": 2,\n"
-         << "      \"unit_price\": 1.69,\n"
-         << "      \"total_price\": 3.38,\n"
-         << "      \"is_asset\": false\n"
-         << "    },\n"
-         << "    {\n"
-         << "      \"raw_name\": \"PARMIGIANO REGGIANO 24M\",\n"
-         << "      \"normalized_name\": \"Cheese (Fancy)\",\n"
-         << "      \"main_category\": \"Proteins & Dairy\",\n"
-         << "      \"sub_category\": \"Dairy & Alternatives\",\n"
-         << "      \"necessity\": \"discretional\",\n"
-         << "      \"quantity\": 1,\n"
-         << "      \"unit_price\": 5.90,\n"
-         << "      \"total_price\": 5.90,\n"
-         << "      \"is_asset\": false\n"
-         << "    }\n"
-         << "  ],\n"
-         << "  \"tax_breakdown\": [\n"
-         << "    {\n"
-         << "      \"rate\": 0.04,\n"
-         << "      \"tax_amount\": 0.08\n"
-         << "    },\n"
-         << "    {\n"
-         << "      \"rate\": 0.1,\n"
-         << "      \"tax_amount\": 0.84\n"
-         << "    }\n"
-         << "  ],\n"
-         << "  \"total_amount\": 11.47,\n"
-         << "  \"confidence_score\": 0.98\n"
-         << "}";
-
-    std::string res = json.str();
-    const size_t chunk_size = 16;
-    for (size_t i = 0; i < res.length(); i += chunk_size) {
-        std::string chunk = res.substr(i, chunk_size);
-        bool is_done = (i + chunk_size >= res.length());
-        if (engine->token_ring) {
-            engine->token_ring->try_push(chunk.c_str(), is_done ? 1 : 0);
-        }
-        if (callback) {
-            callback(chunk.c_str(), is_done ? 1 : 0, user_data);
-        }
+    if (callback) {
+        callback("", 1, user_data);
     }
-    return res;
+    return "";
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -633,6 +570,10 @@ RECEIPT_ENGINE_API receipt_engine_t* receipt_engine_init(
     if (!model_path || strlen(model_path) == 0) {
         return nullptr;
     }
+    if (!RECEIPT_ENGINE_HAS_LLAMA) {
+        // Built without llama.cpp: no inference backend exists, so no engine is created.
+        return nullptr;
+    }
 
     auto engine = std::make_unique<receipt_engine_t>();
     engine->model_path = model_path;
@@ -669,6 +610,18 @@ RECEIPT_ENGINE_API receipt_engine_t* receipt_engine_init(
 
             engine->ctx = llama_init_from_model(engine->model, cparams);
         }
+    }
+
+    // An engine without a model and context cannot produce output; report failure
+    // to the caller instead of handing out a handle that claims to be ready.
+    if (!engine->model || !engine->ctx) {
+        if (engine->ctx) {
+            llama_free(engine->ctx);
+        }
+        if (engine->model) {
+            llama_model_free(engine->model);
+        }
+        return nullptr;
     }
 
     // 3. Load GBNF grammar specification
@@ -792,6 +745,11 @@ RECEIPT_ENGINE_API int receipt_engine_process_image(
 
     // 4. Autoregressive Decoding with GBNF Constrained Sampling
     std::string json_result = execute_grammar_constrained_sampling(engine, processed, prompt, nullptr, nullptr);
+
+    if (json_result.empty()) {
+        // Generation failed; execute_grammar_constrained_sampling recorded the reason.
+        return -6;
+    }
 
     if (json_result.length() + 1 > max_output_len) {
         set_error(engine, "Output buffer too small for generated JSON (required " + 

@@ -51,7 +51,9 @@ typedef void (*receipt_token_callback_t)(const char* token, int is_done, void* u
  * @param n_threads Number of CPU compute threads (0 for auto-detection based on hardware concurrency).
  * @param n_gpu_layers Number of layers to offload to GPU / Metal / Vulkan (0 for CPU only).
  * @param n_ctx Context window token capacity (e.g. 2048 or 4096).
- * @return Non-null pointer to initialized engine on success, NULL on failure.
+ * @return Non-null pointer to initialized engine on success, NULL on failure. Fails when the
+ *         model or its context cannot be loaded, and always when the library was built
+ *         without llama.cpp.
  */
 RECEIPT_ENGINE_API receipt_engine_t* receipt_engine_init(
     const char* model_path,
@@ -91,7 +93,9 @@ RECEIPT_ENGINE_API int receipt_engine_is_ready(const receipt_engine_t* engine);
  * @param system_prompt Optional override for the VLM system prompt (NULL for default receipt extractor prompt).
  * @param output_buffer Destination buffer for the generated JSON string.
  * @param max_output_len Size of the destination buffer in bytes.
- * @return 0 on success, negative error code on failure.
+ * @return 0 on success, negative error code on failure: -1 invalid engine, -2 invalid
+ *         parameters, -3 undecodable image, -4 letterbox failure, -5 output buffer too small,
+ *         -6 generation produced no output (see receipt_engine_get_last_error).
  */
 RECEIPT_ENGINE_API int receipt_engine_process_image(
     receipt_engine_t* engine,
