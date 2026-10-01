@@ -639,7 +639,11 @@ RECEIPT_ENGINE_API receipt_engine_t* receipt_engine_init(
 }
 
 RECEIPT_ENGINE_API void receipt_engine_free(receipt_engine_t* engine) {
-    if (engine) {
+    if (!engine) {
+        return;
+    }
+    {
+        // Waits for an in-flight inference call, then releases the resources.
         std::lock_guard<std::mutex> lock(engine->engine_mutex);
         engine->is_initialized = false;
 
@@ -657,9 +661,10 @@ RECEIPT_ENGINE_API void receipt_engine_free(receipt_engine_t* engine) {
         }
         engine->kv_cache.reset();
         engine->token_ring.reset();
-
-        delete engine;
     }
+    // The guard above has released engine_mutex; only now may the engine, which
+    // owns that mutex, be destroyed.
+    delete engine;
 }
 
 RECEIPT_ENGINE_API int receipt_engine_is_ready(const receipt_engine_t* engine) {
