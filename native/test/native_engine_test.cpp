@@ -258,6 +258,25 @@ void test_receipt_engine_ffi() {
     TEST_ASSERT(output_buf[0] == '\0', "No output may be produced without an engine");
 
     receipt_engine_free(nullptr);
+
+    std::cout << "[Test 4.3] C FFI: Streaming always ends with is_done = 1..." << std::endl;
+    struct StreamState { int done_calls = 0; } state;
+    auto on_token = [](const char*, int is_done, void* user_data) {
+        if (is_done) static_cast<StreamState*>(user_data)->done_calls++;
+    };
+    int stream_res = receipt_engine_process_image_streaming(
+        nullptr,
+        reinterpret_cast<const uint8_t*>(ppm.data()),
+        ppm.size(),
+        nullptr,
+        nullptr,
+        on_token,
+        &state
+    );
+    TEST_ASSERT(stream_res == -1, "receipt_engine_process_image_streaming(NULL) must return -1");
+    TEST_ASSERT(state.done_calls == 1, "A failed streaming call must still deliver is_done exactly once");
+    TEST_ASSERT(receipt_engine_process_image_streaming(nullptr, nullptr, 0, nullptr, nullptr, nullptr, nullptr) == -1,
+                "A missing callback must be rejected");
     std::cout << "  -> Passed!" << std::endl;
 }
 

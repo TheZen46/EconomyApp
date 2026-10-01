@@ -29,6 +29,7 @@ class VlmWorkerIsolate {
     required Uint8List imageBytes,
     String? fewShotContext,
     String? systemPrompt,
+    Duration timeout = const Duration(seconds: 45),
   }) async* {
     yield* const Stream.empty();
   }

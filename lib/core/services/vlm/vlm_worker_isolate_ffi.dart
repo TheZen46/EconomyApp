@@ -172,6 +172,7 @@ class VlmWorkerIsolate {
     required Uint8List imageBytes,
     String? fewShotContext,
     String? systemPrompt,
+    Duration timeout = const Duration(seconds: 45),
   }) async* {
     if (!_isReady || _sendPort == null) {
       debugPrint('VlmWorkerIsolate: Cannot process image - worker is not ready.');
@@ -206,7 +207,15 @@ class VlmWorkerIsolate {
     ));
 
     try {
-      yield* controller.stream;
+      // Same limit as processImage: a worker that stops answering must not
+      // leave the caller waiting forever.
+      yield* controller.stream.timeout(
+        timeout,
+        onTimeout: (sink) {
+          sink.addError(TimeoutException('No response from the VLM worker', timeout));
+          sink.close();
+        },
+      );
     } finally {
       await subscription.cancel();
       responsePort.close();

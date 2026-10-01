@@ -557,6 +557,32 @@ static int detect_optimal_threads(int requested_threads) {
 // C FFI INTERFACE IMPLEMENTATION
 // ══════════════════════════════════════════════════════════════════════════════
 
+namespace {
+
+// Forwards streaming callbacks and, if no call carried is_done = 1 by the time
+// it goes out of scope, delivers a final empty token with is_done = 1.
+struct StreamCompletionGuard {
+    receipt_token_callback_t callback;
+    void* user_data;
+    bool done = false;
+
+    static void forward(const char* token, int is_done, void* self_ptr) {
+        auto* self = static_cast<StreamCompletionGuard*>(self_ptr);
+        if (is_done) {
+            self->done = true;
+        }
+        self->callback(token, is_done, self->user_data);
+    }
+
+    ~StreamCompletionGuard() {
+        if (!done) {
+            callback("", 1, user_data);
+        }
+    }
+};
+
+} // namespace
+
 extern "C" {
 
 RECEIPT_ENGINE_API receipt_engine_t* receipt_engine_init(
@@ -775,7 +801,16 @@ RECEIPT_ENGINE_API int receipt_engine_process_image_streaming(
     receipt_token_callback_t callback,
     void* user_data
 ) {
-    if (!engine || !engine->is_initialized || !callback) {
+    if (!callback) {
+        return -1;
+    }
+    // From here on every return path ends the stream with is_done = 1, so a
+    // consumer waiting for completion is never left waiting.
+    StreamCompletionGuard completion{callback, user_data};
+    callback = StreamCompletionGuard::forward;
+    user_data = &completion;
+
+    if (!engine || !engine->is_initialized) {
         return -1;
     }
     if (!image_bytes || image_len == 0) {
@@ -802,7 +837,11 @@ RECEIPT_ENGINE_API int receipt_engine_process_image_streaming(
         few_shot_context, system_prompt, engine->default_system_prompt
     );
 
-    execute_grammar_constrained_sampling(engine, processed, prompt, callback, user_data);
+    std::string generated = execute_grammar_constrained_sampling(engine, processed, prompt, callback, user_data);
+    if (generated.empty()) {
+        // Generation failed; execute_grammar_constrained_sampling recorded the reason.
+        return -6;
+    }
 
     return 0;
 }

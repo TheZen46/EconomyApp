@@ -115,9 +115,12 @@ RECEIPT_ENGINE_API int receipt_engine_process_image(
  * @param image_len Length of the image bytes buffer.
  * @param few_shot_context Optional few-shot context string (NULL if none).
  * @param system_prompt Optional system prompt override (NULL if default).
- * @param callback Function called synchronously as tokens are produced.
+ * @param callback Function called synchronously as tokens are produced. Unless callback is
+ *        NULL, it is called with is_done = 1 exactly once before this function returns, on
+ *        success and on every failure.
  * @param user_data Passed directly to callback.
- * @return 0 on success, negative error code on failure.
+ * @return 0 on success, negative error code on failure: -1 invalid engine or NULL callback,
+ *         -2 invalid image bytes, -3 undecodable image, -6 generation produced no output.
  */
 RECEIPT_ENGINE_API int receipt_engine_process_image_streaming(
     receipt_engine_t* engine,
