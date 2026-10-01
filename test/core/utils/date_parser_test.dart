@@ -29,6 +29,16 @@ void main() {
     });
   });
 
+  group('ReceiptDateParser.detectDayFirst', () {
+    test('follows the unambiguous dates and reads ambiguous ones accordingly', () {
+      expect(ReceiptDateParser.detectDayFirst(['03/04/2026', '25/04/2026']), isTrue);
+      expect(ReceiptDateParser.detectDayFirst(['03/04/2026', '04/25/2026']), isFalse);
+      expect(ReceiptDateParser.detectDayFirst(['03/04/2026', '2026-04-25', 'Coffee']), isNull);
+      expect(ReceiptDateParser.parse('03/04/2026', dayFirst: false), DateTime(2026, 3, 4));
+      expect(ReceiptDateParser.parse('25/04/2026', dayFirst: false), DateTime(2026, 4, 25));
+    });
+  });
+
   group('ReceiptDateParser.parsePurchaseDate', () {
     final now = DateTime(2026, 10, 1);
 

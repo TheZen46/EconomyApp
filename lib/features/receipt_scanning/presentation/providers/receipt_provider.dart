@@ -255,7 +255,9 @@ class ReceiptListNotifier extends StateNotifier<AsyncValue<List<Receipt>>> {
 
   Future<Either<Failure, CsvImportReport>> importCsvTransactions(String csvString, CsvParserService parser) async {
     try {
-      final parseResult = parser.importCsv(csvString);
+      final current = state.valueOrNull ?? [];
+      // Rows already imported from an earlier copy of the file are skipped.
+      final parseResult = parser.importCsv(csvString, existing: current);
       return await parseResult.fold(
         (failure) async => Left(failure),
         (report) async {
@@ -263,7 +265,6 @@ class ReceiptListNotifier extends StateNotifier<AsyncValue<List<Receipt>>> {
             return Right(report);
           }
 
-          final current = state.valueOrNull ?? [];
           final List<Receipt> newlyAdded = [];
           for (final r in report.successfulReceipts) {
             final saveResult = await _repository.saveReceipt(r);

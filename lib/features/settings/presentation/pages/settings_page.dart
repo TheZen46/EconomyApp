@@ -1186,8 +1186,10 @@ class _SettingsPanelWidgetState extends ConsumerState<SettingsPanelWidget> {
                   children: [
                     _buildStatItem('Processed', report.totalRows.toString(), fgCol, muted),
                     _buildStatItem('Imported', report.successCount.toString(), const Color(0xFF16A34A), muted),
+                    // Credits, refunds and rows imported before.
+                    _buildStatItem('Skipped', report.skippedCount.toString(), muted, muted),
                     _buildStatItem(
-                      'Skipped',
+                      'Failed',
                       report.failureCount.toString(),
                       report.failureCount > 0 ? const Color(0xFFD4183D) : muted,
                       muted,
