@@ -5,6 +5,8 @@ import 'package:flutter/foundation.dart';
 class VlmWorkerIsolate {
   bool get isReady => false;
 
+  bool get isBusy => false;
+
   Future<bool> start({
     required String modelPath,
     String? mmprojPath,
@@ -12,6 +14,7 @@ class VlmWorkerIsolate {
     int nThreads = 4,
     int nGpuLayers = 0,
     int nCtx = 2048,
+    Duration? initTimeout,
   }) async {
     return false;
   }
