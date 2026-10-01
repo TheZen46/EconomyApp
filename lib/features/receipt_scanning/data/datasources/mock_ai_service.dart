@@ -9,12 +9,13 @@ import '../../../../core/services/ai_service.dart';
 import '../../domain/entities/receipt.dart';
 import '../../../../core/constants/taxonomy_constants.dart';
 
-/// Dynamic optical and heuristic fallback service for receipt data extraction.
+/// OCR-based fallback for receipt data extraction, used when no AI backend is
+/// available.
 ///
-/// Executes on-device Latin ML Kit OCR on supported mobile platforms (Android/iOS)
-/// and applies deterministic regex heuristics to parse merchants, dates, currency,
-/// line items, and totals. On desktop, web, or offline test environments, infers
-/// structured receipt data dynamically from file attributes, metadata, and taxonomy.
+/// Runs on-device Latin ML Kit OCR on Android and iOS and applies regular
+/// expression heuristics to the recognized text. When OCR is unavailable (desktop,
+/// web) or yields nothing usable, it returns [ExtractionUnavailableFailure]
+/// rather than data that was not read from the image.
 class FallbackAIService implements AIService {
   @override
   Future<Either<Failure, Receipt>> extractReceiptData(
@@ -47,9 +48,7 @@ class FallbackAIService implements AIService {
         }
       }
 
-      // 2. Offline / Desktop / Synthetic fallback heuristic parser
-      final parsedReceipt = _parseHeuristically(imagePath, taxonomy: taxonomy);
-      return Right(parsedReceipt);
+      return const Left(ExtractionUnavailableFailure());
     } catch (e) {
       debugPrint('FallbackAIService error: $e');
       return const Left(AIProcessingFailure('Failed to parse receipt data'));
@@ -163,121 +162,6 @@ class FallbackAIService implements AIService {
                 necessity: ItemNecessity.essential,
               )
             ],
-      imagePath: imagePath,
-    );
-  }
-
-  Receipt _parseHeuristically(
-    String imagePath, {
-    Map<String, Map<String, List<TaxonomyItem>>>? taxonomy,
-  }) {
-    final fileName = imagePath.split(RegExp(r'[\\/]')).last.replaceAll(RegExp(r'\.[a-zA-Z0-9]+$'), '');
-    final lowerName = fileName.toLowerCase();
-
-    // Determine merchant and category from file name or taxonomy
-    String merchant = 'Local Merchant';
-    String category = 'Groceries';
-    List<ReceiptItem> dynamicItems = [];
-    String currency = 'EUR';
-
-    if (lowerName.contains('apple') || lowerName.contains('hardware') || lowerName.contains('tech')) {
-      merchant = 'Apple Store';
-      category = 'Tech';
-      currency = 'USD';
-      dynamicItems = [
-        ReceiptItem(
-          description: 'USB-C Fast Charger 30W',
-          unitPrice: 29.00,
-          quantity: 1,
-          totalPrice: 29.00,
-          necessity: ItemNecessity.discretional,
-          mainCategory: 'Electronics',
-          isAsset: true,
-        ),
-        ReceiptItem(
-          description: 'Braided Lightning Cable',
-          unitPrice: 19.00,
-          quantity: 1,
-          totalPrice: 19.00,
-          necessity: ItemNecessity.essential,
-          mainCategory: 'Electronics',
-          isAsset: true,
-        ),
-      ];
-    } else if (lowerName.contains('starbucks') || lowerName.contains('coffee') || lowerName.contains('cafe')) {
-      merchant = 'Starbucks Coffee';
-      category = 'Restaurant';
-      currency = 'USD';
-      dynamicItems = [
-        ReceiptItem(
-          description: 'Caffe Latte Grande',
-          unitPrice: 4.75,
-          quantity: 1,
-          totalPrice: 4.75,
-          necessity: ItemNecessity.discretional,
-          mainCategory: 'Food & Drink',
-        ),
-        ReceiptItem(
-          description: 'Blueberry Muffin',
-          unitPrice: 3.50,
-          quantity: 1,
-          totalPrice: 3.50,
-          necessity: ItemNecessity.junk,
-          mainCategory: 'Food & Drink',
-        ),
-      ];
-    } else if (lowerName.contains('uber') || lowerName.contains('transit') || lowerName.contains('taxi')) {
-      merchant = 'Uber Mobility';
-      category = 'Transport';
-      currency = 'EUR';
-      dynamicItems = [
-        ReceiptItem(
-          description: 'Urban Ride Comfort',
-          unitPrice: 24.50,
-          quantity: 1,
-          totalPrice: 24.50,
-          necessity: ItemNecessity.essential,
-          mainCategory: 'Transportation',
-        ),
-      ];
-    } else {
-      // Dynamic fallback derived from taxonomy or intelligent default
-      if (taxonomy != null && taxonomy.isNotEmpty) {
-        final firstCategory = taxonomy.keys.first;
-        merchant = '$firstCategory Store';
-        category = firstCategory;
-      }
-      dynamicItems = [
-        ReceiptItem(
-          description: 'Fresh Grocery Supplies',
-          unitPrice: 18.50,
-          quantity: 2,
-          totalPrice: 37.00,
-          necessity: ItemNecessity.essential,
-          mainCategory: category,
-        ),
-        ReceiptItem(
-          description: 'Sparkling Mineral Water',
-          unitPrice: 2.20,
-          quantity: 2,
-          totalPrice: 4.40,
-          necessity: ItemNecessity.essential,
-          mainCategory: category,
-        ),
-      ];
-    }
-
-    final total = dynamicItems.fold(0.0, (sum, i) => sum + i.totalPrice);
-    final now = DateTime.now();
-
-    return Receipt(
-      id: const Uuid().v4(),
-      merchantName: merchant,
-      date: now,
-      time: '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}',
-      totalAmount: double.parse(total.toStringAsFixed(2)),
-      currency: currency,
-      items: dynamicItems,
       imagePath: imagePath,
     );
   }
