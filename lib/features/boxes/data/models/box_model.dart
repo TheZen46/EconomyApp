@@ -1,8 +1,10 @@
 ﻿import 'package:hive/hive.dart';
 
-part 'box_model.g.dart';
+part 'box_model_adapter.dart';
 
-@HiveType(typeId: 10)
+/// Stored by the hand-written [BoxModelAdapter] (typeId 10) in box_model_adapter.dart.
+/// Intentionally not annotated with @HiveType: generating the adapter would drop the
+/// compatibility handling for records written by earlier versions.
 class BoxModel extends HiveObject {
   @HiveField(0)
   String id;

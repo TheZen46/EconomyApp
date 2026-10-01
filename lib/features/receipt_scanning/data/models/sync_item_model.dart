@@ -1,24 +1,21 @@
 import 'dart:math' as math;
 import 'package:hive/hive.dart';
 
-part 'sync_item_model.g.dart';
+part 'sync_item_model_adapter.dart';
 
-@HiveType(typeId: 12)
+/// Upload lifecycle state. Persisted as its index (field 6 of [SyncItemModel]),
+/// not as a Hive type, so it has no typeId; typeId 12 belongs to SyncOutboxItem.
+/// Append new values at the end only.
 enum SyncStatus {
-  @HiveField(0)
   pending,
-
-  @HiveField(1)
   inProgress,
-
-  @HiveField(2)
   success,
-
-  @HiveField(3)
   permanentlyFailed,
 }
 
-@HiveType(typeId: 6)
+/// Stored by the hand-written [SyncItemModelAdapter] (typeId 6) in sync_item_model_adapter.dart.
+/// Intentionally not annotated with @HiveType: generating the adapter would drop the
+/// compatibility handling for records written by earlier versions.
 class SyncItemModel {
   @HiveField(0)
   final String receiptId;

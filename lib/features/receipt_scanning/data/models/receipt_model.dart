@@ -1,9 +1,11 @@
 import 'package:hive/hive.dart';
 import '../../domain/entities/receipt.dart';
 
-part 'receipt_model.g.dart';
+part 'receipt_model_adapter.dart';
 
-@HiveType(typeId: 0)
+/// Stored by the hand-written [ReceiptModelAdapter] (typeId 0) in receipt_model_adapter.dart.
+/// Intentionally not annotated with @HiveType: generating the adapter would drop the
+/// compatibility handling for records written by earlier versions.
 class ReceiptModel extends HiveObject {
   @HiveField(0)
   final String id;
@@ -255,7 +257,9 @@ class ReceiptModel extends HiveObject {
   }
 }
 
-@HiveType(typeId: 1)
+/// Stored by the hand-written [ReceiptItemModelAdapter] (typeId 1) in receipt_model_adapter.dart.
+/// Intentionally not annotated with @HiveType: generating the adapter would drop the
+/// compatibility handling for records written by earlier versions.
 class ReceiptItemModel {
   @HiveField(0)
   final String description;
