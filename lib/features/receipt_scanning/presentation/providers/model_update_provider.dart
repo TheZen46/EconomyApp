@@ -21,19 +21,23 @@ class UpdateState {
     this.error,
   });
 
+  static const Object _keep = Object();
+
+  /// Returns a copy with the given fields replaced. Passing `message: null` or
+  /// `error: null` clears that field; omitting it keeps the current value.
   UpdateState copyWith({
     bool? isChecking,
     bool? isDownloading,
     double? progress,
-    String? message,
-    String? error,
+    Object? message = _keep,
+    Object? error = _keep,
   }) {
     return UpdateState(
       isChecking: isChecking ?? this.isChecking,
       isDownloading: isDownloading ?? this.isDownloading,
       progress: progress ?? this.progress,
-      message: message ?? this.message,
-      error: error ?? this.error,
+      message: identical(message, _keep) ? this.message : message as String?,
+      error: identical(error, _keep) ? this.error : error as String?,
     );
   }
 }
@@ -87,7 +91,7 @@ class ModelUpdateService extends StateNotifier<UpdateState> {
   }
 
   Future<void> checkForUpdates() async {
-    state = state.copyWith(isChecking: true, message: 'Checking for AI updates...');
+    state = state.copyWith(isChecking: true, message: 'Checking for AI updates...', error: null);
 
     try {
       final configEither = await _repository.getLatestModelConfig();

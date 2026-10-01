@@ -131,4 +131,15 @@ void main() {
       expect(prefs.getString('local_model_version'), '2.0.0');
     });
   });
+
+  group('UpdateState.copyWith', () {
+    test('passing null clears message and error, omitting keeps them', () {
+      const state = UpdateState(message: 'Downloading', error: 'Failed');
+
+      expect(state.copyWith(progress: 0.5).message, 'Downloading');
+      expect(state.copyWith(progress: 0.5).error, 'Failed');
+      expect(state.copyWith(message: null).message, isNull);
+      expect(state.copyWith(error: null).error, isNull);
+    });
+  });
 }
