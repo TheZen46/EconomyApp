@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../../../../core/providers/supabase_providers.dart';
 import '../../../../core/services/secure_storage_service.dart';
 import '../../domain/repositories/auth_repository.dart';
 import '../../data/repositories/auth_repository_impl.dart';
@@ -285,7 +286,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
 // ── Riverpod Providers ──────────────────────────────────────────────────────
 
 final authRepositoryProvider = Provider<AuthRepository>((ref) {
-  return AuthRepositoryImpl();
+  return AuthRepositoryImpl(client: ref.watch(supabaseClientOrOfflineProvider));
 });
 
 final authProvider = StateNotifierProvider<AuthNotifier, AuthState>((ref) {

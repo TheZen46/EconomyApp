@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -24,6 +26,7 @@ import 'features/invoices/data/models/invoice_model.dart';
 import 'features/invoices/data/providers/invoices_provider.dart';
 import 'features/auth/presentation/widgets/biometric_guard.dart';
 import 'core/services/telemetry_service.dart';
+import 'core/providers/supabase_providers.dart';
 import 'core/sync/models/sync_outbox_item.dart';
 import 'core/sync/sync_providers.dart';
 import 'features/settings/data/models/user_profile_model.dart';
@@ -51,13 +54,19 @@ void main() async {
   final supabaseAnonKey = dotenv.env['SUPABASE_ANON_KEY'] ?? 'placeholder-anon-key';
 
   // ── 2. Initialize Supabase with env-sourced credentials ────────────────
-  try {
-    await Supabase.initialize(
-      url: supabaseUrl,
-      anonKey: supabaseAnonKey,
-    );
-  } catch (e) {
-    debugPrint('Warning: Supabase initialization deferred/offline mode: $e');
+  // Without an initialized client, supabaseClientProvider is null and the app
+  // runs local-only.
+  if (isValidSupabaseUrl(supabaseUrl)) {
+    try {
+      await Supabase.initialize(
+        url: supabaseUrl,
+        anonKey: supabaseAnonKey,
+      );
+    } catch (e) {
+      debugPrint('Warning: Supabase initialization failed, running local-only: $e');
+    }
+  } else {
+    debugPrint('Warning: SUPABASE_URL is not a valid http(s) URL, running local-only.');
   }
 
   // ── 3. Initialize Hive with AES encryption ─────────────────────────────
@@ -221,16 +230,33 @@ class _TAIdyAppState extends ConsumerState<TAIdyApp> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) async {
-      await ref.read(modelUpdateServiceProvider.notifier).checkForUpdates();
-      final llmService = ref.read(llmServiceProvider);
-      await llmService.initialize();
-      ref.read(isLlmLoadedProvider.notifier).state = llmService.isModelLoaded;
-      try {
-        ref.read(syncManagerProvider);
-      } catch (e) {
-        debugPrint('Notice: SyncManager auto-sync deferred: $e');
-      }
+      // Each step runs on its own, so that a failure in one does not skip the
+      // others (in particular the creation of the SyncManager).
+      await _startupTask('model update check', () async {
+        await ref.read(modelUpdateServiceProvider.notifier).checkForUpdates();
+      });
+      await _startupTask('LLM initialization', () async {
+        final llmService = ref.read(llmServiceProvider);
+        await llmService.initialize();
+        if (mounted) ref.read(isLlmLoadedProvider.notifier).state = llmService.isModelLoaded;
+      });
+      await _startupTask('SyncManager creation', () async {
+        if (mounted) ref.read(syncManagerProvider);
+      });
     });
+  }
+
+  Future<void> _startupTask(String name, Future<void> Function() task) async {
+    try {
+      await task();
+    } catch (e, stack) {
+      debugPrint('Startup task "$name" failed: $e');
+      unawaited(TelemetryService.instance.recordCrash(
+        error: e,
+        stackTrace: stack,
+        errorType: 'Startup.$name',
+      ));
+    }
   }
 
   @override

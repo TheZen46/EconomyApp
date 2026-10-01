@@ -1,9 +1,9 @@
 import 'package:flutter/foundation.dart';
 import 'package:dartz/dartz.dart';
 import 'package:hive/hive.dart';
+import '../../../../core/providers/supabase_providers.dart';
 import '../../../../core/services/secure_storage_service.dart';
 import '../../../../core/error/failures.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../data/repositories/model_repository.dart';
@@ -120,7 +120,7 @@ final exportServiceProvider = Provider<ExportService>((ref) {
 });
 
 final supabaseDataSourceProvider = Provider<SupabaseDataSource>((ref) {
-   return SupabaseDataSourceImpl(Supabase.instance.client);
+  return SupabaseDataSourceImpl(ref.watch(supabaseClientOrOfflineProvider));
 });
 
 final storageUsageProvider = FutureProvider<int>((ref) async {
@@ -133,8 +133,7 @@ final storageUsageProvider = FutureProvider<int>((ref) async {
 // --- OTA Model Providers ---
 
 final modelRepositoryProvider = Provider<ModelRepository>((ref) {
-  // Assuming Supabase is initialized
-  return SupabaseModelRepository(Supabase.instance.client);
+  return SupabaseModelRepository(ref.watch(supabaseClientOrOfflineProvider));
 });
 
 final modelUpdateServiceProvider = StateNotifierProvider<ModelUpdateService, UpdateState>((ref) {

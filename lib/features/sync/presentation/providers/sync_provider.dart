@@ -1,8 +1,8 @@
 import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hive/hive.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../../../core/providers/supabase_providers.dart';
 import '../../../boxes/data/models/box_model.dart';
 import '../../../boxes/data/providers/boxes_provider.dart';
 import '../../../evault/data/models/asset_model.dart';
@@ -17,7 +17,7 @@ import '../../domain/entities/sync_progress_state.dart';
 
 /// Provider for RemoteReplicaDataSource
 final remoteReplicaDataSourceProvider = Provider<RemoteReplicaDataSource>((ref) {
-  return RemoteReplicaDataSourceImpl(Supabase.instance.client);
+  return RemoteReplicaDataSourceImpl(ref.watch(supabaseClientOrOfflineProvider));
 });
 
 /// Provider for the SyncEngine instance
