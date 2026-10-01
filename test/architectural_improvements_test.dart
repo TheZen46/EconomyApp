@@ -20,6 +20,7 @@ import 'package:t_aidy/features/receipt_scanning/data/models/receipt_model.dart'
 import 'package:t_aidy/features/receipt_scanning/data/repositories/receipt_repository_impl.dart';
 import 'package:t_aidy/features/receipt_scanning/presentation/providers/receipt_provider.dart';
 import 'package:t_aidy/features/receipt_scanning/data/datasources/hive_receipt_data_source.dart';
+import 'package:t_aidy/features/receipt_scanning/data/datasources/receipt_image_store.dart';
 import 'package:t_aidy/features/receipt_scanning/data/datasources/supabase_data_source.dart';
 import 'package:t_aidy/features/receipt_scanning/data/datasources/sync_service.dart';
 import 'package:t_aidy/features/receipt_scanning/data/models/sync_item_model.dart';
@@ -335,6 +336,49 @@ void main() {
         expect(fakeLocal.store, isEmpty);
         expect(fakeSupabase.deletedIds, isEmpty);
         expect(outboxService.getPendingMutations().where((m) => m.mutationType == 'delete'), isEmpty);
+      });
+
+      test('saving keeps the image in durable storage and deleting the receipt removes it', () async {
+        final docs = await Directory.systemTemp.createTemp('repo_images_docs_');
+        addTearDown(() => docs.deleteSync(recursive: true));
+        final picked = File('${docs.path}/../picked_${DateTime.now().microsecondsSinceEpoch}.jpg')
+          ..writeAsBytesSync([9, 9, 9]);
+        addTearDown(() {
+          if (picked.existsSync()) picked.deleteSync();
+        });
+        final imageRepo = ReceiptRepositoryImpl(
+          localDataSource: fakeLocal,
+          aiService: FakeAiService(),
+          supabaseDataSource: fakeSupabase,
+          settingsBox: settingsBox,
+          syncService: SyncService(
+            queueBox: syncQueueBox,
+            localDataSource: fakeLocal,
+            supabaseDataSource: fakeSupabase,
+            settingsBox: settingsBox,
+            googleDriveService: GoogleDriveService(),
+          ),
+          webhookService: WebhookService(settingsBox),
+          assetsBox: assetsBox,
+          outboxService: outboxService,
+          imageStore: ReceiptImageStore(documentsDirectory: () async => docs),
+        );
+
+        await imageRepo.saveReceipt(Receipt(
+          id: 'rcpt-img',
+          merchantName: 'Bakery',
+          date: DateTime.utc(2026, 9, 1),
+          totalAmount: 4.5,
+          currency: 'EUR',
+          imagePath: picked.path,
+        ));
+
+        final storedPath = fakeLocal.store['rcpt-img']!.imagePath!;
+        expect(storedPath, startsWith('${docs.path}/${ReceiptImageStore.folderName}/'));
+        expect(File(storedPath).existsSync(), isTrue);
+
+        await imageRepo.deleteReceipt('rcpt-img');
+        expect(File(storedPath).existsSync(), isFalse);
       });
 
       test('clearing everywhere deletes remotely and enqueues tombstones', () async {
