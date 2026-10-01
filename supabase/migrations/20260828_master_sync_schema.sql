@@ -54,6 +54,7 @@ CREATE TABLE IF NOT EXISTS public.receipts (
     merchant_address TEXT DEFAULT '',
     transaction_time TEXT DEFAULT '',
     box_id TEXT DEFAULT 'main',
+    items JSONB,
     is_synced BOOLEAN DEFAULT true,
     version INT NOT NULL DEFAULT 1,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -71,6 +72,7 @@ ALTER TABLE public.receipts ADD COLUMN IF NOT EXISTS vat_number TEXT DEFAULT '';
 ALTER TABLE public.receipts ADD COLUMN IF NOT EXISTS merchant_address TEXT DEFAULT '';
 ALTER TABLE public.receipts ADD COLUMN IF NOT EXISTS transaction_time TEXT DEFAULT '';
 ALTER TABLE public.receipts ADD COLUMN IF NOT EXISTS box_id TEXT DEFAULT 'main';
+ALTER TABLE public.receipts ADD COLUMN IF NOT EXISTS items JSONB;
 ALTER TABLE public.receipts ADD COLUMN IF NOT EXISTS is_synced BOOLEAN DEFAULT true;
 ALTER TABLE public.receipts ADD COLUMN IF NOT EXISTS version INT NOT NULL DEFAULT 1;
 ALTER TABLE public.receipts ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT now();
@@ -322,14 +324,20 @@ BEGIN
     END IF;
     cleaned := input_text;
     cleaned := regexp_replace(cleaned, '[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}', '[REDACTED_EMAIL]', 'g');
-    cleaned := regexp_replace(cleaned, '\b(?:\d[ -]*?){13,19}\b', '[REDACTED_CARD]', 'g');
+    -- \y is the word boundary in PostgreSQL regular expressions (\b means backspace).
+    -- The number must start and end with a digit so that adjacent separators are kept.
+    cleaned := regexp_replace(cleaned, '\y\d(?:[ -]*\d){12,18}\y', '[REDACTED_CARD]', 'g');
     cleaned := regexp_replace(cleaned, '(?:\+?\d{1,3}[-.\s]?)?\(?\d{2,4}\)?[-.\s]?\d{3,4}[-.\s]?\d{3,4}', '[REDACTED_PHONE]', 'g');
     RETURN cleaned;
 END;
 $$ LANGUAGE plpgsql IMMUTABLE;
 
 CREATE OR REPLACE FUNCTION public.stage_anonymized_training_item()
-RETURNS TRIGGER AS $$
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
 DECLARE
     rec_merchant TEXT;
 BEGIN
@@ -368,7 +376,8 @@ BEGIN
 
     RETURN NEW;
 END;
-$$ LANGUAGE plpgsql;
+$$;
+REVOKE ALL ON FUNCTION public.stage_anonymized_training_item() FROM PUBLIC, anon, authenticated;
 
 DROP TRIGGER IF EXISTS trg_stage_training_item ON public.receipt_items;
 CREATE TRIGGER trg_stage_training_item
@@ -376,7 +385,8 @@ AFTER INSERT OR UPDATE ON public.receipt_items
 FOR EACH ROW EXECUTE FUNCTION public.stage_anonymized_training_item();
 
 -- 4.1 Secure View for AI Model Training Export (Tier 1 View)
-CREATE OR REPLACE VIEW public.ai_training_dataset_v1 AS
+-- security_invoker applies the caller's privileges and RLS instead of the view owner's.
+CREATE OR REPLACE VIEW public.ai_training_dataset_v1 WITH (security_invoker = true) AS
 SELECT
     id AS sample_id,
     anonymized_merchant AS merchant,
@@ -391,6 +401,8 @@ SELECT
     created_at AS recorded_at
 FROM public.receipt_training_labels
 WHERE anonymized_description IS NOT NULL AND length(anonymized_description) > 1;
+ALTER VIEW public.ai_training_dataset_v1 SET (security_invoker = true);
+REVOKE ALL ON public.ai_training_dataset_v1 FROM anon, authenticated;
 
 -- ============================================================================
 -- 5. Attach Updated-At Triggers to All Tables
@@ -489,7 +501,8 @@ WITH CHECK (auth.uid() = id);
 DROP POLICY IF EXISTS "Service role can view anonymized training labels" ON public.receipt_training_labels;
 CREATE POLICY "Service role can view anonymized training labels"
 ON public.receipt_training_labels FOR SELECT
-USING (auth.jwt() ->> 'role' = 'service_role' OR auth.jwt() ->> 'role' = 'authenticated');
+USING (auth.jwt() ->> 'role' = 'service_role');
+REVOKE ALL ON public.receipt_training_labels FROM anon, authenticated;
 
 -- ============================================================================
 -- 7. Storage Buckets & Isolation Policies
@@ -504,8 +517,10 @@ VALUES ('asset_documents', 'asset_documents', false)
 ON CONFLICT (id) DO NOTHING;
 
 INSERT INTO storage.buckets (id, name, public)
-VALUES ('training_data', 'training_data', true)
+VALUES ('training_data', 'training_data', false)
 ON CONFLICT (id) DO NOTHING;
+-- Projects created while the bucket was public keep the old flag through ON CONFLICT.
+UPDATE storage.buckets SET public = false WHERE id = 'training_data';
 
 DROP POLICY IF EXISTS "Users can manage their own receipt images" ON storage.objects;
 CREATE POLICY "Users can manage their own receipt images"

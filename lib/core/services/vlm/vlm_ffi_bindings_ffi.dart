@@ -316,6 +316,11 @@ class VlmFfiBindings {
   }
 
   /// Streams token-by-token generation synchronously via native callback.
+  /// Runs native inference and yields the generated tokens.
+  ///
+  /// The native call is synchronous on the calling isolate, so tokens are
+  /// collected while it runs and yielded after it returns; the stream always
+  /// completes, and a non-zero native status becomes a [StateError] event.
   Stream<String> processImageStream({
     required Pointer<Void> engine,
     required Uint8List imageBytes,
@@ -324,34 +329,28 @@ class VlmFfiBindings {
   }) async* {
     if (engine == nullptr || imageBytes.isEmpty) return;
 
-    final controller = StreamController<String>();
+    final tokens = <String>[];
     final imageBuffer = calloc<Uint8>(imageBytes.length);
     final fewShotPtr =
         fewShotContext != null ? fewShotContext.toNativeUtf8() : nullptr;
     final sysPromptPtr =
         systemPrompt != null ? systemPrompt.toNativeUtf8() : nullptr;
-
-    late final NativeCallable<ReceiptTokenCallbackNative> nativeCallback;
-    nativeCallback = NativeCallable<ReceiptTokenCallbackNative>.isolateLocal(
+    final nativeCallback = NativeCallable<ReceiptTokenCallbackNative>.isolateLocal(
       (Pointer<Utf8> tokenPtr, int isDone, Pointer<Void> userData) {
         if (tokenPtr != nullptr) {
           final token = tokenPtr.toDartString();
-          if (token.isNotEmpty && !controller.isClosed) {
-            controller.add(token);
-          }
-        }
-        if (isDone != 0 && !controller.isClosed) {
-          controller.close();
+          if (token.isNotEmpty) tokens.add(token);
         }
       },
     );
 
+    final int status;
     try {
       imageBuffer
           .asTypedList(imageBytes.length)
           .setAll(0, imageBytes);
 
-      _processImageStreaming(
+      status = _processImageStreaming(
         engine,
         imageBuffer,
         imageBytes.length,
@@ -360,15 +359,6 @@ class VlmFfiBindings {
         nativeCallback.nativeFunction,
         nullptr,
       );
-
-      if (!controller.isClosed) {
-        await controller.close();
-      }
-    } catch (e) {
-      if (!controller.isClosed) {
-        controller.addError(e);
-        await controller.close();
-      }
     } finally {
       nativeCallback.close();
       calloc.free(imageBuffer);
@@ -376,7 +366,12 @@ class VlmFfiBindings {
       if (sysPromptPtr != nullptr) calloc.free(sysPromptPtr);
     }
 
-    yield* controller.stream;
+    if (status != 0) {
+      throw StateError('Streaming inference failed ($status): ${getLastError(engine)}');
+    }
+    for (final token in tokens) {
+      yield token;
+    }
   }
 
   /// Enhances thermal receipt contrast using SIMD CLAHE.

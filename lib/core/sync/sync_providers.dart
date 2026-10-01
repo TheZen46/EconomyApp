@@ -90,3 +90,12 @@ final syncManagerProvider = Provider<SyncManager?>((ref) {
     },
   );
 });
+
+/// Number of dead-lettered outbox mutations (no longer retried automatically),
+/// updated whenever the outbox changes.
+final deadLetteredMutationCountProvider = StreamProvider<int>((ref) async* {
+  final box = ref.watch(outboxHiveBoxProvider);
+  int count() => box.values.where((item) => item.status == 'permanently_failed').length;
+  yield count();
+  yield* box.watch().map((_) => count());
+});

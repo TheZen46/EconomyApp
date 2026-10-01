@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:image_picker/image_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../../../../core/error/failures.dart';
 import '../../domain/entities/receipt.dart';
 
 abstract class SupabaseDataSource {
@@ -78,9 +79,13 @@ class SupabaseDataSourceImpl implements SupabaseDataSource {
   @override
   Future<void> uploadTrainingData(Receipt receipt, String imagePath) async {
     final userId = _currentUserId;
+    // Storage policies only admit objects under the owner's folder; never fall
+    // back to the shared prefix used by the path helpers when signed out.
+    if (userId == null || userId.isEmpty) {
+      throw const ServerFailure('Training upload requires a signed-in user');
+    }
 
     try {
-      String? publicImageUrl;
       final storagePathImage = _imagePath(receipt.id, imagePath, userId: userId);
 
       // 1. Upload Image -> training_data/{userId}/images/{uuid}.ext (Web + Native)
@@ -107,7 +112,6 @@ class SupabaseDataSourceImpl implements SupabaseDataSource {
             imageBytes,
             fileOptions: const FileOptions(cacheControl: '3600', upsert: true),
           );
-          publicImageUrl = client.storage.from('training_data').getPublicUrl(storagePathImage);
           debugPrint('Supabase upload: Image successfully uploaded to $storagePathImage');
         } else {
           debugPrint('Supabase upload: Image file empty or not found at "$imagePath", proceeding with metadata.');
@@ -118,8 +122,7 @@ class SupabaseDataSourceImpl implements SupabaseDataSource {
       final labelJson = {
         "image_id": receipt.id,
         "image_path": storagePathImage,
-        if (publicImageUrl != null) "image_url": publicImageUrl,
-        if (userId != null) "user_id": userId,
+        "user_id": userId,
         "timestamp": DateTime.now().toIso8601String(),
         "ground_truth": {
           "merchant": receipt.merchantName,
@@ -152,45 +155,9 @@ class SupabaseDataSourceImpl implements SupabaseDataSource {
         fileOptions: const FileOptions(cacheControl: '3600', upsert: true),
       );
 
-      // 3. Upsert into Supabase database 'receipts' table if configured
-      try {
-        final receiptRow = {
-          'id': receipt.id,
-          'merchant_name': receipt.merchantName,
-          'total_amount': receipt.totalAmount,
-          'currency': receipt.currency,
-          'date': receipt.date.toIso8601String(),
-          'box_id': receipt.boxId,
-          'image_path': storagePathImage,
-          'image_url': publicImageUrl ?? client.storage.from('training_data').getPublicUrl(storagePathImage),
-          if (userId != null) 'user_id': userId,
-          'items': receipt.items.map((e) => {
-            'description': e.description,
-            'unit_price': e.unitPrice,
-            'quantity': e.quantity,
-            'total_price': e.totalPrice,
-            'category': e.category,
-            'necessity': e.necessity.name,
-            'is_asset': e.isAsset,
-          }).toList(),
-        };
-        try {
-          await client.from('receipts').upsert(receiptRow);
-        } on PostgrestException catch (pgrst) {
-          // If table schema lacks image_path/image_url (PGRST204), fallback to base schema
-          if (pgrst.code == 'PGRST204') {
-            final fallbackRow = Map<String, dynamic>.from(receiptRow)
-              ..remove('image_path')
-              ..remove('image_url');
-            await client.from('receipts').upsert(fallbackRow);
-          } else {
-            rethrow;
-          }
-        }
-      } catch (dbError) {
-        debugPrint('Supabase database receipts table upsert notice: $dbError');
-      }
-
+      // The receipts row is written only by the outbox (SyncManager), which sends
+      // the schema-conformant payload. Writing it here as well would race with the
+      // outbox and send keys that public.receipts does not define.
     } catch (e) {
       debugPrint('Supabase upload failed: $e');
       rethrow;

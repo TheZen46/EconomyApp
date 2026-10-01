@@ -1,8 +1,10 @@
 ﻿import 'package:hive/hive.dart';
 
-part 'asset_model.g.dart';
+part 'asset_model_adapter.dart';
 
-@HiveType(typeId: 7)
+/// Stored by the hand-written [AssetModelAdapter] (typeId 7) in asset_model_adapter.dart.
+/// Intentionally not annotated with @HiveType: generating the adapter would drop the
+/// compatibility handling for records written by earlier versions.
 class AssetModel {
   @HiveField(0)
   final String id;

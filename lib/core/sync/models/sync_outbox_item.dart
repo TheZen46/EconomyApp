@@ -1,9 +1,11 @@
 ﻿import 'package:hive/hive.dart';
 
-part 'sync_outbox_item.g.dart';
+part 'sync_outbox_item_adapter.dart';
 
 /// Represents a local mutation queued for synchronization to Supabase.
-@HiveType(typeId: 12)
+/// Stored by the hand-written [SyncOutboxItemAdapter] (typeId 12) in sync_outbox_item_adapter.dart.
+/// Intentionally not annotated with @HiveType: generating the adapter would drop the
+/// compatibility handling for records written by earlier versions.
 class SyncOutboxItem extends HiveObject {
   @HiveField(0)
   final String id;

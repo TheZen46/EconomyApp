@@ -1,7 +1,7 @@
 ﻿import 'package:flutter/foundation.dart';
 import 'package:hive/hive.dart';
 
-part 'invoice_model.g.dart';
+part 'invoice_model_adapter.dart';
 
 // Status constants
 class InvoiceStatus {
@@ -14,7 +14,9 @@ class InvoiceStatus {
 }
 
 @immutable
-@HiveType(typeId: 11)
+/// Stored by the hand-written [InvoiceModelAdapter] (typeId 11) in invoice_model_adapter.dart.
+/// Intentionally not annotated with @HiveType: generating the adapter would drop the
+/// compatibility handling for records written by earlier versions.
 class InvoiceModel {
   @HiveField(0)
   final String id;

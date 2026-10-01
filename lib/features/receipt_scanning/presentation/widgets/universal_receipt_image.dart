@@ -8,9 +8,12 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 /// of where they originate:
 /// - Absolute device storage path (Android / iOS / Desktop)
 /// - Relative sandbox paths or replicated filenames in Documents directory
-/// - Direct HTTP / HTTPS URLs (e.g. Supabase Storage public CDN or S3)
+/// - Direct HTTP / HTTPS URLs (e.g. S3 or a previously signed Supabase URL)
 /// - Supabase relative storage paths (e.g. `training_data/<userId>/images/<uuid>.jpg` or `<userId>/images/<uuid>.jpg`)
-/// - Inferred remote paths via [receiptId]
+/// - Inferred remote paths via [receiptId] for the signed-in user
+///
+/// Storage buckets are private, so remote objects are fetched through short-lived
+/// signed URLs that are only issued to the owner of the object.
 class UniversalReceiptImage extends StatefulWidget {
   final String? imagePath;
   final String? receiptId;
@@ -38,9 +41,14 @@ class UniversalReceiptImage extends StatefulWidget {
 }
 
 class _UniversalReceiptImageState extends State<UniversalReceiptImage> {
+  /// Lifetime of signed storage URLs; long enough for one viewing session.
+  static const int _signedUrlTtlSeconds = 3600;
+
   String? _resolvedHttpUrl;
   File? _resolvedLocalFile;
   bool _isLoading = true;
+  // Remote fallback for a local file that fails to decode; created at most once per source.
+  Future<String?>? _remoteFallback;
 
   @override
   void initState() {
@@ -61,6 +69,7 @@ class _UniversalReceiptImageState extends State<UniversalReceiptImage> {
       _isLoading = true;
       _resolvedHttpUrl = null;
       _resolvedLocalFile = null;
+      _remoteFallback = null;
     });
 
     final rawPath = widget.imagePath?.trim();
@@ -108,8 +117,8 @@ class _UniversalReceiptImageState extends State<UniversalReceiptImage> {
       }
     }
 
-    // 3. Resolve from Supabase Storage CDN URL
-    final remoteUrl = _resolveSupabaseUrl(rawPath, widget.receiptId);
+    // 3. Resolve a signed URL from Supabase Storage
+    final remoteUrl = await _resolveSupabaseUrl(rawPath, widget.receiptId);
     if (remoteUrl != null) {
       if (mounted) {
         setState(() {
@@ -128,7 +137,7 @@ class _UniversalReceiptImageState extends State<UniversalReceiptImage> {
     }
   }
 
-  String? _resolveSupabaseUrl(String? path, String? receiptId) {
+  Future<String?> _resolveSupabaseUrl(String? path, String? receiptId) async {
     try {
       final client = Supabase.instance.client;
       String? currentUserId;
@@ -150,16 +159,15 @@ class _UniversalReceiptImageState extends State<UniversalReceiptImage> {
 
         // If it looks like a remote storage path
         if (cleanPath.contains('/images/') || cleanPath.endsWith('.jpg') || cleanPath.endsWith('.png') || cleanPath.endsWith('.jpeg')) {
-          return client.storage.from(bucket).getPublicUrl(cleanPath);
+          return await client.storage.from(bucket).createSignedUrl(cleanPath, _signedUrlTtlSeconds);
         }
       }
 
-      // Case B: Resolve using receiptId and current user
-      if (receiptId != null && receiptId.isNotEmpty) {
-        if (currentUserId != null && currentUserId.isNotEmpty) {
-          return client.storage.from('training_data').getPublicUrl('$currentUserId/images/$receiptId.jpg');
-        }
-        return client.storage.from('training_data').getPublicUrl('images/$receiptId.jpg');
+      // Case B: Resolve using receiptId within the signed-in user's folder
+      if (receiptId != null && receiptId.isNotEmpty && currentUserId != null && currentUserId.isNotEmpty) {
+        return await client.storage
+            .from('training_data')
+            .createSignedUrl('$currentUserId/images/$receiptId.jpg', _signedUrlTtlSeconds);
       }
     } catch (e) {
       debugPrint('UniversalReceiptImage: Supabase resolution notice: $e');
@@ -192,18 +200,26 @@ class _UniversalReceiptImageState extends State<UniversalReceiptImage> {
         colorBlendMode: widget.colorBlendMode,
         errorBuilder: (context, error, stackTrace) {
           // If local file failed, try remote fallback before giving up
-          final remoteUrl = _resolveSupabaseUrl(widget.imagePath, widget.receiptId);
-          if (remoteUrl != null) {
-            return Image.network(
-              remoteUrl,
-              fit: widget.fit,
-              alignment: widget.alignment,
-              color: widget.color,
-              colorBlendMode: widget.colorBlendMode,
-              errorBuilder: widget.errorBuilder ?? _defaultFallback,
-            );
-          }
-          return widget.errorBuilder?.call(context, error, stackTrace) ?? _defaultFallback(context, error, stackTrace);
+          return FutureBuilder<String?>(
+            future: _remoteFallback ??= _resolveSupabaseUrl(widget.imagePath, widget.receiptId),
+            builder: (context, snapshot) {
+              if (snapshot.connectionState != ConnectionState.done) {
+                return widget.placeholder ?? const SizedBox.shrink();
+              }
+              final remoteUrl = snapshot.data;
+              if (remoteUrl != null) {
+                return Image.network(
+                  remoteUrl,
+                  fit: widget.fit,
+                  alignment: widget.alignment,
+                  color: widget.color,
+                  colorBlendMode: widget.colorBlendMode,
+                  errorBuilder: widget.errorBuilder ?? _defaultFallback,
+                );
+              }
+              return widget.errorBuilder?.call(context, error, stackTrace) ?? _defaultFallback(context, error, stackTrace);
+            },
+          );
         },
       );
     }

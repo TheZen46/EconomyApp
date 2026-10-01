@@ -5,17 +5,20 @@ import 'package:hive/hive.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:synchronized/synchronized.dart';
 
-import '../privacy/pii_scrubber_service.dart';
+import 'conflict_policy.dart';
 import 'outbox_service.dart';
+import 'sync_error_policy.dart';
 import '../../features/boxes/data/models/box_model.dart';
 import '../../features/invoices/data/models/invoice_model.dart';
 import '../../features/evault/data/models/asset_model.dart';
 import '../../features/receipt_scanning/data/models/receipt_model.dart';
 
-/// Bidirectional, offline-first sync coordinator.
-/// Enforces Dual-Tier Privacy:
-/// - Tier 1 (AI Training Corpus): Anonymized receipt labels pushed to receipt_training_labels.
-/// - Tier 2 (Confidential Vault): RLS-protected user entity tables (receipts, boxes, invoices, assets).
+/// Bidirectional, offline-first sync coordinator for the RLS-protected user
+/// entity tables (receipts, boxes, invoices, assets).
+///
+/// It does not write the training corpus: receipt_training_labels is filled
+/// server-side and readable only by the service role, and training uploads are
+/// consent-gated in SyncService.
 class SyncManager {
   final SupabaseClient supabase;
   final OutboxService outboxService;
@@ -82,7 +85,8 @@ class SyncManager {
         // ── STEP 2: Pull Deltas (Pull) ───────────────────────────────────────
         await _pullDeltas(user.id);
 
-        // Update last synced timestamp
+        // Time of the last completed cycle, for display only; the pull itself
+        // uses the per-table server watermarks (see _pullTable).
         await settingsBox.put('last_synced_at', DateTime.now().toUtc().toIso8601String());
         debugPrint('SyncManager: Synchronization cycle completed successfully.');
         onSyncCompleted?.call();
@@ -95,21 +99,50 @@ class SyncManager {
   }
 
   /// Flushes pending outbox items to Supabase.
+  ///
+  /// Mutations of one entity are applied in creation order. A mutation that fails,
+  /// or is still waiting out its retry backoff, holds back the later mutations of
+  /// the same entity only, so unrelated entities keep synchronizing. Errors that
+  /// cannot succeed on retry are dead-lettered immediately.
   Future<void> _flushOutbox(String userId) async {
-    final pending = outboxService.getPendingMutations();
-    if (pending.isEmpty) {
+    final queued = outboxService.getPendingMutations();
+    if (queued.isEmpty) {
       debugPrint('SyncManager: Outbox is empty.');
       return;
     }
 
-    debugPrint('SyncManager: Processing ${pending.length} pending outbox items...');
+    debugPrint('SyncManager: Processing ${queued.length} pending outbox items...');
 
-    for (final item in pending) {
+    final now = DateTime.now();
+    final heldEntities = <String>{};
+
+    for (final item in queued) {
+      final entityKey = OutboxService.entityKey(item.entityType, item.entityId);
+      if (heldEntities.contains(entityKey)) continue;
+      if (outboxService.isBackingOff(item, now)) {
+        heldEntities.add(entityKey);
+        continue;
+      }
+
+      final table = _mapEntityTypeToTable(item.entityType);
+      if (table == null) {
+        await outboxService.markFailed(
+          item.id,
+          'Unknown entity type "${item.entityType}"',
+          permanent: true,
+        );
+        continue;
+      }
+
       try {
-        final payload = Map<String, dynamic>.from(item.payload);
-        payload['user_id'] = userId;
-
-        final table = _mapEntityTypeToTable(item.entityType);
+        var payload = Map<String, dynamic>.from(item.payload);
+        // user_profiles is keyed by the user id itself and has no user_id column.
+        if (item.entityType != 'profile') {
+          payload['user_id'] = userId;
+        }
+        if (item.entityType == 'receipt') {
+          payload = ReceiptModel.sanitizeRemotePayload(payload);
+        }
 
         if (item.mutationType == 'delete') {
           // Soft-delete tombstone
@@ -120,122 +153,135 @@ class SyncManager {
         } else {
           // Insert / Update (Upsert)
           await supabase.from(table).upsert(payload);
-
-          // If this is a receipt, also push anonymized Tier 1 training data
-          if (item.entityType == 'receipt') {
-            await _stageTier1TrainingLabels(payload);
-          }
         }
 
         await outboxService.markCompleted(item.id);
       } catch (e) {
         debugPrint('SyncManager: Failed to sync outbox item ${item.id}: $e');
-        await outboxService.markFailed(item.id, e.toString());
-        // Preserve FIFO ordering and causality: abort remaining flush for this cycle
-        break;
+        await outboxService.markFailed(item.id, e.toString(), permanent: isPermanentSyncError(e));
+        heldEntities.add(entityKey);
       }
     }
   }
 
-  /// Staging anonymized training data to Tier 1 tables.
-  Future<void> _stageTier1TrainingLabels(Map<String, dynamic> receiptPayload) async {
-    try {
-      final merchant = receiptPayload['merchant_name'] as String? ?? 'Merchant';
-      final items = receiptPayload['items'] as List<dynamic>? ?? [];
-
-      for (final itemMap in items) {
-        if (itemMap is Map<String, dynamic>) {
-          final scrubbedSample = {
-            'receipt_id': receiptPayload['id'],
-            'anonymized_merchant': PiiScrubberService.sanitizeText(merchant),
-            'anonymized_description': PiiScrubberService.sanitizeText(itemMap['description'] as String?),
-            'quantity': itemMap['quantity'] ?? 1,
-            'unit_price': itemMap['unit_price'] ?? 0.0,
-            'total_price': itemMap['total_price'] ?? 0.0,
-            'main_category': itemMap['main_category'],
-            'sub_category': itemMap['sub_category'],
-            'necessity': itemMap['necessity'] ?? 'unknown',
-            'was_user_corrected': itemMap['is_user_corrected'] ?? false,
-            'created_at': DateTime.now().toUtc().toIso8601String(),
-          };
-
-          await supabase.from('receipt_training_labels').insert(scrubbedSample);
-        }
-      }
-    } catch (e) {
-      debugPrint('SyncManager: Notice staging Tier 1 training label: $e');
-    }
+  /// Resets dead-lettered mutations and runs a synchronization cycle, for use
+  /// after the cause (for example a missing migration) has been corrected.
+  Future<void> retryDeadLettered() async {
+    await outboxService.retryPermanentlyFailed();
+    await syncAll();
   }
+
+  /// Rows requested per page during the delta pull.
+  static const int pullPageSize = 500;
+
+  /// The first page of a pull starts this far before the stored watermark, so
+  /// that a row whose transaction committed after a later one was read (its
+  /// updated_at is the transaction start time) is still picked up. Re-applying
+  /// a row is idempotent.
+  static const Duration pullOverlap = Duration(minutes: 1);
+
+  /// Settings key holding the delta-pull watermark of [table]: the largest
+  /// server-assigned updated_at already applied from it.
+  static String watermarkKey(String table) => 'sync_watermark_$table';
 
   /// Pulls remote delta updates from Supabase and applies them with Last-Write-Wins (LWW).
+  ///
+  /// Entities that still have a mutation in the outbox keep their local state:
+  /// the server has not seen that change yet, so a remote row (including a
+  /// tombstone) must neither overwrite nor delete it. The change wins once its
+  /// push succeeds.
   Future<void> _pullDeltas(String userId) async {
-    final lastSyncedStr = settingsBox.get('last_synced_at') as String?;
-    final lastSyncedAt = lastSyncedStr != null ? DateTime.tryParse(lastSyncedStr) : null;
+    final unsynced = outboxService.entitiesWithUnsyncedChanges();
 
-    // 1. Pull Receipts
-    var receiptsQuery = supabase.from('receipts').select().eq('user_id', userId);
-    if (lastSyncedAt != null) {
-      receiptsQuery = receiptsQuery.gt('updated_at', lastSyncedAt.toUtc().toIso8601String());
-    }
-    final remoteReceipts = await receiptsQuery;
-    for (final row in remoteReceipts) {
-      _applyReceiptDelta(row);
-    }
+    await _pullTable('receipts', 'receipt', userId, unsynced, _applyReceiptDelta);
+    await _pullTable('boxes', 'box', userId, unsynced, _applyBoxDelta);
+    await _pullTable('invoices', 'invoice', userId, unsynced, _applyInvoiceDelta);
+    await _pullTable('vault_assets', 'asset', userId, unsynced, _applyAssetDelta);
+  }
 
-    // 2. Pull Boxes
-    var boxesQuery = supabase.from('boxes').select().eq('user_id', userId);
-    if (lastSyncedAt != null) {
-      boxesQuery = boxesQuery.gt('updated_at', lastSyncedAt.toUtc().toIso8601String());
-    }
-    final remoteBoxes = await boxesQuery;
-    for (final row in remoteBoxes) {
-      _applyBoxDelta(row);
-    }
+  /// Reads the rows of [table] changed since its watermark, page by page.
+  ///
+  /// The watermark comes from the server timestamps of the rows actually
+  /// applied, never from the device clock, and is saved after each page.
+  /// Pages are ordered by (updated_at, id) and each continues strictly after
+  /// the last (updated_at, id) seen, so rows updated during the pull cannot
+  /// shift a page boundary and many rows sharing one timestamp cannot stall it.
+  /// A table without a watermark (first pull, or after upgrading from the
+  /// device-clock watermark) is read in full, which also backfills rows that
+  /// earlier versions skipped or truncated.
+  Future<void> _pullTable(
+    String table,
+    String entityType,
+    String userId,
+    Set<String> unsynced,
+    Future<void> Function(Map<String, dynamic> row) apply,
+  ) async {
+    final stored = DateTime.tryParse(settingsBox.get(watermarkKey(table)) as String? ?? '');
+    final since = stored?.subtract(pullOverlap).toUtc().toIso8601String();
 
-    // 3. Pull Invoices
-    var invoicesQuery = supabase.from('invoices').select().eq('user_id', userId);
-    if (lastSyncedAt != null) {
-      invoicesQuery = invoicesQuery.gt('updated_at', lastSyncedAt.toUtc().toIso8601String());
-    }
-    final remoteInvoices = await invoicesQuery;
-    for (final row in remoteInvoices) {
-      _applyInvoiceDelta(row);
-    }
+    String? cursorUpdatedAt;
+    String? cursorId;
+    while (true) {
+      var query = supabase.from(table).select().eq('user_id', userId);
+      if (cursorUpdatedAt != null && cursorId != null) {
+        final ts = _filterValue(cursorUpdatedAt);
+        query = query.or('updated_at.gt.$ts,and(updated_at.eq.$ts,id.gt.${_filterValue(cursorId)})');
+      } else if (since != null) {
+        query = query.gte('updated_at', since);
+      }
+      final page = await query
+          .order('updated_at', ascending: true)
+          .order('id', ascending: true)
+          .limit(pullPageSize);
 
-    // 4. Pull Assets
-    var assetsQuery = supabase.from('vault_assets').select().eq('user_id', userId);
-    if (lastSyncedAt != null) {
-      assetsQuery = assetsQuery.gt('updated_at', lastSyncedAt.toUtc().toIso8601String());
-    }
-    final remoteAssets = await assetsQuery;
-    for (final row in remoteAssets) {
-      _applyAssetDelta(row);
+      for (final row in page) {
+        if (!unsynced.contains(OutboxService.entityKey(entityType, row['id'] as String))) {
+          await apply(row);
+        }
+      }
+      if (page.isEmpty) break;
+
+      cursorUpdatedAt = page.last['updated_at'] as String?;
+      cursorId = page.last['id'] as String?;
+      if (cursorUpdatedAt == null || cursorId == null) break; // cannot paginate without a key
+      await settingsBox.put(watermarkKey(table), cursorUpdatedAt);
+      if (page.length < pullPageSize) break;
     }
   }
 
-  void _applyReceiptDelta(Map<String, dynamic> row) {
+  /// Quotes a value for a PostgREST logical filter, where `,.:()` are reserved.
+  static String _filterValue(String value) =>
+      '"${value.replaceAll(r'\', r'\\').replaceAll('"', r'\"')}"';
+
+  Future<void> _applyReceiptDelta(Map<String, dynamic> row) async {
     final id = row['id'] as String;
     final deletedAt = row['deleted_at'] != null ? DateTime.tryParse(row['deleted_at'] as String) : null;
 
     if (deletedAt != null) {
-      receiptsBox.delete(id);
+      await receiptsBox.delete(id);
       return;
     }
 
-    final remoteModel = ReceiptModel.fromJson(row);
+    var remoteModel = ReceiptModel.fromJson(row);
     final localModel = receiptsBox.get(id);
 
+    // A row without an items array (written before the column existed, or by
+    // another tool) carries no information about line items; keep the local ones.
+    if (localModel != null && row['items'] is! List) {
+      remoteModel = remoteModel.copyWith(items: localModel.items);
+    }
+
     if (localModel == null || _shouldRemoteOverwrite(localModel.updatedAt, localModel.version, remoteModel.updatedAt, remoteModel.version)) {
-      receiptsBox.put(id, remoteModel);
+      await receiptsBox.put(id, remoteModel);
     }
   }
 
-  void _applyBoxDelta(Map<String, dynamic> row) {
+  Future<void> _applyBoxDelta(Map<String, dynamic> row) async {
     final id = row['id'] as String;
     final deletedAt = row['deleted_at'] != null ? DateTime.tryParse(row['deleted_at'] as String) : null;
 
     if (deletedAt != null) {
-      boxesBox.delete(id);
+      await boxesBox.delete(id);
       return;
     }
 
@@ -243,16 +289,16 @@ class SyncManager {
     final localModel = boxesBox.get(id);
 
     if (localModel == null || _shouldRemoteOverwrite(localModel.updatedAt, localModel.version, remoteModel.updatedAt, remoteModel.version)) {
-      boxesBox.put(id, remoteModel);
+      await boxesBox.put(id, remoteModel);
     }
   }
 
-  void _applyInvoiceDelta(Map<String, dynamic> row) {
+  Future<void> _applyInvoiceDelta(Map<String, dynamic> row) async {
     final id = row['id'] as String;
     final deletedAt = row['deleted_at'] != null ? DateTime.tryParse(row['deleted_at'] as String) : null;
 
     if (deletedAt != null) {
-      invoicesBox.delete(id);
+      await invoicesBox.delete(id);
       return;
     }
 
@@ -260,16 +306,16 @@ class SyncManager {
     final localModel = invoicesBox.get(id);
 
     if (localModel == null || _shouldRemoteOverwrite(localModel.updatedAt, localModel.version, remoteModel.updatedAt, remoteModel.version)) {
-      invoicesBox.put(id, remoteModel);
+      await invoicesBox.put(id, remoteModel);
     }
   }
 
-  void _applyAssetDelta(Map<String, dynamic> row) {
+  Future<void> _applyAssetDelta(Map<String, dynamic> row) async {
     final id = row['id'] as String;
     final deletedAt = row['deleted_at'] != null ? DateTime.tryParse(row['deleted_at'] as String) : null;
 
     if (deletedAt != null) {
-      assetsBox.delete(id);
+      await assetsBox.delete(id);
       return;
     }
 
@@ -277,20 +323,22 @@ class SyncManager {
     final localModel = assetsBox.get(id);
 
     if (localModel == null || _shouldRemoteOverwrite(localModel.updatedAt, localModel.version, remoteModel.updatedAt, remoteModel.version)) {
-      assetsBox.put(id, remoteModel);
+      await assetsBox.put(id, remoteModel);
     }
   }
 
   /// Conflict Resolution (Last-Write-Wins with monotonic version validation)
   bool _shouldRemoteOverwrite(DateTime? localUpdated, int localVersion, DateTime? remoteUpdated, int remoteVersion) {
-    if (remoteVersion > localVersion) return true;
-    if (remoteVersion < localVersion) return false;
-    if (localUpdated == null) return true;
-    if (remoteUpdated == null) return false;
-    return remoteUpdated.isAfter(localUpdated);
+    return shouldRemoteOverwrite(
+      localUpdatedAt: localUpdated,
+      localVersion: localVersion,
+      remoteUpdatedAt: remoteUpdated,
+      remoteVersion: remoteVersion,
+    );
   }
 
-  String _mapEntityTypeToTable(String entityType) {
+  /// Remote table for [entityType], or null when the type is not synchronized.
+  String? _mapEntityTypeToTable(String entityType) {
     switch (entityType) {
       case 'receipt':
         return 'receipts';
@@ -305,7 +353,7 @@ class SyncManager {
       case 'taxonomy':
         return 'taxonomies';
       default:
-        return 'receipts';
+        return null;
     }
   }
 }

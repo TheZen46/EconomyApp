@@ -1,9 +1,11 @@
 import 'package:hive/hive.dart';
 import '../../domain/entities/receipt.dart';
 
-part 'receipt_model.g.dart';
+part 'receipt_model_adapter.dart';
 
-@HiveType(typeId: 0)
+/// Stored by the hand-written [ReceiptModelAdapter] (typeId 0) in receipt_model_adapter.dart.
+/// Intentionally not annotated with @HiveType: generating the adapter would drop the
+/// compatibility handling for records written by earlier versions.
 class ReceiptModel extends HiveObject {
   @HiveField(0)
   final String id;
@@ -141,6 +143,47 @@ class ReceiptModel extends HiveObject {
     };
   }
 
+  /// Columns of `public.receipts` (see `supabase/migrations/`).
+  ///
+  /// PostgREST rejects a request body that contains any key outside this set
+  /// with `PGRST204`, so every payload sent to the table must be restricted to it.
+  static const Set<String> remoteColumns = {
+    'id',
+    'user_id',
+    'merchant_name',
+    'total_amount',
+    'currency',
+    'scanned_date',
+    'image_path',
+    'vat_number',
+    'merchant_address',
+    'transaction_time',
+    'box_id',
+    'items',
+    'is_synced',
+    'version',
+    'created_at',
+    'updated_at',
+    'deleted_at',
+  };
+
+  /// Row representation for `public.receipts`.
+  ///
+  /// Unlike [toJson], which also serves webhook consumers, this omits keys that
+  /// have no column, such as `date` (carried by `scanned_date`).
+  Map<String, dynamic> toRemoteJson() => sanitizeRemotePayload(toJson());
+
+  /// Returns a copy of [payload] restricted to [remoteColumns].
+  ///
+  /// Applied at push time as well, so that outbox items enqueued before the
+  /// payload was restricted are still accepted by the server.
+  static Map<String, dynamic> sanitizeRemotePayload(Map<String, dynamic> payload) {
+    return {
+      for (final entry in payload.entries)
+        if (remoteColumns.contains(entry.key)) entry.key: entry.value,
+    };
+  }
+
   Receipt toEntity() {
     return Receipt(
       id: id,
@@ -214,7 +257,9 @@ class ReceiptModel extends HiveObject {
   }
 }
 
-@HiveType(typeId: 1)
+/// Stored by the hand-written [ReceiptItemModelAdapter] (typeId 1) in receipt_model_adapter.dart.
+/// Intentionally not annotated with @HiveType: generating the adapter would drop the
+/// compatibility handling for records written by earlier versions.
 class ReceiptItemModel {
   @HiveField(0)
   final String description;

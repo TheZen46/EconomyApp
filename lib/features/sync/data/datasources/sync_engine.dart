@@ -7,6 +7,7 @@ import 'package:hive/hive.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:synchronized/synchronized.dart';
 
+import '../../../../core/sync/conflict_policy.dart';
 import '../../../boxes/data/models/box_model.dart';
 import '../../../evault/data/models/asset_model.dart';
 import '../../../invoices/data/models/invoice_model.dart';
@@ -143,10 +144,10 @@ class SyncEngine {
           final localReceipts = await localDataSource.getReceipts();
           final localReceiptIds = localReceipts.map((r) => r.id).toSet();
 
-          // Identify missing/updated receipts from DB
+          // Identify receipts missing locally; soft-deleted rows are tombstones, not data
           final deltaReceiptsToImport = remoteReceiptRows.where((row) {
             final id = row['id'] as String?;
-            return id != null && !localReceiptIds.contains(id);
+            return id != null && !_isTombstone(row) && !localReceiptIds.contains(id);
           }).toList();
 
           // Identify remote image files to download
@@ -178,7 +179,7 @@ class SyncEngine {
           for (final row in deltaReceiptsToImport) {
             if (_shouldCancel) return false;
             try {
-              final receiptModel = _parseReceiptFromRow(row);
+              final receiptModel = _parseRow(row, ReceiptModel.fromJson, 'receipt');
               if (receiptModel != null) {
                 await localDataSource.saveReceipt(receiptModel);
               }
@@ -194,8 +195,16 @@ class SyncEngine {
             for (final row in remoteBoxes) {
               if (_shouldCancel) return false;
               try {
-                final box = _parseBoxFromRow(row);
-                if (box != null) {
+                final box = _isTombstone(row) ? null : _parseRow(row, BoxModel.fromJson, 'box');
+                final local = box == null ? null : boxesBox!.get(box.id);
+                if (box != null &&
+                    (local == null ||
+                        shouldRemoteOverwrite(
+                          localUpdatedAt: local.updatedAt,
+                          localVersion: local.version,
+                          remoteUpdatedAt: box.updatedAt,
+                          remoteVersion: box.version,
+                        ))) {
                   await boxesBox!.put(box.id, box);
                 }
               } catch (e) {
@@ -211,8 +220,16 @@ class SyncEngine {
             for (final row in remoteAssets) {
               if (_shouldCancel) return false;
               try {
-                final asset = _parseAssetFromRow(row);
-                if (asset != null) {
+                final asset = _isTombstone(row) ? null : _parseRow(row, AssetModel.fromJson, 'asset');
+                final local = asset == null ? null : assetsBox!.get(asset.id);
+                if (asset != null &&
+                    (local == null ||
+                        shouldRemoteOverwrite(
+                          localUpdatedAt: local.updatedAt,
+                          localVersion: local.version,
+                          remoteUpdatedAt: asset.updatedAt,
+                          remoteVersion: asset.version,
+                        ))) {
                   await assetsBox!.put(asset.id, asset);
                 }
               } catch (e) {
@@ -228,8 +245,16 @@ class SyncEngine {
             for (final row in remoteInvoices) {
               if (_shouldCancel) return false;
               try {
-                final invoice = _parseInvoiceFromRow(row);
-                if (invoice != null) {
+                final invoice = _isTombstone(row) ? null : _parseRow(row, InvoiceModel.fromJson, 'invoice');
+                final local = invoice == null ? null : invoicesBox!.get(invoice.id);
+                if (invoice != null &&
+                    (local == null ||
+                        shouldRemoteOverwrite(
+                          localUpdatedAt: local.updatedAt,
+                          localVersion: local.version,
+                          remoteUpdatedAt: invoice.updatedAt,
+                          remoteVersion: invoice.version,
+                        ))) {
                   await invoicesBox!.put(invoice.id, invoice);
                 }
               } catch (e) {
@@ -394,98 +419,21 @@ class SyncEngine {
 
   // ── Entity Parsing Helpers ─────────────────────────────────────────────────
 
-  ReceiptModel? _parseReceiptFromRow(Map<String, dynamic> row) {
+  /// Whether [row] is a soft-deleted record.
+  static bool _isTombstone(Map<String, dynamic> row) => row['deleted_at'] != null;
+
+  /// Maps [row] with the model's own `fromJson`, the same mapping the delta pull
+  /// in `SyncManager` uses, so both paths read identical columns.
+  T? _parseRow<T>(
+    Map<String, dynamic> row,
+    T Function(Map<String, dynamic>) fromJson,
+    String entity,
+  ) {
+    if (row['id'] == null) return null;
     try {
-      final id = row['id']?.toString();
-      if (id == null) return null;
-
-      final itemsRaw = row['items'];
-      final items = <ReceiptItemModel>[];
-      if (itemsRaw is List) {
-        for (final it in itemsRaw) {
-          if (it is Map<String, dynamic>) {
-            items.add(ReceiptItemModel(
-              description: it['description']?.toString() ?? '',
-              unitPrice: (it['unit_price'] as num?)?.toDouble() ?? 0.0,
-              quantity: (it['quantity'] as num?)?.toInt() ?? 1,
-              totalPrice: (it['total_price'] as num?)?.toDouble(),
-              category: it['category']?.toString(),
-              necessity: it['necessity']?.toString() ?? 'essential',
-              isAsset: it['is_asset'] == true,
-            ));
-          }
-        }
-      }
-
-      return ReceiptModel(
-        id: id,
-        merchantName: row['merchant_name']?.toString() ?? 'Unknown Merchant',
-        totalAmount: (row['total_amount'] as num?)?.toDouble() ?? 0.0,
-        currency: row['currency']?.toString() ?? 'USD',
-        date: DateTime.tryParse(row['date']?.toString() ?? '') ?? DateTime.now(),
-        items: items,
-        imagePath: row['image_path']?.toString(),
-        boxId: row['box_id']?.toString() ?? 'main',
-      );
+      return fromJson(row);
     } catch (e) {
-      debugPrint('SyncEngine: Error parsing receipt row: $e');
-      return null;
-    }
-  }
-
-  BoxModel? _parseBoxFromRow(Map<String, dynamic> row) {
-    try {
-      final id = row['id']?.toString();
-      if (id == null) return null;
-      return BoxModel(
-        id: id,
-        name: row['name']?.toString() ?? 'Box',
-        budget: (row['budget'] as num?)?.toDouble() ?? 0.0,
-        spent: (row['spent'] as num?)?.toDouble() ?? 0.0,
-        currency: row['currency']?.toString() ?? 'USD',
-        color: (row['color'] as num?)?.toInt() ?? 0xFF002FA7,
-        icon: row['icon']?.toString(),
-      );
-    } catch (e) {
-      return null;
-    }
-  }
-
-  AssetModel? _parseAssetFromRow(Map<String, dynamic> row) {
-    try {
-      final id = row['id']?.toString();
-      if (id == null) return null;
-      return AssetModel(
-        id: id,
-        name: row['name']?.toString() ?? 'Asset',
-        purchaseDate: DateTime.tryParse(row['purchase_date']?.toString() ?? '') ?? DateTime.now(),
-        warrantyMonths: (row['warranty_months'] as num?)?.toInt() ?? 24,
-        price: (row['price'] as num?)?.toDouble() ?? 0.0,
-        receiptImagePath: row['receipt_image_path']?.toString() ?? '',
-        merchantName: row['merchant_name']?.toString() ?? '',
-        receiptId: row['receipt_id']?.toString() ?? '',
-      );
-    } catch (e) {
-      return null;
-    }
-  }
-
-  InvoiceModel? _parseInvoiceFromRow(Map<String, dynamic> row) {
-    try {
-      final id = row['id']?.toString();
-      if (id == null) return null;
-      return InvoiceModel(
-        id: id,
-        invoiceNumber: row['invoice_number']?.toString() ?? id,
-        clientName: row['client_name']?.toString() ?? 'Client',
-        amount: (row['amount'] as num?)?.toDouble() ?? 0.0,
-        status: row['status']?.toString() ?? 'draft',
-        issuedDate: DateTime.tryParse(row['issued_date']?.toString() ?? '') ?? DateTime.now(),
-        dueDate: row['due_date'] != null ? DateTime.tryParse(row['due_date'].toString()) : null,
-        notes: row['notes']?.toString() ?? '',
-        currency: row['currency']?.toString() ?? 'USD',
-      );
-    } catch (e) {
+      debugPrint('SyncEngine: Error parsing $entity row: $e');
       return null;
     }
   }

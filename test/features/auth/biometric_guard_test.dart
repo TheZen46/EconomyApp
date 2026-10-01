@@ -166,5 +166,38 @@ void main() {
       expect(find.text('Secret Financial Dashboard'), findsOneWidget);
       expect(find.text('tAIdy Locked'), findsNothing);
     });
+
+    testWidgets('stays locked when the device offers no way to authenticate', (tester) async {
+      mockAuth.canCheck = false;
+      mockAuth.isSupported = false;
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            biometricEnabledProvider.overrideWith((ref) => TestBiometricNotifier(true)),
+            biometricServiceProvider.overrideWithValue(BiometricService(localAuth: mockAuth)),
+          ],
+          child: const MaterialApp(
+            home: BiometricGuard(
+              child: Text('Secret Financial Dashboard'),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Secret Financial Dashboard'), findsNothing);
+      expect(find.text('tAIdy Locked'), findsOneWidget);
+      expect(find.textContaining('cannot verify you'), findsOneWidget);
+      expect(mockAuth.authAttempts, 0);
+
+      // Once a screen lock is set up, retrying unlocks normally.
+      mockAuth.isSupported = true;
+      await tester.tap(find.text('Unlock with Biometrics'));
+      await tester.pumpAndSettle();
+
+      expect(mockAuth.authAttempts, 1);
+      expect(find.text('Secret Financial Dashboard'), findsOneWidget);
+    });
   });
 }

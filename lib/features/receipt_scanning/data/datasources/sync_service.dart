@@ -11,6 +11,15 @@ import 'hive_receipt_data_source.dart';
 import 'supabase_data_source.dart';
 
 class SyncService {
+  /// Settings key of the user's consent to contribute receipts (image and
+  /// extracted data) to the model-training storage.
+  static const String trainingContributionKey = 'ai_dataset_contribution_enabled';
+
+  /// Whether the user has opted in to training contribution. Off unless the
+  /// user has explicitly enabled it.
+  static bool isTrainingContributionEnabled(Box settingsBox) =>
+      settingsBox.get(trainingContributionKey, defaultValue: false) as bool;
+
   final Box<SyncItemModel> queueBox;
   final LocalReceiptDataSource localDataSource;
   final SupabaseDataSource supabaseDataSource;
@@ -204,26 +213,27 @@ class SyncService {
   Future<void> _uploadItem(SyncItemModel item) async {
     // 1. Load Receipt from Local
     final receiptModels = await localDataSource.getReceipts();
-    try {
-      final receiptModel = receiptModels.firstWhere((r) => r.id == item.receiptId);
-      final receipt = receiptModel.toEntity();
+    final matches = receiptModels.where((r) => r.id == item.receiptId);
+    if (matches.isEmpty) {
+      // Receipt deleted locally - safe to remove from queue.
+      // We assume local deletion is authoritative.
+      debugPrint('SyncService: Receipt not found locally, skipping upload.');
+      return;
+    }
+    final receiptModel = matches.first;
+    final receipt = receiptModel.toEntity();
 
-      // 2. Upload to Configured Provider
-      final useDrive = settingsBox.get('use_google_drive_storage', defaultValue: false);
-      if (useDrive) {
-        await googleDriveService.uploadReceiptData(receiptModel.toJson(), receipt.id, item.imagePath);
-      } else {
-        await supabaseDataSource.uploadTrainingData(receipt, item.imagePath);
-      }
-    } catch (e) {
-      // If receipt not found locally, maybe it was deleted?
-      if (e is StateError) {
-        // Receipt deleted locally - safe to remove from queue.
-        // We assume local deletion is authoritative.
-        debugPrint('SyncService: Receipt not found locally, skipping upload.');
-        return;
-      }
-      rethrow;
+    // 2. Upload to Configured Provider
+    final useDrive = settingsBox.get('use_google_drive_storage', defaultValue: false);
+    if (useDrive) {
+      // The user's own Google Drive: a personal backup, not the training corpus.
+      await googleDriveService.uploadReceiptData(receiptModel.toJson(), receipt.id, item.imagePath);
+    } else if (isTrainingContributionEnabled(settingsBox)) {
+      await supabaseDataSource.uploadTrainingData(receipt, item.imagePath);
+    } else {
+      // Without consent nothing is uploaded; evaluated per item, so turning the
+      // setting off also stops uploads that are already queued.
+      debugPrint('SyncService: Training contribution is off, not uploading ${item.receiptId}.');
     }
   }
 

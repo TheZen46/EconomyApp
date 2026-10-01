@@ -36,9 +36,14 @@ class FakeSupabaseDataSource implements SupabaseDataSource {
   int peakConcurrentUploads = 0;
   final List<String> uploadedReceiptIds = [];
   bool shouldFail = false;
+  Object? errorToThrow;
 
   @override
   Future<void> uploadTrainingData(Receipt receipt, String imagePath) async {
+    if (errorToThrow != null) {
+      uploadCallCount++;
+      throw errorToThrow!;
+    }
     if (shouldFail) {
       uploadCallCount++;
       throw Exception('Simulated network failure');
@@ -111,6 +116,9 @@ void main() {
 
     queueBox = await Hive.openBox<SyncItemModel>('test_sync_queue');
     settingsBox = await Hive.openBox('test_settings_box');
+    // Upload mechanics are exercised with training contribution consented to;
+    // the consent gate itself is covered by its own group below.
+    await settingsBox.put(SyncService.trainingContributionKey, true);
     localDataSource = FakeLocalReceiptDataSource();
     supabaseDataSource = FakeSupabaseDataSource();
     googleDriveService = FakeGoogleDriveService();
@@ -383,6 +391,61 @@ void main() {
       await queueBox.add(item2);
       await syncService.clearFailedItems();
       expect(queueBox.isEmpty, isTrue);
+    });
+  });
+
+  group('SyncService - training contribution consent', () {
+    Future<void> queueReceipt(String id) async {
+      await localDataSource.saveReceipt(ReceiptModel(
+        id: id,
+        merchantName: 'Store',
+        totalAmount: 10.0,
+        date: DateTime.utc(2026, 9, 1),
+        items: const [],
+        currency: 'EUR',
+      ));
+      await syncService.scheduleUpload(id, '/images/$id.jpg');
+    }
+
+    test('nothing is uploaded unless the user opted in', () async {
+      await settingsBox.delete(SyncService.trainingContributionKey);
+      expect(SyncService.isTrainingContributionEnabled(settingsBox), isFalse);
+
+      await queueReceipt('rec-no-consent');
+      await syncService.syncPendingItems();
+
+      expect(supabaseDataSource.uploadCallCount, 0);
+      expect(queueBox.isEmpty, isTrue);
+    });
+
+    test('revoking consent stops uploads that are already queued', () async {
+      await settingsBox.put(SyncService.trainingContributionKey, false);
+
+      await queueReceipt('rec-revoked');
+      await syncService.syncPendingItems();
+
+      expect(supabaseDataSource.uploadCallCount, 0);
+    });
+
+    test('the personal Google Drive backup does not depend on training consent', () async {
+      await settingsBox.put(SyncService.trainingContributionKey, false);
+      await settingsBox.put('use_google_drive_storage', true);
+
+      await queueReceipt('rec-drive');
+      await syncService.syncPendingItems();
+
+      expect(googleDriveService.uploadCallCount, 1);
+      expect(supabaseDataSource.uploadCallCount, 0);
+    });
+
+    test('a StateError raised by the upload is retried, not treated as a deleted receipt', () async {
+      supabaseDataSource.errorToThrow = StateError('Bad state from storage client');
+
+      await queueReceipt('rec-state-error');
+      await syncService.syncPendingItems();
+
+      expect(supabaseDataSource.uploadCallCount, 1);
+      expect(queueBox.values.single.retryCount, 1);
     });
   });
 }

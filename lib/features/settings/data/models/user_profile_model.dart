@@ -1,8 +1,10 @@
 ﻿import 'package:hive/hive.dart';
 
-part 'user_profile_model.g.dart';
+part 'user_profile_model_adapter.dart';
 
-@HiveType(typeId: 13)
+/// Stored by the hand-written [UserProfileModelAdapter] (typeId 13) in user_profile_model_adapter.dart.
+/// Intentionally not annotated with @HiveType: generating the adapter would drop the
+/// compatibility handling for records written by earlier versions.
 class UserProfileModel extends HiveObject {
   @HiveField(0)
   final String id;

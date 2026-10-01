@@ -10,6 +10,8 @@
 #include "hnsw_vector_index.h"
 
 #include <iostream>
+#include <fstream>
+#include <cstdio>
 #include <cassert>
 #include <vector>
 #include <thread>
@@ -223,24 +225,28 @@ void test_simd_clahe() {
 // TEST 4: RECEIPT ENGINE C FFI EXPORTS
 // ------------------------------------------------------------------------------
 void test_receipt_engine_ffi() {
-    std::cout << "[Test 4.1] C FFI: Engine Initialization & KV Cache Stats..." << std::endl;
-    receipt_engine_t* engine = receipt_engine_init("test_model.gguf", nullptr, nullptr, 4, 0, 2048);
-    TEST_ASSERT(engine != nullptr, "receipt_engine_init should return handle");
-    TEST_ASSERT(receipt_engine_is_ready(engine) == 1, "receipt_engine_is_ready must return 1");
+    std::cout << "[Test 4.1] C FFI: Initialization fails closed without a loadable model..." << std::endl;
+    TEST_ASSERT(receipt_engine_init("missing_model.gguf", nullptr, nullptr, 4, 0, 2048) == nullptr,
+                "receipt_engine_init must fail when the model file does not exist");
 
-    size_t total_b = 0, alloc_b = 0;
-    float hit_rate = 0.0f;
-    receipt_engine_get_kv_cache_stats(engine, &total_b, &alloc_b, &hit_rate);
-    TEST_ASSERT(total_b > 0, "KV cache total blocks must be > 0");
+    // A file that exists but is not a model (in a build without llama.cpp every
+    // model is in this position) must not yield an engine that claims to be ready.
+    {
+        std::ofstream placeholder("not_a_model.gguf");
+        placeholder << "not a GGUF model";
+    }
+    receipt_engine_t* engine = receipt_engine_init("not_a_model.gguf", nullptr, nullptr, 4, 0, 2048);
+    std::remove("not_a_model.gguf");
+    TEST_ASSERT(engine == nullptr, "receipt_engine_init must fail when the model cannot be loaded");
 
-    std::cout << "[Test 4.2] C FFI: Image Processing & SPSC Token Polling..." << std::endl;
-    // Synthetic 16x16 PPM image
+    std::cout << "[Test 4.2] C FFI: Calls without an engine are rejected without output..." << std::endl;
+    TEST_ASSERT(receipt_engine_is_ready(nullptr) == 0, "receipt_engine_is_ready(NULL) must return 0");
+
     std::string ppm = "P6\n16 16\n255\n";
     ppm.append(16 * 16 * 3, static_cast<char>(180));
-
-    char output_buf[4096] = {0};
+    char output_buf[256] = {0};
     int res = receipt_engine_process_image(
-        engine,
+        nullptr,
         reinterpret_cast<const uint8_t*>(ppm.data()),
         ppm.size(),
         nullptr,
@@ -248,20 +254,29 @@ void test_receipt_engine_ffi() {
         output_buf,
         sizeof(output_buf)
     );
-    TEST_ASSERT(res == 0, "receipt_engine_process_image must succeed");
-    TEST_ASSERT(strlen(output_buf) > 0, "Output JSON must not be empty");
+    TEST_ASSERT(res == -1, "receipt_engine_process_image(NULL) must return -1");
+    TEST_ASSERT(output_buf[0] == '\0', "No output may be produced without an engine");
 
-    // Poll tokens from ring buffer
-    char token_buf[64] = {0};
-    int is_done = 0;
-    int pop_count = 0;
-    while (receipt_engine_pop_token(engine, token_buf, sizeof(token_buf), &is_done) == 1) {
-        pop_count++;
-        if (is_done) break;
-    }
-    TEST_ASSERT(pop_count > 0, "Must have popped tokens from the SPSC ring buffer");
+    receipt_engine_free(nullptr);
 
-    receipt_engine_free(engine);
+    std::cout << "[Test 4.3] C FFI: Streaming always ends with is_done = 1..." << std::endl;
+    struct StreamState { int done_calls = 0; } state;
+    auto on_token = [](const char*, int is_done, void* user_data) {
+        if (is_done) static_cast<StreamState*>(user_data)->done_calls++;
+    };
+    int stream_res = receipt_engine_process_image_streaming(
+        nullptr,
+        reinterpret_cast<const uint8_t*>(ppm.data()),
+        ppm.size(),
+        nullptr,
+        nullptr,
+        on_token,
+        &state
+    );
+    TEST_ASSERT(stream_res == -1, "receipt_engine_process_image_streaming(NULL) must return -1");
+    TEST_ASSERT(state.done_calls == 1, "A failed streaming call must still deliver is_done exactly once");
+    TEST_ASSERT(receipt_engine_process_image_streaming(nullptr, nullptr, 0, nullptr, nullptr, nullptr, nullptr) == -1,
+                "A missing callback must be rejected");
     std::cout << "  -> Passed!" << std::endl;
 }
 

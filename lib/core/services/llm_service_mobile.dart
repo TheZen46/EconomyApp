@@ -54,6 +54,10 @@ class LLMService implements AIService {
     try {
       // 1. OCR (uses platform channels — must stay on main isolate)
       final text = await extractTextFromImage(imagePath);
+      if (text.trim().isEmpty) {
+        // Without recognized text the model would only invent a receipt.
+        return const Left(ExtractionUnavailableFailure());
+      }
 
       // 2. Build prompt
       final prompt = """<|system|>
@@ -185,10 +189,11 @@ $text
         return recognizedText.text;
       } catch (e) {
         debugPrint('OCR Error: $e');
-        return "Error extracting text";
+        return '';
       }
     }
-    return "Simulated Receipt Text: \nMerchant: Local Store\nDate: 2024-01-01\nTotal: 25.00 EUR\nItems:\n1x Appless - 5.00\n2x Banana - 10.00";
+    // ML Kit OCR is only available on Android and iOS.
+    return '';
   }
 
   int minimum(int a, int b) => (a < b) ? a : b;

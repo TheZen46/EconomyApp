@@ -9,6 +9,7 @@ import 'core/theme/app_theme.dart';
 import 'core/theme/theme_notifier.dart';
 import 'core/services/secure_storage_service.dart';
 import 'core/services/hive_migration_service.dart';
+import 'core/recovery/data_recovery_app.dart';
 import 'features/receipt_scanning/data/models/receipt_model.dart';
 import 'features/receipt_scanning/presentation/providers/receipt_provider.dart';
 import 'features/receipt_scanning/data/models/dashboard_config.dart';
@@ -62,9 +63,23 @@ void main() async {
   // ── 3. Initialize Hive with AES encryption ─────────────────────────────
   await Hive.initFlutter();
 
-  // Get or generate a 256-bit encryption key from the platform keychain
-  final encryptionKey = await SecureStorageService.getHiveEncryptionKey();
-  final cipher = HiveAesCipher(encryptionKey);
+  // Get or generate a 256-bit encryption key from the platform keychain.
+  // A missing key with existing encrypted files means the data can no longer be
+  // decrypted; say so instead of silently generating a new key.
+  final HiveAesCipher cipher;
+  try {
+    if (!await SecureStorageService.hasHiveEncryptionKey() &&
+        await HiveMigrationService.boxFilesExist(_encryptedBoxNames)) {
+      debugPrint('FATAL Hive encryption key missing for existing encrypted boxes');
+      runApp(DataRecoveryApp(recovery: StartupRecovery.encryptionKeyLost(_encryptedBoxNames)));
+      return;
+    }
+    cipher = HiveAesCipher(await SecureStorageService.getHiveEncryptionKey());
+  } catch (e) {
+    debugPrint('FATAL Secure storage unavailable: $e');
+    runApp(DataRecoveryApp(recovery: StartupRecovery.secureStorageUnavailable(e)));
+    return;
+  }
 
   // Register all Hive adapters
   Hive.registerAdapter(ReceiptModelAdapter());
@@ -92,7 +107,7 @@ void main() async {
     await HiveMigrationService.runSchemaMigrations(settingsBox, cipher: cipher);
   } on SchemaCorruptionException catch (e) {
     debugPrint('FATAL Settings Box Corruption: $e');
-    runApp(_DataRecoveryApp(exception: e));
+    runApp(DataRecoveryApp(recovery: StartupRecovery.unreadableBox(e)));
     return;
   }
 
@@ -133,7 +148,7 @@ void main() async {
     // A box failed to open. A backup was automatically created in hive_backups/.
     // Surface this to the user via the Data Recovery dialog — no data is lost.
     debugPrint('FATAL Database Box Corruption: $e');
-    runApp(_DataRecoveryApp(exception: e));
+    runApp(DataRecoveryApp(recovery: StartupRecovery.unreadableBox(e)));
     return;
   }
 
@@ -158,8 +173,10 @@ void main() async {
   );
 }
 
-/// One-time migration: moves any plaintext secrets from the Hive settings box
-/// into flutter_secure_storage, then deletes them from Hive.
+/// Moves any plaintext secrets left in the Hive settings box (written by
+/// earlier versions) into flutter_secure_storage, then deletes them from Hive.
+/// Secure storage is the only location these keys are read from, so the
+/// routine is a no-op once nothing is left to move.
 Future<void> _migrateSecretsToSecureStorage(Box settingsBox) async {
   const keysToMigrate = ['gemini_api_key', 'webhook_secret', 'webhook_url'];
 
@@ -178,145 +195,17 @@ Future<void> _migrateSecretsToSecureStorage(Box settingsBox) async {
   }
 }
 
-// ── Data Recovery App ───────────────────────────────────────────────────────
+// ── Startup Recovery ──────────────────────────────────────────────────────────
 
-/// Minimal app shell shown when a [SchemaCorruptionException] is thrown during
-/// startup. Informs the user that a backup was created and offers guidance,
-/// rather than silently wiping data.
-class _DataRecoveryApp extends StatelessWidget {
-  final SchemaCorruptionException exception;
-  const _DataRecoveryApp({required this.exception});
-
-  @override
-  Widget build(BuildContext context) {
-    return MaterialApp(
-      debugShowCheckedModeBanner: false,
-      theme: ThemeData.dark(),
-      home: _DataRecoveryScreen(exception: exception),
-    );
-  }
-}
-
-class _DataRecoveryScreen extends StatelessWidget {
-  final SchemaCorruptionException exception;
-  const _DataRecoveryScreen({required this.exception});
-
-  @override
-  Widget build(BuildContext context) {
-    final hasBackup = exception.backupPath != null;
-
-    return Scaffold(
-      backgroundColor: const Color(0xFF0A0A0A),
-      body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(32),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Icon(Icons.warning_amber_rounded,
-                  color: Color(0xFFD4183D), size: 48),
-              const SizedBox(height: 24),
-              const Text(
-                'Data Recovery Required',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 24,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              const SizedBox(height: 16),
-              Text(
-                'tAIdy encountered a schema change in the local database '
-                '(box: ${exception.boxName}) and could not open it safely.',
-                style: const TextStyle(color: Colors.white70, fontSize: 14),
-              ),
-              const SizedBox(height: 16),
-              if (hasBackup) ...[
-                const Text(
-                  '✓ Your data has been backed up automatically.',
-                  style: TextStyle(
-                      color: Color(0xFF4ADE80),
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600),
-                ),
-                const SizedBox(height: 8),
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withAlpha(10),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Text(
-                    exception.backupPath!,
-                    style: const TextStyle(
-                        color: Colors.white54,
-                        fontSize: 11,
-                        fontFamily: 'monospace'),
-                  ),
-                ),
-              ] else ...[
-                const Text(
-                  '⚠ A backup could not be created (no existing file found).',
-                  style: TextStyle(color: Color(0xFFFBBF24), fontSize: 14),
-                ),
-              ],
-              const SizedBox(height: 32),
-              const Text(
-                'To recover:\n'
-                '  1. Copy the backup file to a safe location.\n'
-                '  2. Restart the app — tAIdy will create a fresh database.\n'
-                '  3. Contact support with your backup file for data restoration.',
-                style: TextStyle(color: Colors.white60, fontSize: 13, height: 1.6),
-              ),
-              const SizedBox(height: 32),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF002FA7),
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12)),
-                  ),
-                  onPressed: () {
-                    // Show technical details for support
-                    showDialog(
-                      context: context,
-                      builder: (ctx) => AlertDialog(
-                        backgroundColor: const Color(0xFF1A1A1A),
-                        title: const Text('Technical Details',
-                            style: TextStyle(color: Colors.white)),
-                        content: SingleChildScrollView(
-                          child: Text(
-                            exception.toString(),
-                            style: const TextStyle(
-                                color: Colors.white60,
-                                fontSize: 12,
-                                fontFamily: 'monospace'),
-                          ),
-                        ),
-                        actions: [
-                          TextButton(
-                            onPressed: () => Navigator.pop(ctx),
-                            child: const Text('Close',
-                                style: TextStyle(color: Color(0xFF002FA7))),
-                          ),
-                        ],
-                      ),
-                    );
-                  },
-                  child: const Text('View Technical Details',
-                      style: TextStyle(color: Colors.white)),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
+/// Boxes opened with the Hive encryption key (see step 5 of [main]).
+const List<String> _encryptedBoxNames = [
+  'receipts_v3',
+  'sync_queue',
+  'assets',
+  'boxes',
+  'invoices',
+  'sync_outbox',
+];
 
 // ── App Shell ────────────────────────────────────────────────────────────────
 

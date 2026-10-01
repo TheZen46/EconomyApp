@@ -8,10 +8,13 @@ import 'package:image_picker/image_picker.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:uuid/uuid.dart';
 
+import '../../../../core/error/failures.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../core/services/telemetry_service.dart';
 import '../providers/receipt_provider.dart';
+import '../../domain/entities/receipt.dart';
 import '../../../settings/presentation/providers/taxonomy_provider.dart';
 import '../../../settings/presentation/providers/llm_provider.dart';
 
@@ -189,16 +192,30 @@ class _ScanPageState extends ConsumerState<ScanPage> with SingleTickerProviderSt
 
       result.fold(
         (failure) {
+          setState(() {
+            _scanState = ScanState.idle;
+            _lastLatencyMs = elapsedMs;
+          });
+          if (failure is ExtractionUnavailableFailure) {
+            // Nothing could be read: offer an empty draft with the photo attached
+            // for manual entry, never pre-filled values.
+            ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(failure.message)));
+            context.push('/review', extra: Receipt(
+              id: const Uuid().v4(),
+              merchantName: '',
+              date: DateTime.now(),
+              totalAmount: 0,
+              currency: 'EUR',
+              imagePath: image.path,
+            ));
+            return;
+          }
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text('Error: ${failure.message}'),
               backgroundColor: AppTheme.error,
             ),
           );
-          setState(() {
-            _scanState = ScanState.idle;
-            _lastLatencyMs = elapsedMs;
-          });
         },
         (receipt) {
           double confidence = 92.0;
