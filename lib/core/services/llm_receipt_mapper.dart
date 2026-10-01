@@ -1,6 +1,7 @@
 import 'package:uuid/uuid.dart';
 
 import '../../features/receipt_scanning/domain/entities/receipt.dart';
+import '../utils/currency_codes.dart';
 import '../utils/date_parser.dart';
 
 /// Maps the JSON produced by the legacy on-device LLM to a [Receipt]. Kept
@@ -17,14 +18,13 @@ class LlmReceiptMapper {
   static Receipt map(Map<String, dynamic> json, String imagePath, {DateTime? now}) {
     final purchaseDate = ReceiptDateParser.parsePurchaseDate(json['date']?.toString(), now: now);
     final today = now ?? DateTime.now();
-    final currency = json['currency']?.toString().trim().toUpperCase() ?? '';
     return Receipt(
       id: const Uuid().v4(),
       merchantName: json['merchantName']?.toString() ?? 'Unknown',
       date: purchaseDate ?? DateTime(today.year, today.month, today.day),
       dateUncertain: purchaseDate == null,
       totalAmount: (json['totalAmount'] is num) ? (json['totalAmount'] as num).toDouble() : 0.0,
-      currency: RegExp(r'^[A-Z]{3}$').hasMatch(currency) ? currency : 'EUR',
+      currency: CurrencyCodes.normalize(json['currency']?.toString()),
       items: _mapItems(json['items']),
       imagePath: imagePath,
     );

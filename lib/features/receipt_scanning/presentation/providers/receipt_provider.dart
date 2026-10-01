@@ -107,7 +107,7 @@ final aiServiceProvider = Provider<AIService>((ref) {
   final apiKey = apiKeyAsync.valueOrNull ?? '';
 
   if (isEnabled && apiKey.isNotEmpty) {
-    return GeminiAIService(apiKey);
+    return GeminiAIService(apiKey, model: box.get(GeminiAIService.modelSettingKey) as String?);
   }
 
   // 4. Fallback

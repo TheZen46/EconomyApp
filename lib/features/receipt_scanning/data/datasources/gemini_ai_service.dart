@@ -1,36 +1,77 @@
-import 'dart:io';
-
 import 'package:flutter/foundation.dart';
 import 'package:dartz/dartz.dart';
 import 'package:google_generative_ai/google_generative_ai.dart';
+import 'package:image_picker/image_picker.dart' show XFile;
 
 import '../../../../core/error/failures.dart';
 import '../../../../core/services/ai_service.dart';
+import '../../../../core/utils/currency_codes.dart';
 import '../../../../core/utils/json_parser_utils.dart';
 import '../../domain/entities/receipt.dart';
 import '../models/receipt_model.dart';
 import '../../../../core/constants/taxonomy_constants.dart';
 
 class GeminiAIService implements AIService {
+  /// Settings key of an optional model identifier overriding [defaultModel].
+  static const String modelSettingKey = 'gemini_model';
+
+  /// Model used when none is configured. The Gemini 1.5 family used before
+  /// has been retired; check the current model catalogue when this changes.
+  static const String defaultModel = 'gemini-2.5-flash';
+
   final String apiKey;
+  final String modelName;
   late final GenerativeModel _model;
 
-  GeminiAIService(this.apiKey) {
+  GeminiAIService(this.apiKey, {String? model})
+      : modelName = (model == null || model.trim().isEmpty) ? defaultModel : model.trim() {
     _model = GenerativeModel(
-      model: 'gemini-1.5-flash',
+      model: modelName,
       apiKey: apiKey,
+      // Structured output: the response body is JSON, without prose or fences.
+      generationConfig: GenerationConfig(responseMimeType: 'application/json'),
     );
+  }
+
+  /// MIME type of an image from its file signature, or null when the format
+  /// is not one Gemini accepts (JPEG, PNG, WebP, HEIC/HEIF).
+  static String? detectImageMimeType(Uint8List bytes) {
+    bool startsWith(List<int> signature, [int offset = 0]) {
+      if (bytes.length < offset + signature.length) return false;
+      for (var i = 0; i < signature.length; i++) {
+        if (bytes[offset + i] != signature[i]) return false;
+      }
+      return true;
+    }
+
+    if (startsWith([0xFF, 0xD8, 0xFF])) return 'image/jpeg';
+    if (startsWith([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A])) return 'image/png';
+    if (startsWith('RIFF'.codeUnits) && startsWith('WEBP'.codeUnits, 8)) return 'image/webp';
+    if (startsWith('ftyp'.codeUnits, 4) && bytes.length >= 12) {
+      final brand = String.fromCharCodes(bytes.sublist(8, 12));
+      if (const {'heic', 'heix', 'hevc', 'hevx'}.contains(brand)) return 'image/heic';
+      if (const {'mif1', 'msf1', 'heif'}.contains(brand)) return 'image/heif';
+    }
+    return null;
   }
 
   @override
   Future<Either<Failure, Receipt>> extractReceiptData(String imagePath, {Map<String, Map<String, List<TaxonomyItem>>>? taxonomy}) async {
     try {
-      final file = File(imagePath);
-      if (!file.existsSync()) {
+      // XFile reads files on native platforms and blob URLs on web.
+      final Uint8List imageBytes;
+      try {
+        imageBytes = await XFile(imagePath).readAsBytes();
+      } catch (_) {
         return const Left(CacheFailure("Image file not found"));
       }
-
-      final imageBytes = await file.readAsBytes();
+      if (imageBytes.isEmpty) {
+        return const Left(CacheFailure("Image file not found"));
+      }
+      final mimeType = detectImageMimeType(imageBytes);
+      if (mimeType == null) {
+        return const Left(AIProcessingFailure("Unsupported image format. Use JPEG, PNG, WebP or HEIC."));
+      }
       
       // Dynamic Taxonomy Generation
       final effectiveTaxonomy = taxonomy ?? TaxonomyConstants.hierarchy;
@@ -46,7 +87,7 @@ class GeminiAIService implements AIService {
       
       Required Fields:
       - merchant: { name: String, vat_number: String (optional), address: String (optional) }
-      - transaction: { date: String (ISO8601 YYYY-MM-DD), time: String (HH:mm), total_amount: Number, currency: String (Symbol like €, \$, £) }
+      - transaction: { date: String (ISO8601 YYYY-MM-DD), time: String (HH:mm), total_amount: Number, currency: String (ISO 4217 code such as EUR, USD, GBP; never a symbol) }
       - items: [ 
           { 
             description: String, 
@@ -81,7 +122,7 @@ ${taxonomyBuffer.toString()}
       2. Return ONLY raw JSON. No markdown backticks.
       """);
 
-      final imagePart = DataPart('image/jpeg', imageBytes); // Assuming jpeg for complexity, or detect mime
+      final imagePart = DataPart(mimeType, imageBytes);
 
       final content = [
         Content.multi([prompt, imagePart])
@@ -98,19 +139,24 @@ ${taxonomyBuffer.toString()}
 
       if (jsonMap == null) {
         debugPrint("Gemini: Failed to extract JSON from response");
-        debugPrint("Gemini Raw Response: ${response.text}");
+        // The raw response contains receipt content; keep it out of release logs.
+        if (kDebugMode) debugPrint("Gemini Raw Response: ${response.text}");
         return const Left(AIProcessingFailure("Failed to parse AI output"));
       }
 
       try {
         // Use ReceiptModel.fromJson logic to parse
-        final receiptModel = ReceiptModel.fromJson(jsonMap);
+        final receipt = ReceiptModel.fromJson(jsonMap).toEntity();
 
-        return Right(receiptModel.toEntity().copyWith(imagePath: imagePath));
+        return Right(receipt.copyWith(
+          imagePath: imagePath,
+          // Symbols such as "€" are mapped to their ISO 4217 code.
+          currency: CurrencyCodes.normalize(receipt.currency),
+        ));
 
       } catch (e) {
         debugPrint("Gemini JSON Parse Error: $e");
-        debugPrint("Raw Response: ${response.text}");
+        if (kDebugMode) debugPrint("Raw Response: ${response.text}");
         return const Left(AIProcessingFailure("Failed to parse AI output"));
       }
     } catch (e) {
