@@ -155,6 +155,43 @@ Here is the data:
       expect(map['totalAmount'], 999.00);
     });
 
+    test('repair leaves "//" and Python-like words inside string values intact', () {
+      // The trailing comma forces the repair path.
+      const withStrings = '''
+{
+  "merchantName": "True Value Hardware",
+  "website": "https://truevalue.example.com/store/42",
+  "note": "None of the items were returned",
+  "comment": "price /* per unit */",
+  "isVerified": True,
+  "discountCode": None, // no discount
+}
+''';
+
+      final map = JsonParserUtils.extractJsonMap(withStrings);
+      expect(map, isNotNull);
+      expect(map!['merchantName'], 'True Value Hardware');
+      expect(map['website'], 'https://truevalue.example.com/store/42');
+      expect(map['note'], 'None of the items were returned');
+      expect(map['comment'], 'price /* per unit */');
+      expect(map['isVerified'], true);
+      expect(map['discountCode'], isNull);
+    });
+
+    test('repair keeps escaped quotes inside strings when stripping comments', () {
+      const escaped = r'''
+{
+  "merchantName": "Joe's \"Best\" // Deli",
+  "totalAmount": 9.99,
+}
+''';
+
+      final map = JsonParserUtils.extractJsonMap(escaped);
+      expect(map, isNotNull);
+      expect(map!['merchantName'], 'Joe\'s "Best" // Deli');
+      expect(map['totalAmount'], 9.99);
+    });
+
     test('handles deeply nested truncated arrays and objects without errors', () {
       const deeplyTruncated = '''
 {

@@ -124,17 +124,13 @@ class JsonParserUtils {
   static String repairJson(String raw) {
     var text = raw.trim();
 
-    // 1. Remove comments
-    text = text.replaceAll(RegExp(r'//.*$', multiLine: true), '');
-    text = text.replaceAll(RegExp(r'/\*[\s\S]*?\*/'), '');
-
-    // 2. Replace Python/JS literals (None -> null, True -> true, False -> false)
-    text = text.replaceAll(RegExp(r'\bNone\b'), 'null');
-    text = text.replaceAll(RegExp(r'\bTrue\b'), 'true');
-    text = text.replaceAll(RegExp(r'\bFalse\b'), 'false');
-
-    // 3. Fix unclosed quotes before commas (e.g. "key": "value, -> "key": "value",)
+    // 1. Fix unclosed quotes before commas (e.g. "key": "value, -> "key": "value",)
+    //    first, so that the scan below sees correct string boundaries.
     text = _fixUnclosedQuotesBeforeCommas(text);
+
+    // 2-3. Remove comments and replace Python literals (None, True, False),
+    //      outside string literals only.
+    text = _stripCommentsAndPythonLiterals(text);
 
     // 4. Sanitize unescaped newlines / tabs inside string literals
     text = _sanitizeStringLiterals(text);
@@ -149,6 +145,64 @@ class JsonParserUtils {
     text = text.replaceAllMapped(RegExp(r',\s*([\}\]])'), (m) => m.group(1)!);
 
     return text;
+  }
+
+  static const Map<String, String> _pythonLiterals = {
+    'None': 'null',
+    'True': 'true',
+    'False': 'false',
+  };
+  static final RegExp _bareWord = RegExp(r'[A-Za-z_][A-Za-z0-9_]*');
+
+  /// Removes `//` and `/* */` comments and maps the bare words None, True and
+  /// False to their JSON literals, leaving the contents of string literals
+  /// (URLs, "True Value Hardware", ...) untouched.
+  static String _stripCommentsAndPythonLiterals(String input) {
+    final out = StringBuffer();
+    var inString = false;
+    var escaped = false;
+    var i = 0;
+    while (i < input.length) {
+      final char = input[i];
+      if (inString) {
+        out.write(char);
+        if (escaped) {
+          escaped = false;
+        } else if (char == r'\') {
+          escaped = true;
+        } else if (char == '"') {
+          inString = false;
+        }
+        i++;
+        continue;
+      }
+      if (char == '"') {
+        inString = true;
+        out.write(char);
+        i++;
+        continue;
+      }
+      if (input.startsWith('//', i)) {
+        final lineEnd = input.indexOf('\n', i);
+        i = lineEnd == -1 ? input.length : lineEnd;
+        continue;
+      }
+      if (input.startsWith('/*', i)) {
+        final commentEnd = input.indexOf('*/', i + 2);
+        i = commentEnd == -1 ? input.length : commentEnd + 2;
+        continue;
+      }
+      final word = _bareWord.matchAsPrefix(input, i);
+      if (word != null) {
+        final text = word.group(0)!;
+        out.write(_pythonLiterals[text] ?? text);
+        i = word.end;
+        continue;
+      }
+      out.write(char);
+      i++;
+    }
+    return out.toString();
   }
 
   /// Fixes missing closing quotes on string values that end with a comma:
