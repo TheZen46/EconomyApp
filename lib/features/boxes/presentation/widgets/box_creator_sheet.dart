@@ -122,17 +122,25 @@ class _BoxCreatorSheetState extends ConsumerState<BoxCreatorSheet> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Delete Box?'),
-        content: const Text('Are you sure you want to delete this box? This action cannot be undone.'),
+        content: const Text(
+          'The box is deleted and its receipts are moved to the main box. '
+          'This action cannot be undone.',
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(),
             child: const Text('Cancel'),
           ),
           TextButton(
-            onPressed: () {
-              ref.read(boxesProvider.notifier).deleteBox(widget.editBoxId!);
+            onPressed: () async {
+              final messenger = ScaffoldMessenger.of(context);
               Navigator.of(ctx).pop(); // pop dialog
-              Navigator.of(context).pop(); // pop sheet
+              try {
+                await ref.read(boxesProvider.notifier).deleteBox(widget.editBoxId!);
+                if (mounted) Navigator.of(context).pop(); // pop sheet
+              } catch (e) {
+                messenger.showSnackBar(SnackBar(content: Text('The box could not be deleted: $e')));
+              }
             },
             child: const Text('Delete', style: TextStyle(color: Colors.red)),
           ),
