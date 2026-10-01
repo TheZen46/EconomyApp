@@ -324,7 +324,9 @@ BEGIN
     END IF;
     cleaned := input_text;
     cleaned := regexp_replace(cleaned, '[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}', '[REDACTED_EMAIL]', 'g');
-    cleaned := regexp_replace(cleaned, '\b(?:\d[ -]*?){13,19}\b', '[REDACTED_CARD]', 'g');
+    -- \y is the word boundary in PostgreSQL regular expressions (\b means backspace).
+    -- The number must start and end with a digit so that adjacent separators are kept.
+    cleaned := regexp_replace(cleaned, '\y\d(?:[ -]*\d){12,18}\y', '[REDACTED_CARD]', 'g');
     cleaned := regexp_replace(cleaned, '(?:\+?\d{1,3}[-.\s]?)?\(?\d{2,4}\)?[-.\s]?\d{3,4}[-.\s]?\d{3,4}', '[REDACTED_PHONE]', 'g');
     RETURN cleaned;
 END;
