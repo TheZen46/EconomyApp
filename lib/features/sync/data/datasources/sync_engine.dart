@@ -32,6 +32,9 @@ class SyncEngine {
   final Box<TaxonomyConfigModel>? taxonomyBox;
   final SyncService? uploadSyncService;
 
+  /// Whether cloud requests are allowed (isolation mode is off).
+  final bool Function() isCloudAllowed;
+
   final Lock _engineLock = Lock();
   final math.Random _random = math.Random();
 
@@ -54,9 +57,12 @@ class SyncEngine {
     this.invoicesBox,
     this.taxonomyBox,
     this.uploadSyncService,
-  }) {
+    bool Function()? isCloudAllowed,
+  }) : isCloudAllowed = isCloudAllowed ?? _alwaysAllowed {
     _initConnectivityListener();
   }
+
+  static bool _alwaysAllowed() => true;
 
   void _initConnectivityListener() {
     try {
@@ -104,6 +110,16 @@ class SyncEngine {
     bool isInitial = true,
   }) async {
     return await _engineLock.synchronized(() async {
+      if (!isCloudAllowed()) {
+        _emit(SyncProgressState(
+          stage: SyncStage.failed,
+          isInitialSync: isInitial,
+          message: 'Isolation mode is on. Cloud synchronization is disabled.',
+          errorMessage: 'Turn off isolation mode in Settings to synchronize.',
+          canContinueOffline: true,
+        ));
+        return false;
+      }
       _shouldCancel = false;
       int attempt = 0;
       const maxAttempts = 5;
@@ -331,15 +347,9 @@ class SyncEngine {
             }
           }
 
-          // ── Step 7: Parity Verification & Finalization ──────────────────────
-          _emit(_currentState.copyWith(
-            stage: SyncStage.verifyingParity,
-            progress: 0.95,
-            message: 'Verifying bit-for-bit directory integrity...',
-          ));
-
-          await Future.delayed(const Duration(milliseconds: 300));
-
+          // ── Step 7: Finalization ─────────────────────────────────────────────
+          // No integrity comparison is performed, so no verification stage is
+          // reported.
           _emit(_currentState.copyWith(
             stage: SyncStage.completed,
             progress: 1.0,

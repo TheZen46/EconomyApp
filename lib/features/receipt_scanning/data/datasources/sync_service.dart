@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:hive/hive.dart';
 import 'package:synchronized/synchronized.dart';
 
+import '../../../../core/privacy/network_policy.dart';
 import '../../../../core/services/google_drive_service.dart';
 import '../models/sync_item_model.dart';
 import 'hive_receipt_data_source.dart';
@@ -25,6 +26,10 @@ class SyncService {
   final SupabaseDataSource supabaseDataSource;
   final Box settingsBox;
   final GoogleDriveService googleDriveService;
+
+  /// Whether the box with the given id is private. Receipts in private boxes
+  /// are never uploaded for model training.
+  final bool Function(String? boxId) isPrivateBox;
   final math.Random _random = math.Random();
 
   StreamSubscription<List<ConnectivityResult>>? _connectivitySubscription;
@@ -42,7 +47,8 @@ class SyncService {
     required this.supabaseDataSource,
     required this.settingsBox,
     required this.googleDriveService,
-  }) {
+    bool Function(String? boxId)? isPrivateBox,
+  }) : isPrivateBox = isPrivateBox ?? _noPrivateBoxes {
     // Listen to network changes (v6.0 API returns List)
     try {
       _connectivitySubscription = Connectivity().onConnectivityChanged.listen((List<ConnectivityResult> results) {
@@ -59,20 +65,29 @@ class SyncService {
     syncPendingItems();
   }
 
+  static bool _noPrivateBoxes(String? boxId) => false;
+
   /// Add item to upload queue
   Future<void> scheduleUpload(String receiptId, String imagePath) async {
     await _syncLock.synchronized(() async {
-      // Avoid duplicate queue entries or re-queuing in-flight items
-      if (queueBox.values.any((item) => item.receiptId == receiptId) ||
-          _inFlightItemIds.contains(receiptId)) {
-        return;
-      }
+      if (_inFlightItemIds.contains(receiptId)) return;
 
       final item = SyncItemModel(
         receiptId: receiptId,
         imagePath: imagePath,
         addedAt: DateTime.now(),
       );
+      for (final key in queueBox.keys) {
+        final existing = queueBox.get(key);
+        if (existing == null || existing.receiptId != receiptId) continue;
+        // A pending entry reads the receipt when it is uploaded, so it already
+        // covers this save. A dead-lettered entry is never retried on its own;
+        // saving the receipt again starts over with a fresh entry.
+        if (existing.isDeadLettered) {
+          await queueBox.put(key, item);
+        }
+        return;
+      }
       await queueBox.add(item);
     });
 
@@ -87,6 +102,12 @@ class SyncService {
   Future<void> syncPendingItems() async {
     await _syncLock.synchronized(() async {
       if (queueBox.isEmpty) return;
+
+      // Isolation mode: items stay queued until it is turned off.
+      if (!NetworkPolicy.isCloudAllowed(settingsBox)) {
+        debugPrint('SyncService: Isolation mode is on - skipping syncPendingItems.');
+        return;
+      }
 
       // Check network connectivity before processing
       try {
@@ -212,15 +233,13 @@ class SyncService {
 
   Future<void> _uploadItem(SyncItemModel item) async {
     // 1. Load Receipt from Local
-    final receiptModels = await localDataSource.getReceipts();
-    final matches = receiptModels.where((r) => r.id == item.receiptId);
-    if (matches.isEmpty) {
+    final receiptModel = await localDataSource.getReceipt(item.receiptId);
+    if (receiptModel == null) {
       // Receipt deleted locally - safe to remove from queue.
       // We assume local deletion is authoritative.
       debugPrint('SyncService: Receipt not found locally, skipping upload.');
       return;
     }
-    final receiptModel = matches.first;
     final receipt = receiptModel.toEntity();
 
     // 2. Upload to Configured Provider
@@ -228,6 +247,8 @@ class SyncService {
     if (useDrive) {
       // The user's own Google Drive: a personal backup, not the training corpus.
       await googleDriveService.uploadReceiptData(receiptModel.toJson(), receipt.id, item.imagePath);
+    } else if (isPrivateBox(receiptModel.boxId)) {
+      debugPrint('SyncService: ${item.receiptId} is in a private box, not uploading it for training.');
     } else if (isTrainingContributionEnabled(settingsBox)) {
       await supabaseDataSource.uploadTrainingData(receipt, item.imagePath);
     } else {

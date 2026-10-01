@@ -119,8 +119,11 @@ class FakeGoTrueClient extends GoTrueClient {
     return AuthResponse(session: mockSession, user: mockUser);
   }
 
+  SignOutScope? lastSignOutScope;
+
   @override
   Future<void> signOut({SignOutScope scope = SignOutScope.global}) async {
+    lastSignOutScope = scope;
     if (throwException) {
       if (exceptionToThrow != null) throw exceptionToThrow!;
       if (genericExceptionToThrow != null) throw genericExceptionToThrow!;
@@ -353,6 +356,17 @@ void main() {
     });
 
     test('clearPersistedSession purges all secure storage items', () async {
+      mockStorage[SecretKeys.supabaseRefreshToken] = 'token';
+      await repository.clearPersistedSession();
+      expect(mockStorage.containsKey(SecretKeys.supabaseRefreshToken), isFalse);
+    });
+
+    test('clearPersistedSession also signs the Supabase client out locally', () async {
+      await repository.clearPersistedSession();
+      expect(fakeGoTrue.lastSignOutScope, SignOutScope.local);
+
+      // Offline, revoking the session fails; the local purge still succeeds.
+      fakeGoTrue.throwException = true;
       mockStorage[SecretKeys.supabaseRefreshToken] = 'token';
       await repository.clearPersistedSession();
       expect(mockStorage.containsKey(SecretKeys.supabaseRefreshToken), isFalse);

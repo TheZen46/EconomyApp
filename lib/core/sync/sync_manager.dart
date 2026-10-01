@@ -8,6 +8,7 @@ import 'package:synchronized/synchronized.dart';
 import 'conflict_policy.dart';
 import 'outbox_service.dart';
 import 'sync_error_policy.dart';
+import '../privacy/network_policy.dart';
 import '../../features/boxes/data/models/box_model.dart';
 import '../../features/invoices/data/models/invoice_model.dart';
 import '../../features/evault/data/models/asset_model.dart';
@@ -71,6 +72,10 @@ class SyncManager {
       _isSyncing = true;
 
       try {
+        if (!NetworkPolicy.isCloudAllowed(settingsBox)) {
+          debugPrint('SyncManager: Isolation mode is on, skipping cloud sync.');
+          return;
+        }
         final user = supabase.auth.currentUser;
         if (user == null) {
           debugPrint('SyncManager: No active authenticated user, skipping cloud sync.');

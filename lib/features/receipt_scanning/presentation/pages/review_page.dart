@@ -18,6 +18,7 @@ import '../../../../features/settings/presentation/providers/llm_provider.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../core/theme/theme_notifier.dart';
 import '../../../../core/utils/error_handler.dart';
+import '../../../../core/utils/amount_parser.dart';
 import '../../../../core/constants/app_constants.dart';
 
 class ReviewPage extends ConsumerStatefulWidget {
@@ -33,6 +34,8 @@ class _ReviewPageState extends ConsumerState<ReviewPage> {
   late TextEditingController _totalController;
   late List<_UiReceiptItem> _items; 
   late DateTime _currentDate;
+  /// The extraction found no purchase date and the user has not set one yet.
+  late bool _dateUncertain;
   
   bool _isTotalLocked = true;
   bool _isSaving = false;
@@ -60,7 +63,8 @@ class _ReviewPageState extends ConsumerState<ReviewPage> {
       }
     });
     _currentDate = widget.receipt.date;
-    _items = widget.receipt.items.map((i) => _UiReceiptItem(const Uuid().v4(), i)).toList();
+    _dateUncertain = widget.receipt.dateUncertain;
+    _items = widget.receipt.items.map((i) => _UiReceiptItem(const Uuid().v4(), i, original: i)).toList();
     _selectedCurrency = widget.receipt.currency;
     if (_selectedCurrency.isEmpty) _selectedCurrency = 'USD';
     _selectedBoxId = widget.receipt.boxId ?? ref.read(activeBoxIdProvider);
@@ -111,7 +115,7 @@ class _ReviewPageState extends ConsumerState<ReviewPage> {
         : newItem;
 
     setState(() {
-      _items[index] = _UiReceiptItem(_items[index].id, sanitizedItem);
+      _items[index] = _UiReceiptItem(_items[index].id, sanitizedItem, original: _items[index].original);
       _calculateTotal();
     });
 
@@ -319,30 +323,52 @@ class _ReviewPageState extends ConsumerState<ReviewPage> {
     );
   }
 
+  @override
+  void dispose() {
+    _merchantController.dispose();
+    _totalController.dispose();
+    super.dispose();
+  }
+
   Future<void> _saveReceipt() async {
     if (_isSaving) return;
+
+    // "12,50" and "1.234,56" are valid totals; text that is not a number is
+    // rejected instead of being saved as 0.00.
+    final total = AmountParser.parse(_totalController.text);
+    if (total == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('"${_totalController.text}" is not a valid total.')),
+      );
+      return;
+    }
+
     setState(() => _isSaving = true);
 
     try {
       final updatedReceipt = widget.receipt.copyWith(
         merchantName: _merchantController.text,
-        totalAmount: double.tryParse(_totalController.text) ?? 0.0,
+        totalAmount: total,
         date: _currentDate,
         currency: _selectedCurrency,
         items: _items.map((w) => w.item.copyWith(boxId: _selectedBoxId)).toList(),
         boxId: _selectedBoxId,
       );
 
-      await ref.read(receiptListProvider.notifier).addReceipt(updatedReceipt);
+      final saved = await ref.read(receiptListProvider.notifier).addReceipt(updatedReceipt);
+      final failure = saved.fold((f) => f, (_) => null);
+      if (failure != null) throw failure;
 
-      // Persist user corrections to episodic memory for continuous local adaptation
+      // Persist user corrections to episodic memory for continuous local
+      // adaptation: only items whose extracted values the user changed, keyed
+      // by the name the extraction produced.
       try {
         final vlmService = ref.read(vlmEngineServiceProvider);
         for (final itemWrapper in _items) {
           final item = itemWrapper.item;
-          if (item.mainCategory != null && item.description.trim().isNotEmpty) {
+          if (itemWrapper.isCorrected && item.mainCategory != null && item.description.trim().isNotEmpty) {
             unawaited(vlmService.recordUserCorrection(
-              rawName: item.description,
+              rawName: itemWrapper.original!.description,
               correctedName: item.description,
               mainCategory: item.mainCategory!,
               subCategory: item.subCategory ?? '',
@@ -558,29 +584,45 @@ class _ReviewPageState extends ConsumerState<ReviewPage> {
                                             firstDate: DateTime(2000),
                                             lastDate: DateTime.now(),
                                           );
-                                          if (picked != null) setState(() => _currentDate = picked);
+                                          if (picked != null) {
+                                            setState(() {
+                                              _currentDate = picked;
+                                              _dateUncertain = false;
+                                            });
+                                          }
                                         },
-                                        child: Container(
-                                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                                          decoration: BoxDecoration(
-                                            color: _getCardColor(context),
-                                            borderRadius: BorderRadius.circular(12),
-                                            border: Border.all(color: _getBorderColor(context)),
-                                          ),
-                                          child: Row(
-                                            mainAxisSize: MainAxisSize.min,
-                                            children: [
-                                              Icon(Icons.calendar_today, size: 14, color: _getTextColor(context)),
-                                              const SizedBox(width: 6),
-                                              Text(
-                                                DateFormat('dd MMM').format(_currentDate),
-                                                style: GoogleFonts.spaceGrotesk(
-                                                  color: _getTextColor(context),
-                                                  fontWeight: FontWeight.w600,
-                                                  fontSize: 14,
-                                                ),
+                                        child: Tooltip(
+                                          message: _dateUncertain
+                                              ? 'The purchase date could not be read. Tap to set it.'
+                                              : 'Purchase date',
+                                          child: Container(
+                                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                            decoration: BoxDecoration(
+                                              color: _getCardColor(context),
+                                              borderRadius: BorderRadius.circular(12),
+                                              border: Border.all(
+                                                color: _dateUncertain ? _destructiveColor : _getBorderColor(context),
                                               ),
-                                            ],
+                                            ),
+                                            child: Row(
+                                              mainAxisSize: MainAxisSize.min,
+                                              children: [
+                                                Icon(
+                                                  _dateUncertain ? Icons.event_busy : Icons.calendar_today,
+                                                  size: 14,
+                                                  color: _dateUncertain ? _destructiveColor : _getTextColor(context),
+                                                ),
+                                                const SizedBox(width: 6),
+                                                Text(
+                                                  _dateUncertain ? 'Set date' : DateFormat('dd MMM').format(_currentDate),
+                                                  style: GoogleFonts.spaceGrotesk(
+                                                    color: _getTextColor(context),
+                                                    fontWeight: FontWeight.w600,
+                                                    fontSize: 14,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
                                           ),
                                         ),
                                       ),
@@ -994,5 +1036,24 @@ class _ReviewPageState extends ConsumerState<ReviewPage> {
 class _UiReceiptItem {
   final String id;
   final ReceiptItem item;
-  _UiReceiptItem(this.id, this.item);
+
+  /// The item as extracted, or null for items the user added.
+  final ReceiptItem? original;
+
+  _UiReceiptItem(this.id, this.item, {this.original});
+
+  bool get isCorrected => isUserCorrection(original, item);
+}
+
+/// Whether [edited] changes the name or classification that the extraction
+/// produced in [original]. Items the user added ([original] is null) and
+/// items saved unchanged are not corrections, so they are not recorded in
+/// the episodic memory used as few-shot context.
+@visibleForTesting
+bool isUserCorrection(ReceiptItem? original, ReceiptItem edited) {
+  if (original == null) return false;
+  return original.description.trim() != edited.description.trim() ||
+      original.mainCategory != edited.mainCategory ||
+      original.subCategory != edited.subCategory ||
+      original.necessity != edited.necessity;
 }

@@ -197,14 +197,21 @@ class SupabaseDataSourceImpl implements SupabaseDataSource {
 
     final userId = _currentUserId;
     final pathsToDelete = <String>[];
+    final unknownImages = <String>[];
 
     for (int i = 0; i < ids.length; i++) {
       final id = ids[i];
-      final imgPath = (imagePaths != null && i < imagePaths.length)
-          ? imagePaths[i]
-          : '$id.jpg';
-      pathsToDelete.add(_imagePath(id, imgPath, userId: userId));
+      final imgPath = (imagePaths != null && i < imagePaths.length) ? imagePaths[i] : '';
+      if (imgPath.isNotEmpty) {
+        // The object name uses the extension of the local file it was uploaded from.
+        pathsToDelete.add(_imagePath(id, imgPath, userId: userId));
+      } else {
+        unknownImages.add(id);
+      }
       pathsToDelete.add(_labelPath(id, userId: userId));
+    }
+    if (unknownImages.isNotEmpty) {
+      pathsToDelete.addAll(await _storedImagePaths(unknownImages, userId));
     }
 
     try {
@@ -214,6 +221,39 @@ class SupabaseDataSourceImpl implements SupabaseDataSource {
     } catch (e) {
       debugPrint('Supabase delete failed: $e');
       throw Exception('Failed to delete training data: $e');
+    }
+  }
+
+  /// Image extensions the app uploads (camera, gallery and imports).
+  static const List<String> knownImageExtensions = ['.jpg', '.jpeg', '.png', '.heic', '.heif', '.webp'];
+
+  /// Storage paths of the images uploaded for [ids], whatever their
+  /// extension. The user's image folder is listed and matched by receipt id;
+  /// when listing fails, every known extension is targeted instead.
+  Future<List<String>> _storedImagePaths(List<String> ids, String? userId) async {
+    final folder = (userId != null && userId.isNotEmpty) ? '$userId/images' : 'images';
+    final wanted = ids.toSet();
+    const pageSize = 1000;
+    try {
+      final found = <String>[];
+      for (var offset = 0;; offset += pageSize) {
+        final page = await client.storage
+            .from('training_data')
+            .list(path: folder, searchOptions: SearchOptions(limit: pageSize, offset: offset));
+        for (final file in page) {
+          final dot = file.name.lastIndexOf('.');
+          final base = dot == -1 ? file.name : file.name.substring(0, dot);
+          if (wanted.contains(base)) found.add('$folder/${file.name}');
+        }
+        if (page.length < pageSize) break;
+      }
+      return found;
+    } catch (e) {
+      debugPrint('Supabase delete: could not list $folder, targeting known extensions: $e');
+      return [
+        for (final id in ids)
+          for (final ext in knownImageExtensions) '$folder/$id$ext',
+      ];
     }
   }
 

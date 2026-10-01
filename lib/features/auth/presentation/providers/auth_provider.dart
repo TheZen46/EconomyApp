@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../../../../core/providers/supabase_providers.dart';
 import '../../../../core/services/secure_storage_service.dart';
 import '../../domain/repositories/auth_repository.dart';
 import '../../data/repositories/auth_repository_impl.dart';
@@ -11,26 +12,28 @@ import '../../../sync/presentation/providers/sync_provider.dart';
 
 enum AuthStatus { unknown, authenticated, unauthenticated, loading }
 
-class AuthState {
+/// Authentication state shown by the app. Named to stay distinct from
+/// supabase_flutter's [AuthState], the event type of the auth stream.
+class AppAuthState {
   final AuthStatus status;
   final User? user;
   final String? errorMessage;
   final bool isLoading;
 
-  const AuthState({
+  const AppAuthState({
     this.status = AuthStatus.unauthenticated,
     this.user,
     this.errorMessage,
     this.isLoading = false,
   });
 
-  AuthState copyWith({
+  AppAuthState copyWith({
     AuthStatus? status,
     User? user,
     String? errorMessage,
     bool? isLoading,
   }) {
-    return AuthState(
+    return AppAuthState(
       status: status ?? this.status,
       user: user ?? this.user,
       errorMessage: errorMessage,
@@ -43,63 +46,70 @@ class AuthState {
 
 // ── Auth Notifier ─────────────────────────────────────────────────────────────
 
-class AuthNotifier extends StateNotifier<AuthState> {
+class AuthNotifier extends StateNotifier<AppAuthState> {
   final AuthRepository _repository;
   StreamSubscription<AuthState>? _authSubscription;
 
-  AuthNotifier(this._repository) : super(const AuthState()) {
+  AuthNotifier(this._repository) : super(const AppAuthState()) {
     _initialize();
   }
 
   Future<void> _initialize() async {
     final rememberMe = await SecureStorageService.getRememberMe();
+    if (!mounted) return;
     if (rememberMe) {
       final persistedSession = await SecureStorageService.getPersistedSession();
+      if (!mounted) return;
       if (persistedSession != null && persistedSession.isNotEmpty) {
         final result = await _repository.recoverSession(persistedSession);
+        if (!mounted) return;
         result.fold(
           (failure) {
             debugPrint('Session recovery failed: ${failure.message}');
             final user = _repository.currentUser;
             if (user != null) {
-              state = AuthState(
+              state = AppAuthState(
                 status: AuthStatus.authenticated,
                 user: user,
               );
             } else {
-              state = const AuthState(status: AuthStatus.unauthenticated);
+              state = const AppAuthState(status: AuthStatus.unauthenticated);
             }
           },
           (user) {
             if (user != null) {
-              state = AuthState(
+              state = AppAuthState(
                 status: AuthStatus.authenticated,
                 user: user,
               );
             } else {
-              state = const AuthState(status: AuthStatus.unauthenticated);
+              state = const AppAuthState(status: AuthStatus.unauthenticated);
             }
           },
         );
       } else {
         final user = _repository.currentUser;
         if (user != null) {
-          state = AuthState(
+          state = AppAuthState(
             status: AuthStatus.authenticated,
             user: user,
           );
         } else {
-          state = const AuthState(status: AuthStatus.unauthenticated);
+          state = const AppAuthState(status: AuthStatus.unauthenticated);
         }
       }
     } else {
-      // Remember me disabled: do not restore persisted session on cold start
+      // Remember me disabled: do not restore persisted session on cold start.
+      // This also signs the Supabase client out locally, so that the session
+      // it restored on its own is not used for synchronization.
       await _repository.clearPersistedSession();
-      state = const AuthState(status: AuthStatus.unauthenticated);
+      if (!mounted) return;
+      state = const AppAuthState(status: AuthStatus.unauthenticated);
     }
 
     // Listen for auth state changes (login, logout, token refresh)
-    _repository.authStateChanges.listen((data) {
+    _authSubscription = _repository.authStateChanges.listen((data) {
+      if (!mounted) return;
       final event = data.event;
       final session = data.session;
 
@@ -109,22 +119,22 @@ class AuthNotifier extends StateNotifier<AuthState> {
         case AuthChangeEvent.signedIn:
         case AuthChangeEvent.tokenRefreshed:
         case AuthChangeEvent.userUpdated:
-          state = AuthState(
+          state = AppAuthState(
             status: AuthStatus.authenticated,
             user: session?.user,
           );
           break;
         case AuthChangeEvent.signedOut:
-          state = const AuthState(status: AuthStatus.unauthenticated);
+          state = const AppAuthState(status: AuthStatus.unauthenticated);
           break;
         case AuthChangeEvent.initialSession:
           if (session != null && rememberMe) {
-            state = AuthState(
+            state = AppAuthState(
               status: AuthStatus.authenticated,
               user: session.user,
             );
           } else if (!rememberMe) {
-            state = const AuthState(status: AuthStatus.unauthenticated);
+            state = const AppAuthState(status: AuthStatus.unauthenticated);
           }
           break;
         default:
@@ -163,7 +173,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
             errorMessage: 'Check your email to confirm your account.',
           );
         } else if (user != null) {
-          state = AuthState(
+          state = AppAuthState(
             status: AuthStatus.authenticated,
             user: user,
           );
@@ -203,7 +213,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
       },
       (user) {
         if (user != null) {
-          state = AuthState(
+          state = AppAuthState(
             status: AuthStatus.authenticated,
             user: user,
           );
@@ -234,17 +244,23 @@ class AuthNotifier extends StateNotifier<AuthState> {
   // ── Sign Out ────────────────────────────────────────────────────────────
 
   Future<void> signOut() async {
+    final previous = state;
     state = state.copyWith(isLoading: true, status: AuthStatus.loading);
     final result = await _repository.signOut();
+    if (!mounted) return;
     result.fold(
       (failure) {
-        state = state.copyWith(
-          isLoading: false,
+        // The local session is usually removed even when revoking it on the
+        // server fails; report whichever state the client is actually in.
+        final user = _repository.currentUser;
+        state = AppAuthState(
+          status: user != null ? previous.status : AuthStatus.unauthenticated,
+          user: user,
           errorMessage: failure.message,
         );
       },
       (_) {
-        state = const AuthState(status: AuthStatus.unauthenticated);
+        state = const AppAuthState(status: AuthStatus.unauthenticated);
       },
     );
   }
@@ -285,10 +301,10 @@ class AuthNotifier extends StateNotifier<AuthState> {
 // ── Riverpod Providers ──────────────────────────────────────────────────────
 
 final authRepositoryProvider = Provider<AuthRepository>((ref) {
-  return AuthRepositoryImpl();
+  return AuthRepositoryImpl(client: ref.watch(supabaseClientOrOfflineProvider));
 });
 
-final authProvider = StateNotifierProvider<AuthNotifier, AuthState>((ref) {
+final authProvider = StateNotifierProvider<AuthNotifier, AppAuthState>((ref) {
   final repository = ref.watch(authRepositoryProvider);
   return AuthNotifier(repository);
 });
@@ -324,7 +340,7 @@ final authStateStreamProvider = StreamProvider<AuthChangeEvent>((ref) {
 class RouterNotifier extends ChangeNotifier {
   RouterNotifier(Ref ref) {
     // Re-run notifyListeners every time authProvider state changes
-    ref.listen<AuthState>(
+    ref.listen<AppAuthState>(
       authProvider,
       (prev, next) => notifyListeners(),
     );

@@ -23,11 +23,27 @@ class VlmEngineService implements AIService {
   final VlmWorkerIsolate _worker = VlmWorkerIsolate();
   final EpisodicMemoryService _episodicMemory = EpisodicMemoryService();
   bool _isInitialized = false;
+  Future<bool>? _initializing;
 
   bool get isModelLoaded => _isInitialized && _worker.isReady;
 
   /// Initializes the persistent VLM worker isolate and episodic memory.
+  ///
+  /// Concurrent calls (for example a scan started while the model is still
+  /// loading for a previous one) share a single initialization.
   Future<bool> initialize({
+    String? modelPath,
+    String? mmprojPath,
+    List<String>? customCategories,
+  }) {
+    return _initializing ??= _initialize(
+      modelPath: modelPath,
+      mmprojPath: mmprojPath,
+      customCategories: customCategories,
+    ).whenComplete(() => _initializing = null);
+  }
+
+  Future<bool> _initialize({
     String? modelPath,
     String? mmprojPath,
     List<String>? customCategories,
@@ -96,6 +112,9 @@ class VlmEngineService implements AIService {
       final initialized = await initialize();
       if (!initialized) return;
     }
+    if (_worker.isBusy) {
+      throw StateError('The on-device model is still processing the previous receipt.');
+    }
 
     final fewShotContext =
         await _episodicMemory.buildFewShotPromptSection(limit: 3);
@@ -130,6 +149,9 @@ class VlmEngineService implements AIService {
         if (!initialized) {
           return const Left(CacheFailure('VLM model not initialized'));
         }
+      }
+      if (_worker.isBusy) {
+        return const Left(AIProcessingFailure('The on-device model is still processing the previous receipt.'));
       }
 
       // 2. Retrieve few-shot context from episodic memory

@@ -313,17 +313,21 @@ the upload runs (`SyncService` uploads use the current session).
 not widen the policies to `FOR ALL TO authenticated` without the folder predicate: that would let every
 user read and overwrite every other user's objects.
 
-### 3.8 Release build is signed with the debug key
+### 3.8 Release build fails with "Release signing is not configured"
 
-**Symptom.** A release APK installs over a debug build without a signature conflict, or an app store
-rejects the upload as debug-signed.
+**Symptom.** `flutter build apk --release` (or the "Android APK Release" workflow) stops with
+`Release signing is not configured`.
 
-**Root cause.** `android/app/build.gradle.kts` selects the debug signing configuration for the release
-build type when neither `key.properties` nor the `STORE_FILE` environment variable is present
-(`TAIDY-M16`, issue #38).
+**Root cause.** `android/app/build.gradle.kts` signs the release build type only with the release key.
+Earlier versions fell back to the debug key when no key was configured, which produced APKs that a
+correctly signed build cannot update (`TAIDY-M16`, issue #38); the build now fails instead.
 
-**Resolution.** Provide `android/key.properties` (or the corresponding environment variables in CI)
-before producing release artifacts, and verify the signature with `apksigner verify --print-certs`.
+**Resolution.** Provide `android/key.properties` (`storeFile`, `storePassword`, `keyAlias`, `keyPassword`)
+or the `STORE_FILE`, `STORE_PASSWORD`, `KEY_ALIAS` and `KEY_PASSWORD` environment variables. The release
+workflow reads them from the repository secrets `ANDROID_KEYSTORE_BASE64` (the keystore, base64-encoded),
+`ANDROID_STORE_PASSWORD`, `ANDROID_KEY_ALIAS` and `ANDROID_KEY_PASSWORD`. For a local test of the release
+variant only, pass `-PallowDebugSigning=true` to Gradle. Verify release artifacts with
+`apksigner verify --print-certs`.
 
 ## 4. Startup and Local Storage
 
@@ -800,26 +804,29 @@ an illegal instruction when engine code runs (`TAIDY-M15`, issue #37).
 **Resolution.** Use a supported platform and an AVX2-capable x86_64 processor (or an ARM device). Native
 build options are documented in `native/CMakeLists.txt`.
 
-### 8.3 Continuous integration passes despite failures
+### 8.3 Continuous integration fails
 
-**Symptom.** The "Flutter CI" workflow reports success while `flutter analyze` reports errors or tests
-fail.
+**Symptom.** The "Flutter CI" workflow fails at "Analyze Code", "Check generated code is current",
+"Run Tests" or in the "Native Engine" job.
 
-**Root cause.** `.github/workflows/ci.yml` sets `continue-on-error: true` on the analyzer step and runs
-`flutter test || echo "No tests defined yet"`, which discards the test exit code. The default suite also
-contains `test/core/sync/live_supabase_seeder_test.dart`, which requires live Supabase credentials
-(`TAIDY-M16`, issue #38).
+**Root cause.** The workflow enforces each check (`TAIDY-M16`, issue #38): analyzer issues, generated code
+that differs from a fresh `build_runner` run, failing Dart tests and failing native tests all fail the
+run. Tests tagged `live` (`test/core/sync/live_supabase_seeder_test.dart`), which need a Supabase
+project, are excluded.
 
-**Resolution.** Do not rely on the workflow status. Run the checks locally before opening a pull request:
+**Resolution.** Run the same checks locally before opening a pull request:
 
 ```bash
 cp .env.example .env    # if not present
 flutter pub get
 flutter analyze
-flutter test
+dart run build_runner build --delete-conflicting-outputs && git diff --exit-code -- lib
+flutter test --exclude-tags live
+cmake -S native -B build/native -DCMAKE_BUILD_TYPE=Release -DGGML_USE_VULKAN=OFF -DGGML_USE_METAL=OFF
+cmake --build build/native && (cd build/native && ./native_engine_test)
 ```
 
-Inspect the step logs of the CI run for analyzer and test output.
+Commit regenerated files when the generated-code check reports a difference.
 
 ### 8.4 Push rejected by secret scanning (GH013)
 

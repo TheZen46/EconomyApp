@@ -10,6 +10,7 @@ import 'package:path_provider/path_provider.dart';
 import '../../features/receipt_scanning/domain/entities/receipt.dart';
 import '../error/failures.dart';
 import 'ai_service.dart';
+import 'llm_receipt_mapper.dart';
 import '../../core/constants/taxonomy_constants.dart';
 import '../utils/json_parser_utils.dart';
 
@@ -103,7 +104,7 @@ $text
         return const Left(AIProcessingFailure('Failed to parse AI output'));
       }
 
-      return Right(_mapToReceipt(data, imagePath));
+      return Right(LlmReceiptMapper.map(data, imagePath));
     } catch (e) {
       debugPrint('LLM Extract Error: $e');
       return const Left(AIProcessingFailure('Failed to parse AI output'));
@@ -147,35 +148,6 @@ $text
   }
 
 
-  Receipt _mapToReceipt(Map<String, dynamic> json, String imagePath) {
-    return Receipt(
-      id: DateTime.now().millisecondsSinceEpoch.toString(),
-      merchantName: json['merchantName'] ?? 'Unknown',
-      date: DateTime.now(),
-      totalAmount: (json['totalAmount'] is num) ? (json['totalAmount'] as num).toDouble() : 0.0,
-      currency: json['currency'] ?? 'EUR',
-      items: _mapItems(json['items']),
-      imagePath: imagePath,
-    );
-  }
-
-  List<ReceiptItem> _mapItems(dynamic itemsJson) {
-    if (itemsJson is! List) return [];
-
-    return itemsJson.map((item) {
-      final desc = item['description']?.toString() ?? 'Unknown Item';
-      final qty = (item['quantity'] is num) ? (item['quantity'] as num).toInt() : 1;
-      final unitPrice = (item['unitPrice'] is num) ? (item['unitPrice'] as num).toDouble() : 0.0;
-
-      return ReceiptItem(
-        description: desc,
-        quantity: qty,
-        unitPrice: unitPrice,
-        totalPrice: qty * unitPrice,
-      );
-    }).toList();
-  }
-
   // OCR Step — must stay on main isolate (uses platform channels)
   Future<String> extractTextFromImage(String path) async {
     debugPrint('OCR: Starting for $path');
@@ -209,27 +181,41 @@ $text
     final receivePort = ReceivePort();
     final modelPath = _modelPath!;
 
-    // Spawn an isolate that sends tokens one by one via SendPort.
-    await Isolate.spawn(
-      _streamLlamaInIsolate,
-      _StreamRequest(modelPath: modelPath, prompt: prompt, sendPort: receivePort.sendPort),
-    );
+    try {
+      // Spawn an isolate that sends tokens one by one via SendPort. Its exit
+      // (null, the same signal as normal completion) and uncaught errors (a
+      // [message, stack] list) arrive on the same port, so the stream ends
+      // even if the isolate dies.
+      await Isolate.spawn(
+        _streamLlamaInIsolate,
+        _StreamRequest(modelPath: modelPath, prompt: prompt, sendPort: receivePort.sendPort),
+        onExit: receivePort.sendPort,
+        onError: receivePort.sendPort,
+      );
 
-    // Yield tokens as they arrive; the isolate sends null when done.
-    await for (final message in receivePort) {
-      if (message == null) break;
-      yield message as String;
+      await for (final message in receivePort) {
+        if (message == null) break;
+        if (message is List) {
+          yield 'Error: ${message.isNotEmpty ? message.first : 'generation isolate failed'}';
+          break;
+        }
+        yield message as String;
+      }
+    } finally {
+      // Also runs when the consumer cancels the subscription.
+      receivePort.close();
     }
-
-    receivePort.close();
   }
 
   /// Top-level isolate entrypoint for streaming generation.
   /// Sends each token individually via [sendPort], then sends null to signal
   /// completion, matching the `Stream<String>` contract of [generate].
   static void _streamLlamaInIsolate(_StreamRequest request) {
-    final llama = Llama(request.modelPath);
+    Llama? llama;
     try {
+      // Inside the try block: a model that fails to load must still produce
+      // the completion signal below.
+      llama = Llama(request.modelPath);
       llama.setPrompt(request.prompt);
 
       while (true) {
@@ -240,7 +226,7 @@ $text
     } catch (e) {
       request.sendPort.send("Error: $e");
     } finally {
-      llama.dispose();
+      llama?.dispose();
       request.sendPort.send(null); // Signal completion
     }
   }

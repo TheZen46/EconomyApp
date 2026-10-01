@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hive/hive.dart';
+import 'package:t_aidy/core/privacy/network_policy.dart';
 import 'package:t_aidy/core/services/google_drive_service.dart';
 import 'package:t_aidy/features/receipt_scanning/data/datasources/hive_receipt_data_source.dart';
 import 'package:t_aidy/features/receipt_scanning/data/datasources/supabase_data_source.dart';
@@ -12,9 +13,16 @@ import 'package:t_aidy/features/receipt_scanning/domain/entities/receipt.dart';
 
 class FakeLocalReceiptDataSource implements LocalReceiptDataSource {
   final Map<String, ReceiptModel> receipts = {};
+  int fullScanCount = 0;
 
   @override
-  Future<List<ReceiptModel>> getReceipts() async => receipts.values.toList();
+  Future<List<ReceiptModel>> getReceipts() async {
+    fullScanCount++;
+    return receipts.values.toList();
+  }
+
+  @override
+  Future<ReceiptModel?> getReceipt(String id) async => receipts[id];
 
   @override
   Future<void> saveReceipt(ReceiptModel receipt) async {
@@ -358,6 +366,67 @@ void main() {
       expect(queueBox.isEmpty, isTrue);
     });
 
+    test('saving a receipt whose upload was dead-lettered queues it again', () async {
+      await localDataSource.saveReceipt(ReceiptModel(
+        id: 'dead-rec',
+        merchantName: 'Store',
+        totalAmount: 12.0,
+        date: DateTime.now(),
+        items: [],
+        currency: 'USD',
+      ));
+      await queueBox.add(SyncItemModel(
+        receiptId: 'dead-rec',
+        imagePath: '/old.jpg',
+        addedAt: DateTime.now().subtract(const Duration(days: 1)),
+        retryCount: SyncItemModel.maxRetries,
+        status: SyncStatus.permanentlyFailed,
+        errorMessage: 'Network timeout',
+      ));
+
+      await syncService.scheduleUpload('dead-rec', '/new.jpg');
+
+      expect(supabaseDataSource.uploadedReceiptIds, ['dead-rec']);
+      expect(queueBox.isEmpty, isTrue);
+    });
+
+    test('a pending entry is kept when the same receipt is scheduled again', () async {
+      supabaseDataSource.shouldFail = true;
+      await localDataSource.saveReceipt(ReceiptModel(
+        id: 'pending-rec',
+        merchantName: 'Store',
+        totalAmount: 12.0,
+        date: DateTime.now(),
+        items: [],
+        currency: 'USD',
+      ));
+
+      await syncService.scheduleUpload('pending-rec', '/a.jpg');
+      await syncService.scheduleUpload('pending-rec', '/a.jpg');
+
+      expect(queueBox.length, 1);
+      expect(queueBox.values.single.retryCount, 1);
+    });
+
+    test('uploads look receipts up by key instead of loading all of them', () async {
+      for (var i = 0; i < 3; i++) {
+        await localDataSource.saveReceipt(ReceiptModel(
+          id: 'keyed-$i',
+          merchantName: 'Store',
+          totalAmount: 1.0,
+          date: DateTime.now(),
+          items: [],
+          currency: 'USD',
+        ));
+        await queueBox.add(SyncItemModel(receiptId: 'keyed-$i', imagePath: '', addedAt: DateTime.now()));
+      }
+
+      await syncService.syncPendingItems();
+
+      expect(supabaseDataSource.uploadCallCount, 3);
+      expect(localDataSource.fullScanCount, 0);
+    });
+
     test('retryAllFailed and clearFailedItems properly manage dead-lettered items', () async {
       final item1 = SyncItemModel(
         receiptId: 'failed-1',
@@ -446,6 +515,53 @@ void main() {
 
       expect(supabaseDataSource.uploadCallCount, 1);
       expect(queueBox.values.single.retryCount, 1);
+    });
+  });
+
+  group('SyncService - isolation mode and private boxes', () {
+    Future<void> saveReceipt(String id, {String boxId = 'main'}) => localDataSource.saveReceipt(ReceiptModel(
+          id: id,
+          merchantName: 'Store',
+          totalAmount: 10.0,
+          date: DateTime.utc(2026, 9, 1),
+          items: const [],
+          currency: 'EUR',
+          boxId: boxId,
+        ));
+
+    test('nothing is uploaded while isolation mode is on, and the item stays queued', () async {
+      await settingsBox.put(NetworkPolicy.isolationModeKey, true);
+      await saveReceipt('rec-isolated');
+
+      await syncService.scheduleUpload('rec-isolated', '/images/rec-isolated.jpg');
+      await syncService.syncPendingItems();
+
+      expect(supabaseDataSource.uploadCallCount, 0);
+      expect(queueBox.length, 1);
+
+      await settingsBox.put(NetworkPolicy.isolationModeKey, false);
+      await syncService.syncPendingItems();
+      expect(supabaseDataSource.uploadedReceiptIds, ['rec-isolated']);
+    });
+
+    test('receipts in private boxes are never uploaded for training', () async {
+      final service = SyncService(
+        queueBox: queueBox,
+        localDataSource: localDataSource,
+        supabaseDataSource: supabaseDataSource,
+        settingsBox: settingsBox,
+        googleDriveService: googleDriveService,
+        isPrivateBox: (boxId) => boxId == 'secret',
+      );
+      addTearDown(service.dispose);
+      await saveReceipt('rec-private', boxId: 'secret');
+      await saveReceipt('rec-public');
+
+      await service.scheduleUpload('rec-private', '');
+      await service.scheduleUpload('rec-public', '');
+
+      expect(supabaseDataSource.uploadedReceiptIds, ['rec-public']);
+      expect(queueBox.isEmpty, isTrue);
     });
   });
 }

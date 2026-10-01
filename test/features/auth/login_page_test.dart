@@ -4,8 +4,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:t_aidy/features/auth/presentation/pages/login_page.dart';
 import 'package:t_aidy/features/auth/presentation/providers/auth_provider.dart';
 
-class FakeAuthNotifier extends StateNotifier<AuthState> implements AuthNotifier {
-  FakeAuthNotifier([super.state = const AuthState()]);
+class FakeAuthNotifier extends StateNotifier<AppAuthState> implements AuthNotifier {
+  FakeAuthNotifier([super.state = const AppAuthState()]);
 
   bool signInCalled = false;
   bool signUpCalled = false;
@@ -50,7 +50,7 @@ class FakeAuthNotifier extends StateNotifier<AuthState> implements AuthNotifier 
 
   @override
   Future<void> signOut() async {
-    state = const AuthState(status: AuthStatus.unauthenticated);
+    state = const AppAuthState(status: AuthStatus.unauthenticated);
   }
 
   @override
@@ -193,7 +193,7 @@ void main() {
     });
 
     testWidgets('disables submit button and shows loading indicator when isLoading is true', (tester) async {
-      final loadingNotifier = FakeAuthNotifier(const AuthState(isLoading: true));
+      final loadingNotifier = FakeAuthNotifier(const AppAuthState(isLoading: true));
 
       await tester.pumpWidget(createSubject(notifier: loadingNotifier));
       await tester.pump(const Duration(seconds: 1));

@@ -1,9 +1,9 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hive/hive.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import 'models/sync_outbox_item.dart';
 import 'outbox_service.dart';
 import 'sync_manager.dart';
+import '../providers/supabase_providers.dart';
 import '../../features/receipt_scanning/presentation/providers/receipt_provider.dart';
 import '../../features/receipt_scanning/data/models/receipt_model.dart';
 import '../../features/boxes/data/providers/boxes_provider.dart';
@@ -23,12 +23,9 @@ final outboxServiceProvider = Provider<OutboxService>((ref) {
 });
 
 final syncManagerProvider = Provider<SyncManager?>((ref) {
-  SupabaseClient client;
-  try {
-    client = Supabase.instance.client;
-  } catch (_) {
-    return null;
-  }
+  // Without an initialized client the app runs local-only.
+  final client = ref.watch(supabaseClientProvider);
+  if (client == null) return null;
 
   OutboxService outbox;
   try {

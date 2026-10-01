@@ -2,6 +2,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart' hide AuthState;
 import 'package:supabase_flutter/supabase_flutter.dart' as supabase show AuthState;
 import 'package:t_aidy/core/routes/app_router.dart';
@@ -102,6 +103,9 @@ class FakeRemoteReplicaDataSource implements RemoteReplicaDataSource {
 class FakeLocalReceiptDataSource implements LocalReceiptDataSource {
   @override
   Future<List<ReceiptModel>> getReceipts() async => [];
+
+  @override
+  Future<ReceiptModel?> getReceipt(String id) async => null;
 
   @override
   Future<void> saveReceipt(ReceiptModel receipt) async {}
@@ -252,6 +256,34 @@ void main() {
 
       // Drain remaining entrance delay timers
       await tester.pump(const Duration(seconds: 2));
+    });
+
+    testWidgets('/review without a receipt redirects to /home instead of throwing', (tester) async {
+      final router = GoRouter(
+        initialLocation: '/start',
+        routes: [
+          GoRoute(path: '/start', builder: (context, state) => const Text('start')),
+          GoRoute(path: AppRoutes.home, builder: (context, state) => const Text('home')),
+          reviewRoute,
+        ],
+      );
+      addTearDown(router.dispose);
+      await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+      await tester.pumpAndSettle();
+
+      // As after a reload of the page or a deep link: no `extra`.
+      router.go(AppRoutes.review);
+      await tester.pumpAndSettle();
+
+      expect(router.state.matchedLocation, AppRoutes.home);
+      expect(find.text('home'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+
+      // An unrelated object passed as `extra` is rejected the same way.
+      router.go(AppRoutes.review, extra: 'not a receipt');
+      await tester.pumpAndSettle();
+      expect(router.state.matchedLocation, AppRoutes.home);
+      expect(tester.takeException(), isNull);
     });
   });
 }

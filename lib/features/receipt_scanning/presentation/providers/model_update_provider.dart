@@ -21,19 +21,23 @@ class UpdateState {
     this.error,
   });
 
+  static const Object _keep = Object();
+
+  /// Returns a copy with the given fields replaced. Passing `message: null` or
+  /// `error: null` clears that field; omitting it keeps the current value.
   UpdateState copyWith({
     bool? isChecking,
     bool? isDownloading,
     double? progress,
-    String? message,
-    String? error,
+    Object? message = _keep,
+    Object? error = _keep,
   }) {
     return UpdateState(
       isChecking: isChecking ?? this.isChecking,
       isDownloading: isDownloading ?? this.isDownloading,
       progress: progress ?? this.progress,
-      message: message ?? this.message,
-      error: error ?? this.error,
+      message: identical(message, _keep) ? this.message : message as String?,
+      error: identical(error, _keep) ? this.error : error as String?,
     );
   }
 }
@@ -62,9 +66,16 @@ class ModelUpdateService extends StateNotifier<UpdateState> {
     this._repository, {
     Dio? dio,
     Future<Directory> Function()? modelsDirectory,
+    bool Function()? isCloudAllowed,
   })  : _dio = dio ?? Dio(),
         _modelsDirectory = modelsDirectory ?? _defaultModelsDirectory,
+        _isCloudAllowed = isCloudAllowed ?? _alwaysAllowed,
         super(const UpdateState());
+
+  /// Whether cloud requests are allowed (isolation mode is off).
+  final bool Function() _isCloudAllowed;
+
+  static bool _alwaysAllowed() => true;
 
   static Future<Directory> _defaultModelsDirectory() async {
     final dir = await getApplicationDocumentsDirectory();
@@ -87,7 +98,9 @@ class ModelUpdateService extends StateNotifier<UpdateState> {
   }
 
   Future<void> checkForUpdates() async {
-    state = state.copyWith(isChecking: true, message: 'Checking for AI updates...');
+    // Isolation mode: no update check, no download.
+    if (!_isCloudAllowed()) return;
+    state = state.copyWith(isChecking: true, message: 'Checking for AI updates...', error: null);
 
     try {
       final configEither = await _repository.getLatestModelConfig();

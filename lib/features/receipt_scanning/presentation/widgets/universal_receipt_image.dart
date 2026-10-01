@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../../data/datasources/receipt_image_store.dart';
 
 /// Universal widget capable of resolving and displaying receipt images regardless
 /// of where they originate:
@@ -102,15 +103,21 @@ class _UniversalReceiptImageState extends State<UniversalReceiptImage> {
         // Check if file exists under Application Documents Directory (replicated sandbox)
         final docsDir = await getApplicationDocumentsDirectory();
         final fileName = rawPath.split(RegExp(r'[/\\]')).last;
-        final docFile = File('${docsDir.path}/$fileName');
-        if (docFile.existsSync() && docFile.lengthSync() > 0) {
-          if (mounted) {
-            setState(() {
-              _resolvedLocalFile = docFile;
-              _isLoading = false;
-            });
+        // Images kept by ReceiptImageStore; also found when the absolute path
+        // of the documents directory has changed (iOS app container moves).
+        for (final docFile in [
+          File('${docsDir.path}/$fileName'),
+          File('${docsDir.path}/${ReceiptImageStore.folderName}/$fileName'),
+        ]) {
+          if (docFile.existsSync() && docFile.lengthSync() > 0) {
+            if (mounted) {
+              setState(() {
+                _resolvedLocalFile = docFile;
+                _isLoading = false;
+              });
+            }
+            return;
           }
-          return;
         }
       } catch (e) {
         debugPrint('UniversalReceiptImage: Local file check error: $e');

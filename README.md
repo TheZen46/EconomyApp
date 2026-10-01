@@ -91,7 +91,7 @@ Future<void> addTransaction(WidgetRef ref, double amount, String category) async
 tAIdy incorporates specialized subsystems to handle critical privacy, synchronization, and runtime performance requirements:
 
 - **Cross-Device File Replication Engine**: Downloads a bit-for-bit mirror of the user's remote files upon login. Uses delta hashing to download only modified chunks, mutex locks to prevent write races, and provides a full-screen kinetic telemetry visualizer with offline continuation fallback.
-- **Data Privacy Isolation Mode**: Enforces strict local execution. When enabled, all outbound network I/O to cloud endpoints (such as Supabase) is blocked, confining read and write operations strictly to local encrypted Hive boxes.
+- **Data Privacy Isolation Mode**: A switch in Settings that keeps all data on the device. While it is on, cloud synchronization, uploads (training contribution and Google Drive backup), webhooks, Gemini cloud inference and over-the-air model update checks are skipped through a single network policy (`lib/core/privacy/network_policy.dart`); changes stay queued in the local encrypted Hive boxes until it is turned off. Signing in is not blocked. The dashboard privacy toggle is separate and only masks figures on screen. Receipts in boxes marked private are never uploaded for model training.
 - **Graceful Degradation for AI Inference**: Edge OCR receipt parsing leverages on-device inference (`llama.cpp`). When battery levels or available host memory reach critical thresholds, the inference subsystem automatically re-routes parsing payloads to cloud endpoints (e.g., Gemini / Groq), preventing out-of-memory terminates and conserving battery life.
 
 ## Troubleshooting & Diagnostics

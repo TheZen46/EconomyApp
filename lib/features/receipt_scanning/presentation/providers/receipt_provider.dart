@@ -1,9 +1,10 @@
 import 'package:flutter/foundation.dart';
 import 'package:dartz/dartz.dart';
 import 'package:hive/hive.dart';
+import '../../../../core/privacy/network_policy.dart';
+import '../../../../core/providers/supabase_providers.dart';
 import '../../../../core/services/secure_storage_service.dart';
 import '../../../../core/error/failures.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../data/repositories/model_repository.dart';
@@ -29,6 +30,7 @@ import '../../../../core/services/google_drive_service.dart'; // Ensure global a
 import '../../../settings/data/datasources/webhook_service.dart';
 import '../../../evault/presentation/providers/asset_provider.dart';
 import '../../../settings/presentation/providers/llm_provider.dart';
+import '../../../boxes/data/models/box_model.dart';
 import '../../../boxes/data/providers/boxes_provider.dart';
 import '../../data/datasources/csv_parser_service.dart';
 import '../../../../core/sync/outbox_service.dart';
@@ -57,12 +59,18 @@ final syncServiceProvider = Provider<SyncService>((ref) {
   final supabaseDS = ref.watch(supabaseDataSourceProvider);
   final settingsBox = ref.watch(settingsBoxProvider);
   
+  Box<BoxModel>? boxes;
+  try {
+    boxes = ref.watch(boxesHiveBoxProvider);
+  } catch (_) {}
+
   return SyncService(
     queueBox: queueBox,
     localDataSource: localDS,
     supabaseDataSource: supabaseDS,
     settingsBox: settingsBox,
     googleDriveService: googleDriveService,
+    isPrivateBox: (boxId) => boxId != null && (boxes?.get(boxId)?.isPrivate ?? false),
   );
 });
 
@@ -106,8 +114,9 @@ final aiServiceProvider = Provider<AIService>((ref) {
   final apiKeyAsync = ref.watch(geminiApiKeyProvider);
   final apiKey = apiKeyAsync.valueOrNull ?? '';
 
-  if (isEnabled && apiKey.isNotEmpty) {
-    return GeminiAIService(apiKey);
+  // Isolation mode keeps receipt images on the device.
+  if (isEnabled && apiKey.isNotEmpty && NetworkPolicy.isCloudAllowed(box)) {
+    return GeminiAIService(apiKey, model: box.get(GeminiAIService.modelSettingKey) as String?);
   }
 
   // 4. Fallback
@@ -120,7 +129,7 @@ final exportServiceProvider = Provider<ExportService>((ref) {
 });
 
 final supabaseDataSourceProvider = Provider<SupabaseDataSource>((ref) {
-   return SupabaseDataSourceImpl(Supabase.instance.client);
+  return SupabaseDataSourceImpl(ref.watch(supabaseClientOrOfflineProvider));
 });
 
 final storageUsageProvider = FutureProvider<int>((ref) async {
@@ -133,14 +142,22 @@ final storageUsageProvider = FutureProvider<int>((ref) async {
 // --- OTA Model Providers ---
 
 final modelRepositoryProvider = Provider<ModelRepository>((ref) {
-  // Assuming Supabase is initialized
-  return SupabaseModelRepository(Supabase.instance.client);
+  return SupabaseModelRepository(ref.watch(supabaseClientOrOfflineProvider));
 });
 
 final modelUpdateServiceProvider = StateNotifierProvider<ModelUpdateService, UpdateState>((ref) {
   final repo = ref.watch(modelRepositoryProvider);
-  return ModelUpdateService(repo);
+  return ModelUpdateService(repo, isCloudAllowed: () => _cloudAllowed(ref));
 });
+
+/// Whether cloud requests are allowed (see [NetworkPolicy]).
+bool _cloudAllowed(Ref ref) {
+  try {
+    return NetworkPolicy.isCloudAllowed(ref.read(settingsBoxProvider));
+  } catch (_) {
+    return true;
+  }
+}
 
 // --- Repository Provider ---
 
@@ -207,7 +224,9 @@ class ReceiptListNotifier extends StateNotifier<AsyncValue<List<Receipt>>> {
     );
   }
 
-  Future<void> addReceipt(Receipt receipt) async {
+  /// Saves [receipt], updating the list optimistically. On failure the list
+  /// is restored and the failure returned, so that callers can report it.
+  Future<Either<Failure, void>> addReceipt(Receipt receipt) async {
     final previous = state;
     final current = state.valueOrNull ?? [];
     final updated = current.any((r) => r.id == receipt.id)
@@ -223,6 +242,7 @@ class ReceiptListNotifier extends StateNotifier<AsyncValue<List<Receipt>>> {
       },
       (_) {},
     );
+    return result;
   }
 
   Future<void> clearAll({bool includeCloud = false}) async {
@@ -255,7 +275,9 @@ class ReceiptListNotifier extends StateNotifier<AsyncValue<List<Receipt>>> {
 
   Future<Either<Failure, CsvImportReport>> importCsvTransactions(String csvString, CsvParserService parser) async {
     try {
-      final parseResult = parser.importCsv(csvString);
+      final current = state.valueOrNull ?? [];
+      // Rows already imported from an earlier copy of the file are skipped.
+      final parseResult = parser.importCsv(csvString, existing: current);
       return await parseResult.fold(
         (failure) async => Left(failure),
         (report) async {
@@ -263,7 +285,6 @@ class ReceiptListNotifier extends StateNotifier<AsyncValue<List<Receipt>>> {
             return Right(report);
           }
 
-          final current = state.valueOrNull ?? [];
           final List<Receipt> newlyAdded = [];
           for (final r in report.successfulReceipts) {
             final saveResult = await _repository.saveReceipt(r);

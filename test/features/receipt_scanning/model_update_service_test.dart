@@ -23,6 +23,19 @@ class _ConfigRepository extends ModelRepository {
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
+class _CountingRepository extends ModelRepository {
+  int calls = 0;
+
+  @override
+  Future<Either<Failure, AppConfig?>> getLatestModelConfig() async {
+    calls++;
+    return const Right(null);
+  }
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
 /// Serves fixed bytes for every download and records the requested URLs.
 class _FakeDio extends Fake implements Dio {
   final List<int> body;
@@ -129,6 +142,29 @@ void main() {
       expect(File('${modelsDir.path}/qwen2_vl_v2.0.0.gguf.part').existsSync(), isFalse);
       final prefs = await SharedPreferences.getInstance();
       expect(prefs.getString('local_model_version'), '2.0.0');
+    });
+  });
+
+  group('ModelUpdateService isolation mode', () {
+    test('no update check is made while isolation mode is on', () async {
+      final repository = _CountingRepository();
+      final updater = ModelUpdateService(repository, isCloudAllowed: () => false);
+
+      await updater.checkForUpdates();
+
+      expect(repository.calls, 0);
+      expect(updater.state.isChecking, isFalse);
+    });
+  });
+
+  group('UpdateState.copyWith', () {
+    test('passing null clears message and error, omitting keeps them', () {
+      const state = UpdateState(message: 'Downloading', error: 'Failed');
+
+      expect(state.copyWith(progress: 0.5).message, 'Downloading');
+      expect(state.copyWith(progress: 0.5).error, 'Failed');
+      expect(state.copyWith(message: null).message, isNull);
+      expect(state.copyWith(error: null).error, isNull);
     });
   });
 }

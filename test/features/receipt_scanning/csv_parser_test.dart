@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:t_aidy/core/error/failures.dart';
 import 'package:t_aidy/features/receipt_scanning/data/datasources/csv_parser_service.dart';
+import 'package:t_aidy/features/receipt_scanning/domain/entities/receipt.dart';
 
 void main() {
   late CsvParserService parser;
@@ -35,14 +36,15 @@ void main() {
     test('parses standard decimal amounts with currency symbols and signs', () {
       const csv = '''Date,Description,Amount
 2024-05-01,Supermarket,-\$125.75
-2024-05-02,Bookstore,\$42.00
-2024-05-03,Bakery,7.50
+2024-05-02,Bookstore,-\$42.00
+2024-05-03,Bakery,-7.50
 ''';
       final receipts = parser.parseBankCsv(csv);
       expect(receipts.length, 3);
       expect(receipts[0].totalAmount, 125.75);
       expect(receipts[1].totalAmount, 42.00);
       expect(receipts[2].totalAmount, 7.50);
+      expect(receipts[0].currency, 'USD');
     });
   });
 
@@ -222,6 +224,129 @@ JustSomeRandomTextWithoutAnyColumns
       expect(report.totalRows, 1);
       expect(report.successCount, 1);
       expect(report.failureCount, 0);
+    });
+  });
+
+  group('CsvParserService - European statements, direction, currency and duplicates', () {
+    CsvImportReport report(String csv, {List<Receipt> existing = const []}) =>
+        parser.importCsv(csv, existing: existing).getOrElse(() => throw StateError('import failed'));
+
+    test('reads semicolon-separated files with decimal commas', () {
+      const csv = '''Data;Descrizione;Importo
+05/09/2026;Esselunga;-12,50
+06/09/2026;Ikea;-1.234,56
+07/09/2026;Bar;-0,90
+08/09/2026;Ferramenta;-1.250
+''';
+      final r = report(csv);
+      expect(r.failureCount, 0);
+      expect(r.successfulReceipts.map((e) => e.totalAmount), [12.5, 1234.56, 0.9, 1250.0]);
+      expect(r.successfulReceipts.first.date, DateTime(2026, 9, 5));
+    });
+
+    test('reads European amounts in quoted cells', () {
+      const csv = '''Data,Descrizione,Importo
+05/09/2026,Esselunga,"-12,50"
+06/09/2026,Ikea,"-1.234,56"
+07/09/2026,Bar,"-0,90"
+08/09/2026,Ferramenta,"-1.250"
+''';
+      final r = report(csv);
+      expect(r.failureCount, 0);
+      expect(r.successfulReceipts.map((e) => e.totalAmount), [12.5, 1234.56, 0.9, 1250.0]);
+    });
+
+    test('a dot with three decimals follows the decimal point when the file uses one', () {
+      const csv = '''Date,Description,Amount
+2026-09-05,Hardware,-1.250
+2026-09-06,Coffee,-3.75
+''';
+      expect(report(csv).successfulReceipts.first.totalAmount, 1.25);
+    });
+
+    test('ambiguous dates follow the unambiguous ones in the file', () {
+      const dayFirst = '''Date,Description,Amount
+03/04/2026,Pharmacy,-10
+25/04/2026,Bakery,-5
+''';
+      expect(report(dayFirst).successfulReceipts.first.date, DateTime(2026, 4, 3));
+
+      const monthFirst = '''Date,Description,Amount
+03/04/2026,Pharmacy,-10
+04/25/2026,Bakery,-5
+''';
+      expect(report(monthFirst).successfulReceipts.first.date, DateTime(2026, 3, 4));
+    });
+
+    test('dates that do not exist are rejected instead of rolling over', () {
+      const csv = '''Date,Description,Amount
+31/02/2026,Pharmacy,-10
+''';
+      final r = report(csv);
+      expect(r.successCount, 0);
+      expect(r.failedRows.single.reason, contains('date'));
+    });
+
+    test('incoming transactions are skipped, not imported as expenses', () {
+      const csv = '''Date,Description,Amount
+2026-09-01,Supermarket,-50.00
+2026-09-02,Salary,2000.00
+2026-09-03,Restaurant,-30.00
+2026-09-04,Refund Shop,15.00
+2026-09-05,Fuel,-60.00
+''';
+      final r = report(csv);
+      expect(r.successfulReceipts.map((e) => e.merchantName), ['Supermarket', 'Restaurant', 'Fuel']);
+      expect(r.skippedRows.map((e) => e.lineNumber), [3, 5]);
+      expect(r.skippedRows.first.reason, contains('Incoming'));
+    });
+
+    test('explicit debit and credit columns are honoured', () {
+      const csv = '''Data operazione,Descrizione,Addebiti,Accrediti,Saldo
+01/09/2026,Supermercato,"45,20",,"1.954,80"
+02/09/2026,Stipendio,,"2.000,00","3.954,80"
+''';
+      final r = report(csv);
+      expect(r.successfulReceipts.single.totalAmount, 45.2);
+      expect(r.successfulReceipts.single.merchantName, 'Supermercato');
+      expect(r.skippedCount, 1);
+    });
+
+    test('the currency comes from a currency column or the amount, else EUR', () {
+      const csv = '''Date,Description,Amount,Currency
+2026-09-01,London Cafe,-4.50,GBP
+2026-09-02,Shop,€ -9.99,
+2026-09-03,Kiosk,-2.00,
+''';
+      final r = report(csv);
+      expect(r.successfulReceipts.map((e) => e.currency), ['GBP', 'EUR', 'EUR']);
+    });
+
+    test('importing the same rows again skips them as duplicates', () {
+      const csv = '''Date,Description,Amount
+2026-09-01,Coffee,-2.00
+2026-09-01,Coffee,-2.00
+2026-09-02,Lunch,-12.00
+''';
+      final first = report(csv);
+      expect(first.successCount, 3);
+
+      // One of the two identical coffees was already imported.
+      final second = report(csv, existing: first.successfulReceipts.take(1).toList());
+      expect(second.successfulReceipts.map((e) => e.merchantName), ['Coffee', 'Lunch']);
+      expect(second.skippedRows.single.reason, contains('Already imported'));
+
+      final third = report(csv, existing: first.successfulReceipts);
+      expect(third.successCount, 0);
+      expect(third.skippedCount, 3);
+    });
+
+    test('text containing digits is not mistaken for an amount', () {
+      const csv = '''2026-09-01,Pharmacy 24h,7-Eleven,-8.40
+''';
+      final r = report(csv);
+      expect(r.successfulReceipts.single.totalAmount, 8.4);
+      expect(r.successfulReceipts.single.merchantName, 'Pharmacy 24h 7-Eleven');
     });
   });
 }
