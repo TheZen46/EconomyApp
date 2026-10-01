@@ -15,6 +15,12 @@ class SecureStorageService {
 
   // ── Hive Encryption Key ─────────────────────────────────────────────────
 
+  /// Whether a Hive encryption key is stored. Throws if secure storage itself
+  /// cannot be read.
+  static Future<bool> hasHiveEncryptionKey() async {
+    return await _storage.read(key: _hiveEncryptionKeyName) != null;
+  }
+
   /// Returns a 256-bit encryption key for HiveAesCipher.
   /// Generates and persists one on first call.
   static Future<Uint8List> getHiveEncryptionKey() async {

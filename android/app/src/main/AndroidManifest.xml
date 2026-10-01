@@ -1,9 +1,12 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.taidy.finance">
+    <!-- allowBackup is off: the local database is encrypted with a Keystore-bound key that
+         Auto Backup cannot restore, so a restored copy could never be decrypted. -->
     <application
         android:label="tAIdy"
         android:name="${applicationName}"
-        android:icon="@mipmap/ic_launcher">
+        android:icon="@mipmap/ic_launcher"
+        android:allowBackup="false">
         <activity
             android:name=".MainActivity"
             android:exported="true"

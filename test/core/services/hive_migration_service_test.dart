@@ -13,9 +13,15 @@ void main() {
     tempDir = await Directory.systemTemp.createTemp('hive_test_dir_');
     Hive.init(tempDir.path);
 
+    // Hive.init above mirrors Hive.initFlutter, which uses the documents
+    // directory; the support directory is deliberately different so that code
+    // resolving the wrong directory is detected.
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(
       const MethodChannel('plugins.flutter.io/path_provider'),
       (MethodCall methodCall) async {
+        if (methodCall.method == 'getApplicationSupportDirectory') {
+          return '${tempDir.path}/support';
+        }
         return tempDir.path;
       },
     );
@@ -114,6 +120,48 @@ void main() {
       expect(HiveMigrationService.getSchemaVersion(settingsBox), 2);
 
       await settingsBox.close();
+    });
+  });
+
+  group('HiveMigrationService recovery', () {
+    test('backups find box files in the directory Hive.initFlutter uses', () async {
+      final box = await Hive.openBox('desktop_box');
+      await box.put('k', 'v');
+      await box.close();
+
+      final backupPath = await HiveMigrationService.backupBoxFile('desktop_box');
+
+      expect(backupPath, isNotNull);
+    });
+
+    test('quarantining a box that cannot be opened lets it start empty', () async {
+      final cipher1 = HiveAesCipher(List.filled(32, 1));
+      final cipher2 = HiveAesCipher(List.filled(32, 2));
+      final box = await Hive.openBox('locked_box', encryptionCipher: cipher1);
+      await box.put('amount', '42.00');
+      await box.close();
+      final originalBytes = await File('${tempDir.path}/locked_box.hive').readAsBytes();
+
+      await expectLater(
+        HiveMigrationService.openBoxSafe('locked_box', encryptionCipher: cipher2),
+        throwsA(isA<SchemaCorruptionException>()),
+      );
+
+      final quarantinePath = await HiveMigrationService.quarantineBoxes(['locked_box']);
+
+      expect(quarantinePath, isNotNull);
+      expect(await File('${tempDir.path}/locked_box.hive').exists(), isFalse);
+      expect(await File('$quarantinePath/locked_box.hive').readAsBytes(), originalBytes);
+      expect(await HiveMigrationService.boxFilesExist(['locked_box']), isFalse);
+
+      final reopened = await HiveMigrationService.openBoxSafe('locked_box', encryptionCipher: cipher2);
+      expect(reopened.isEmpty, isTrue);
+      await reopened.close();
+    });
+
+    test('boxFilesExist and quarantineBoxes ignore boxes without files', () async {
+      expect(await HiveMigrationService.boxFilesExist(['never_created']), isFalse);
+      expect(await HiveMigrationService.quarantineBoxes(['never_created']), isNull);
     });
   });
 }

@@ -65,6 +65,22 @@ class HiveMigrationService {
   }) async {
     final completer = Completer<Box<T>>();
 
+    // Hive can report one failure twice: as the exception of openBox and again
+    // as an uncaught error in this zone. Whichever arrives first backs up the
+    // file and answers the caller; an error that reaches only the zone must
+    // still answer it, or startup would wait forever.
+    var failureHandled = false;
+    Future<void> fail(Object error) async {
+      if (failureHandled || completer.isCompleted) return;
+      failureHandled = true;
+      final backupPath = await backupBoxFile(boxName);
+      if (!completer.isCompleted) {
+        completer.completeError(
+          SchemaCorruptionException(boxName: boxName, cause: error, backupPath: backupPath),
+        );
+      }
+    }
+
     unawaited(runZonedGuarded(() async {
       try {
         final box = await Hive.openBox<T>(
@@ -77,20 +93,11 @@ class HiveMigrationService {
         }
       } catch (e) {
         debugPrint('HiveMigrationService [DIAGNOSTIC]: Failed to open "$boxName": $e');
-        final backupPath = await backupBoxFile(boxName);
-        if (!completer.isCompleted) {
-          completer.completeError(
-            SchemaCorruptionException(
-              boxName: boxName,
-              cause: e,
-              backupPath: backupPath,
-            ),
-          );
-        }
+        await fail(e);
       }
     }, (error, stack) {
-      // Intercept unhandled async errors from Hive's internal dual-throw
       debugPrint('HiveMigrationService [DIAGNOSTIC]: Intercepted secondary zone error: $error');
+      unawaited(fail(error));
     }));
 
     return completer.future;
@@ -207,14 +214,59 @@ class HiveMigrationService {
   }
 
   /// Returns the directory where Hive stores its primary database files.
+  ///
+  /// Must mirror `Hive.initFlutter()`, which stores boxes in the application
+  /// documents directory on every non-web platform. (Resolving a different
+  /// directory on desktop made backups look for box files that are not there.)
   static Future<Directory> getHiveDirectory() async {
     if (kIsWeb) {
       throw UnsupportedError('FileSystem directory not supported on web.');
     }
-    if (Platform.isWindows || Platform.isMacOS || Platform.isLinux) {
-      return await getApplicationSupportDirectory();
-    }
     return await getApplicationDocumentsDirectory();
+  }
+
+  /// Whether a database file exists for any of [boxNames].
+  static Future<bool> boxFilesExist(List<String> boxNames) async {
+    if (kIsWeb) return false;
+    final baseDir = await getHiveDirectory();
+    for (final name in boxNames) {
+      if (await File('${baseDir.path}/$name.hive').exists()) return true;
+    }
+    return false;
+  }
+
+  /// Moves the files of [boxNames] (which must not be open) out of the Hive
+  /// directory into `hive_backups/quarantine_<timestamp>/`, so that the next
+  /// launch starts with empty boxes. Files are moved, never deleted, so the
+  /// original bytes stay available for recovery even when no backup could be
+  /// created. Returns the quarantine directory, or null when nothing was moved.
+  static Future<String?> quarantineBoxes(List<String> boxNames) async {
+    if (kIsWeb) return null;
+    final baseDir = await getHiveDirectory();
+    final backupDir = await getBackupDirectory();
+    final stamp = DateTime.now().toIso8601String().replaceAll(':', '-').replaceAll('.', '-');
+    final quarantineDir = Directory('${backupDir.path}/quarantine_$stamp');
+
+    var moved = 0;
+    for (final name in boxNames) {
+      for (final suffix in const ['.hive', '.lock']) {
+        final file = File('${baseDir.path}/$name$suffix');
+        if (!await file.exists()) continue;
+        if (!await quarantineDir.exists()) await quarantineDir.create(recursive: true);
+        final target = '${quarantineDir.path}/$name$suffix';
+        try {
+          await file.rename(target);
+        } on FileSystemException {
+          // rename() cannot cross file systems; fall back to copy and delete.
+          await file.copy(target);
+          await file.delete();
+        }
+        moved++;
+      }
+    }
+    if (moved == 0) return null;
+    debugPrint('HiveMigrationService [DIAGNOSTIC]: Quarantined $moved file(s) in "${quarantineDir.path}"');
+    return quarantineDir.path;
   }
 
   /// Returns the dedicated `hive_backups/` directory, creating it if needed.
