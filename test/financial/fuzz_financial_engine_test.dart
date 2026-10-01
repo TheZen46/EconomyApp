@@ -124,4 +124,97 @@ void main() {
       expect(verifiedInvariants, equals(totalIterations));
     });
   });
+
+  group('Rounding and allocation with negative operands', () {
+    /// Reference rounding computed on magnitudes, then signed, so that it shares
+    /// no sign handling with the implementation under test.
+    int referenceRound(int numerator, int denominator, MidpointRounding rounding) {
+      final negative = (numerator < 0) != (denominator < 0);
+      final n = numerator.abs();
+      final d = denominator.abs();
+      var q = n ~/ d;
+      final twiceRem = (n - q * d) * 2;
+      switch (rounding) {
+        case MidpointRounding.toEven:
+          if (twiceRem > d || (twiceRem == d && q.isOdd)) q++;
+          break;
+        case MidpointRounding.awayFromZero:
+          if (twiceRem >= d) q++;
+          break;
+        case MidpointRounding.towardsZero:
+          break;
+      }
+      return negative ? -q : q;
+    }
+
+    test('negative non-tie remainders round to the nearest value', () {
+      expect(Money.roundIntegerDivision(-13, 10), -1);
+      expect(Money.roundIntegerDivision(-17, 10), -2);
+      expect(Money.roundIntegerDivision(-7, 3), -2);
+      expect(Money.fromDecimal(-0.013).cents, -1);
+    });
+
+    test('negative divisors round in the direction of the exact quotient', () {
+      expect(Money.roundIntegerDivision(7, -3), -2);
+      expect(Money.roundIntegerDivision(17, -10), -2);
+      expect(Money.roundIntegerDivision(-7, -3), 2);
+      expect(Money(cents: 1000).divide(-3).cents, -333);
+    });
+
+    test('awayFromZero rounds half away from zero, not every remainder', () {
+      const mode = MidpointRounding.awayFromZero;
+      expect(Money.roundIntegerDivision(14, 10, rounding: mode), 1);
+      expect(Money.roundIntegerDivision(15, 10, rounding: mode), 2);
+      expect(Money.roundIntegerDivision(-14, 10, rounding: mode), -1);
+      expect(Money.roundIntegerDivision(-15, 10, rounding: mode), -2);
+    });
+
+    test('matches the reference for random operands of every sign', () {
+      final rng = math.Random(7);
+      for (var i = 0; i < 20000; i++) {
+        final numerator = rng.nextInt(2000000001) - 1000000000;
+        var denominator = rng.nextInt(200001) - 100000;
+        if (denominator == 0) denominator = 1;
+        for (final mode in MidpointRounding.values) {
+          expect(
+            Money.roundIntegerDivision(numerator, denominator, rounding: mode),
+            referenceRound(numerator, denominator, mode),
+            reason: '$numerator / $denominator ($mode)',
+          );
+        }
+      }
+    });
+
+    test('minorUnits is the magnitude of the fractional part for negative amounts', () {
+      final m = Money(cents: -1999);
+      expect(m.majorUnits, -19);
+      expect(m.minorUnits, 99);
+    });
+
+    test('allocate balances negative totals using the largest remainders', () {
+      expect(Money(cents: -100).allocate([1, 1, 1]).map((p) => p.cents), [-34, -33, -33]);
+      expect(Money(cents: 100).allocate([1, 2]).map((p) => p.cents), [33, 67]);
+      expect(Money(cents: -100).allocate([1, 2]).map((p) => p.cents), [-33, -67]);
+      // Exact shares 3, 1.5, 1.5: the leftover unit goes to a truncated share.
+      expect(Money(cents: 6).allocate([2, 1, 1]).map((p) => p.cents), [3, 2, 1]);
+    });
+
+    test('allocate always sums to the total and stays within one unit of the exact share', () {
+      final rng = math.Random(11);
+      for (var i = 0; i < 5000; i++) {
+        final total = rng.nextInt(2000001) - 1000000;
+        final ratios = List<int>.generate(1 + rng.nextInt(6), (_) => rng.nextInt(10));
+        if (ratios.every((r) => r == 0)) ratios[0] = 1;
+        final weight = ratios.reduce((a, b) => a + b);
+
+        final parts = Money(cents: total).allocate(ratios);
+
+        expect(parts.fold<int>(0, (sum, p) => sum + p.cents), total, reason: '$total $ratios');
+        for (var j = 0; j < ratios.length; j++) {
+          final exact = total * ratios[j] / weight;
+          expect((parts[j].cents - exact).abs(), lessThan(1), reason: '$total $ratios [$j]');
+        }
+      }
+    });
+  });
 }
