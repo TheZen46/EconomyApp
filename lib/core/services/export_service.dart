@@ -5,6 +5,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import '../../features/receipt_scanning/domain/entities/receipt.dart';
 import '../../features/invoices/data/models/invoice_model.dart';
+import '../utils/csv_utils.dart';
 
 /// Enterprise-grade data export service for the tAIdy platform.
 ///
@@ -22,6 +23,25 @@ class ExportService {
   }) async {
     if (receipts.isEmpty) return null;
 
+    final csvString = receiptsToCsv(receipts);
+
+    final directory = await getApplicationDocumentsDirectory();
+    final path = '${directory.path}/${filePrefix}_${DateTime.now().millisecondsSinceEpoch}.csv';
+    final file = File(path);
+    await file.writeAsString(csvString);
+
+    await Share.shareXFiles(
+      [XFile(path)],
+      subject: shareSubject,
+      text: 'Exported ${receipts.length} receipts from tAIdy.',
+    );
+
+    return file;
+  }
+
+  /// CSV content of [exportReceiptsToCsv], one row per line item. Text cells
+  /// are passed through [CsvUtils.sanitizeCell].
+  static String receiptsToCsv(List<Receipt> receipts) {
     final List<List<dynamic>> rows = [];
 
     // Header Row
@@ -79,20 +99,7 @@ class ExportService {
       }
     }
 
-    final csvString = const ListToCsvConverter().convert(rows);
-
-    final directory = await getApplicationDocumentsDirectory();
-    final path = '${directory.path}/${filePrefix}_${DateTime.now().millisecondsSinceEpoch}.csv';
-    final file = File(path);
-    await file.writeAsString(csvString);
-
-    await Share.shareXFiles(
-      [XFile(path)],
-      subject: shareSubject,
-      text: 'Exported ${receipts.length} receipts from tAIdy.',
-    );
-
-    return file;
+    return const ListToCsvConverter().convert(CsvUtils.sanitizeRows(rows));
   }
 
   /// Exports a collection of [Receipt] entities to an indented JSON file.
@@ -155,6 +162,25 @@ class ExportService {
   }) async {
     if (invoices.isEmpty) return null;
 
+    final csvString = invoicesToCsv(invoices);
+
+    final directory = await getApplicationDocumentsDirectory();
+    final path = '${directory.path}/${filePrefix}_${DateTime.now().millisecondsSinceEpoch}.csv';
+    final file = File(path);
+    await file.writeAsString(csvString);
+
+    await Share.shareXFiles(
+      [XFile(path)],
+      subject: shareSubject,
+      text: 'Exported ${invoices.length} invoices from tAIdy.',
+    );
+
+    return file;
+  }
+
+  /// CSV content of [exportInvoicesToCsv]. Text cells are passed through
+  /// [CsvUtils.sanitizeCell].
+  static String invoicesToCsv(List<InvoiceModel> invoices) {
     final List<List<dynamic>> rows = [];
 
     // Header Row
@@ -182,19 +208,6 @@ class ExportService {
       ]);
     }
 
-    final csvString = const ListToCsvConverter().convert(rows);
-
-    final directory = await getApplicationDocumentsDirectory();
-    final path = '${directory.path}/${filePrefix}_${DateTime.now().millisecondsSinceEpoch}.csv';
-    final file = File(path);
-    await file.writeAsString(csvString);
-
-    await Share.shareXFiles(
-      [XFile(path)],
-      subject: shareSubject,
-      text: 'Exported ${invoices.length} invoices from tAIdy.',
-    );
-
-    return file;
+    return const ListToCsvConverter().convert(CsvUtils.sanitizeRows(rows));
   }
 }

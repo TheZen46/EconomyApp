@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:csv/csv.dart';
 import '../../domain/entities/receipt.dart';
+import '../../../../core/utils/csv_utils.dart';
 
 /// Represents aggregated VAT / Tax metrics for a specific percentage bracket.
 class VatBracketSummary {
@@ -283,7 +284,8 @@ class TaxReportService {
       ]);
     }
 
-    return const ListToCsvConverter().convert(rows);
+    // Merchant names and categories come from OCR and imports.
+    return const ListToCsvConverter().convert(CsvUtils.sanitizeRows(rows));
   }
 
   /// Exports the tax report as structured PDF document bytes.
