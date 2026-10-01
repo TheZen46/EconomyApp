@@ -37,6 +37,31 @@ abstract class AppRoutes {
   static const invoices = '/invoices';
 }
 
+/// The review screen. Exposed so that its handling of a missing receipt can be
+/// tested without building the rest of the application.
+final GoRoute reviewRoute = GoRoute(
+  path: AppRoutes.review,
+  // The receipt is passed in memory as `extra`, which GoRouter does not
+  // keep across a browser reload, a deep link or state restoration.
+  // Without it there is nothing to review, so go to the dashboard.
+  redirect: (context, state) => state.extra is Receipt ? null : AppRoutes.home,
+  pageBuilder: (context, state) {
+    final receipt = state.extra! as Receipt;
+    return CustomTransitionPage(
+      key: state.pageKey,
+      child: ReviewPage(receipt: receipt),
+      transitionsBuilder: (context, animation, secondaryAnimation, child) {
+        // Slide from right
+        const begin = Offset(1.0, 0.0);
+        const end = Offset.zero;
+        const curve = Curves.easeOutExpo;
+        var tween = Tween(begin: begin, end: end).chain(CurveTween(curve: curve));
+        return SlideTransition(position: animation.drive(tween), child: child);
+      },
+    );
+  },
+);
+
 final routerProvider = Provider<GoRouter>((ref) {
   // RouterNotifier is a ChangeNotifier wired to authProvider and Supabase auth stream.
   // GoRouter calls refreshListenable.addListener so it re-runs redirect:
@@ -177,24 +202,7 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: AppRoutes.scan,
         builder: (context, state) => const ScanPage(),
       ),
-      GoRoute(
-        path: AppRoutes.review,
-        pageBuilder: (context, state) {
-          final receipt = state.extra as Receipt;
-          return CustomTransitionPage(
-            key: state.pageKey,
-            child: ReviewPage(receipt: receipt),
-            transitionsBuilder: (context, animation, secondaryAnimation, child) {
-              // Slide from right
-              const begin = Offset(1.0, 0.0);
-              const end = Offset.zero;
-              const curve = Curves.easeOutExpo;
-              var tween = Tween(begin: begin, end: end).chain(CurveTween(curve: curve));
-              return SlideTransition(position: animation.drive(tween), child: child);
-            },
-          );
-        },
-      ),
+      reviewRoute,
       GoRoute(
         path: AppRoutes.taxonomy,
         builder: (context, state) => const TaxonomySettingsPage(),
