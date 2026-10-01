@@ -122,11 +122,11 @@ Each finding is tracked by a GitHub issue; the Issue column links to it.
 | Severity | Critical |
 | Component | Supabase Storage / Training Upload |
 | Tracking issue | [#2](https://github.com/TheZen46/EconomyApp/issues/2) |
-| Locations | `supabase/migrations/20260828_master_sync_schema.sql:506-508`<br>`supabase/schema.sql:506-508`<br>`lib/features/receipt_scanning/data/datasources/supabase_data_source.dart:79-198`<br>`lib/features/receipt_scanning/data/repositories/receipt_repository_impl.dart:76-78`<br>`lib/features/receipt_scanning/data/datasources/sync_service.dart:204-228` |
+| Locations | `supabase/migrations/20260828_master_sync_schema.sql:506-508`<br>`supabase/schema.sql:506-508`<br>`lib/features/receipt_scanning/data/datasources/supabase_data_source.dart:79-198`<br>`lib/features/receipt_scanning/data/repositories/receipt_repository_impl.dart:76-78`<br>`lib/features/receipt_scanning/data/datasources/sync_service.dart:204-228`<br>`lib/features/settings/presentation/pages/settings_page.dart:530-566` |
 
-**Root cause analysis.** ReceiptRepositoryImpl.saveReceipt schedules SyncService.scheduleUpload for every saved receipt. SyncService._uploadItem calls SupabaseDataSourceImpl.uploadTrainingData unless the Google Drive toggle is enabled. That method uploads the raw image bytes and a JSON label containing merchant, total, currency, date and every line item to the training_data bucket, obtains a URL with getPublicUrl, and writes it into receipts.image_url. The migration creates training_data with public = true.
+**Root cause analysis.** ReceiptRepositoryImpl.saveReceipt schedules SyncService.scheduleUpload for every saved receipt. SyncService._uploadItem calls SupabaseDataSourceImpl.uploadTrainingData unless the Google Drive toggle is enabled. That method uploads the raw image bytes and a JSON label containing merchant, total, currency, date and every line item to the training_data bucket, obtains a URL with getPublicUrl, and writes it into receipts.image_url. The migration creates training_data with public = true. The Settings page exposes an "AI Model Training Contribution" toggle (ai_dataset_contribution_enabled, default true) whose dialog states that only tokenized line-item categories and price structures are shared after on-device PII removal; no upload path reads this flag.
 
-The bucket that holds Tier-1 training material is declared public. Objects in public buckets are served through /storage/v1/object/public/ without evaluating storage.objects RLS policies for reads, so the per-user folder policy only constrains writes. The upload path is not gated by any consent setting; the only branch selects between Supabase and Google Drive. Images are raw pixels and are not subject to PII scrubbing. When no user is authenticated the code falls back to a shared images/ and labels/ prefix.
+The bucket that holds Tier-1 training material is declared public. Objects in public buckets are served through /storage/v1/object/public/ without evaluating storage.objects RLS policies for reads, so the per-user folder policy only constrains writes. The upload path is not gated by any consent setting (the existing contribution toggle is ignored); the only branch selects between Supabase and Google Drive. Images are raw pixels and are not subject to PII scrubbing. When no user is authenticated the code falls back to a shared images/ and labels/ prefix.
 
 **Observed or potential failure mode.** Any party holding an object URL (persisted in receipts.image_url, in label JSON files, in logs or in exports) can download the receipt image and label without authentication. Receipt images routinely contain merchant identity and address, timestamps, partial card numbers, loyalty identifiers and occasionally customer names. The upload happens for all signed-in users regardless of opt-in, which contradicts the privacy statements in README.md and the Dual-Tier model described in lib/core/sync/sync_manager.dart.
 
@@ -134,7 +134,7 @@ The bucket that holds Tier-1 training material is declared public. Objects in pu
 
 1. Add a migration that sets `public = false` on training_data and revoke anonymous read access; replace getPublicUrl with createSignedUrl (short TTL) where a URL is required, and stop persisting URLs in receipts.image_url.
 2. Store user-owned receipt images in the existing private receipt_images bucket (per-user folder policy already exists) and keep the training corpus separate.
-3. Gate every training upload behind an explicit, persisted and revocable consent flag (default off) evaluated in SyncService before uploadTrainingData is called.
+3. Gate every training upload behind an explicit, persisted and revocable consent flag (default off) evaluated in SyncService before uploadTrainingData is called; reuse ai_dataset_contribution_enabled with its default changed to false, and make the dialog text match the data actually transmitted.
 4. Exclude raw images from the training corpus unless consent explicitly covers images; scrub label text with PiiScrubberService.
 5. Abort the upload when no authenticated user exists instead of writing to a shared prefix.
 6. Inventory and remove or re-scope objects already uploaded to the public bucket.
@@ -920,9 +920,9 @@ Hard-coded model identifier and MIME type; platform-specific file access; a prom
 | Severity | Medium |
 | Component | Privacy / Data at Rest |
 | Tracking issue | [#35](https://github.com/TheZen46/EconomyApp/issues/35) |
-| Locations | `lib/main.dart:88-92`<br>`lib/core/services/vlm/episodic_memory_service_ffi.dart:77-100`<br>`lib/core/services/telemetry_service.dart:252-279`<br>`lib/core/services/export_service.dart:82-95`<br>`lib/core/services/export_service.dart:134-147`<br>`lib/core/services/vlm/dataset_contribution_service.dart:20-33` |
+| Locations | `lib/main.dart:88-92`<br>`lib/features/settings/presentation/providers/taxonomy_provider.dart:15-41`<br>`lib/core/services/vlm/episodic_memory_service_ffi.dart:77-100`<br>`lib/core/services/telemetry_service.dart:252-279`<br>`lib/core/services/export_service.dart:82-95`<br>`lib/core/services/export_service.dart:134-147`<br>`lib/core/services/vlm/dataset_contribution_service.dart:20-33` |
 
-**Root cause analysis.** The settings box stores the monthly budget, current balance, projected income, tax goal, invoice counter, webhook URL and biometric flag, and is opened without encryptionCipher. Episodic memory (merchant names and item corrections) uses an unencrypted SQLite file. Telemetry, dataset contributions and exports are written as plaintext files in the documents directory; exports are never removed and telemetry is never rotated.
+**Root cause analysis.** The settings box stores the monthly budget, current balance, projected income, tax goal, invoice counter, webhook URL and biometric flag, and is opened without encryptionCipher. TaxonomyNotifier opens the taxonomy_config box directly with Hive.openBox and no cipher. Episodic memory (merchant names and item corrections) uses an unencrypted SQLite file. Telemetry, dataset contributions and exports are written as plaintext files in the documents directory; exports are never removed and telemetry is never rotated.
 
 Encryption is applied per Hive box rather than as a storage policy covering every persistence mechanism.
 
@@ -930,7 +930,7 @@ Encryption is applied per Hive box rather than as a storage policy covering ever
 
 **Mitigation strategy.**
 
-1. Open the settings box with the cipher, migrating the existing plaintext box once.
+1. Open the settings and taxonomy_config boxes with the cipher (through HiveMigrationService.openBoxSafe), migrating the existing plaintext boxes once.
 2. Use SQLCipher with a key from secure storage for episodic memory.
 3. Write exports to a temporary directory and delete them after sharing completes.
 4. Rotate telemetry logs by size and age.
