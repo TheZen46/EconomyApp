@@ -333,7 +333,11 @@ END;
 $$ LANGUAGE plpgsql IMMUTABLE;
 
 CREATE OR REPLACE FUNCTION public.stage_anonymized_training_item()
-RETURNS TRIGGER AS $$
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
 DECLARE
     rec_merchant TEXT;
 BEGIN
@@ -372,7 +376,8 @@ BEGIN
 
     RETURN NEW;
 END;
-$$ LANGUAGE plpgsql;
+$$;
+REVOKE ALL ON FUNCTION public.stage_anonymized_training_item() FROM PUBLIC, anon, authenticated;
 
 DROP TRIGGER IF EXISTS trg_stage_training_item ON public.receipt_items;
 CREATE TRIGGER trg_stage_training_item
@@ -380,7 +385,8 @@ AFTER INSERT OR UPDATE ON public.receipt_items
 FOR EACH ROW EXECUTE FUNCTION public.stage_anonymized_training_item();
 
 -- 4.1 Secure View for AI Model Training Export (Tier 1 View)
-CREATE OR REPLACE VIEW public.ai_training_dataset_v1 AS
+-- security_invoker applies the caller's privileges and RLS instead of the view owner's.
+CREATE OR REPLACE VIEW public.ai_training_dataset_v1 WITH (security_invoker = true) AS
 SELECT
     id AS sample_id,
     anonymized_merchant AS merchant,
@@ -395,6 +401,8 @@ SELECT
     created_at AS recorded_at
 FROM public.receipt_training_labels
 WHERE anonymized_description IS NOT NULL AND length(anonymized_description) > 1;
+ALTER VIEW public.ai_training_dataset_v1 SET (security_invoker = true);
+REVOKE ALL ON public.ai_training_dataset_v1 FROM anon, authenticated;
 
 -- ============================================================================
 -- 5. Attach Updated-At Triggers to All Tables
@@ -493,7 +501,8 @@ WITH CHECK (auth.uid() = id);
 DROP POLICY IF EXISTS "Service role can view anonymized training labels" ON public.receipt_training_labels;
 CREATE POLICY "Service role can view anonymized training labels"
 ON public.receipt_training_labels FOR SELECT
-USING (auth.jwt() ->> 'role' = 'service_role' OR auth.jwt() ->> 'role' = 'authenticated');
+USING (auth.jwt() ->> 'role' = 'service_role');
+REVOKE ALL ON public.receipt_training_labels FROM anon, authenticated;
 
 -- ============================================================================
 -- 7. Storage Buckets & Isolation Policies

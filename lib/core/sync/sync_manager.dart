@@ -5,7 +5,6 @@ import 'package:hive/hive.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:synchronized/synchronized.dart';
 
-import '../privacy/pii_scrubber_service.dart';
 import 'conflict_policy.dart';
 import 'outbox_service.dart';
 import 'sync_error_policy.dart';
@@ -14,10 +13,12 @@ import '../../features/invoices/data/models/invoice_model.dart';
 import '../../features/evault/data/models/asset_model.dart';
 import '../../features/receipt_scanning/data/models/receipt_model.dart';
 
-/// Bidirectional, offline-first sync coordinator.
-/// Enforces Dual-Tier Privacy:
-/// - Tier 1 (AI Training Corpus): Anonymized receipt labels pushed to receipt_training_labels.
-/// - Tier 2 (Confidential Vault): RLS-protected user entity tables (receipts, boxes, invoices, assets).
+/// Bidirectional, offline-first sync coordinator for the RLS-protected user
+/// entity tables (receipts, boxes, invoices, assets).
+///
+/// It does not write the training corpus: receipt_training_labels is filled
+/// server-side and readable only by the service role, and training uploads are
+/// consent-gated in SyncService.
 class SyncManager {
   final SupabaseClient supabase;
   final OutboxService outboxService;
@@ -151,11 +152,6 @@ class SyncManager {
         } else {
           // Insert / Update (Upsert)
           await supabase.from(table).upsert(payload);
-
-          // If this is a receipt, also push anonymized Tier 1 training data
-          if (item.entityType == 'receipt') {
-            await _stageTier1TrainingLabels(payload);
-          }
         }
 
         await outboxService.markCompleted(item.id);
@@ -172,36 +168,6 @@ class SyncManager {
   Future<void> retryDeadLettered() async {
     await outboxService.retryPermanentlyFailed();
     await syncAll();
-  }
-
-  /// Staging anonymized training data to Tier 1 tables.
-  Future<void> _stageTier1TrainingLabels(Map<String, dynamic> receiptPayload) async {
-    try {
-      final merchant = receiptPayload['merchant_name'] as String? ?? 'Merchant';
-      final items = receiptPayload['items'] as List<dynamic>? ?? [];
-
-      for (final itemMap in items) {
-        if (itemMap is Map<String, dynamic>) {
-          final scrubbedSample = {
-            'receipt_id': receiptPayload['id'],
-            'anonymized_merchant': PiiScrubberService.sanitizeText(merchant),
-            'anonymized_description': PiiScrubberService.sanitizeText(itemMap['description'] as String?),
-            'quantity': itemMap['quantity'] ?? 1,
-            'unit_price': itemMap['unit_price'] ?? 0.0,
-            'total_price': itemMap['total_price'] ?? 0.0,
-            'main_category': itemMap['main_category'],
-            'sub_category': itemMap['sub_category'],
-            'necessity': itemMap['necessity'] ?? 'unknown',
-            'was_user_corrected': itemMap['is_user_corrected'] ?? false,
-            'created_at': DateTime.now().toUtc().toIso8601String(),
-          };
-
-          await supabase.from('receipt_training_labels').insert(scrubbedSample);
-        }
-      }
-    } catch (e) {
-      debugPrint('SyncManager: Notice staging Tier 1 training label: $e');
-    }
   }
 
   /// Pulls remote delta updates from Supabase and applies them with Last-Write-Wins (LWW).

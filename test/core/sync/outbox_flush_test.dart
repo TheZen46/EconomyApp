@@ -171,5 +171,25 @@ void main() {
       expect(client.upserts, hasLength(2));
       expect(outboxBox.isEmpty, isTrue);
     });
+
+    test('pushing a receipt does not write to the training corpus', () async {
+      await outbox.enqueue(
+        entityType: 'receipt',
+        entityId: 'rec-1',
+        mutationType: 'upsert',
+        payload: {
+          'id': 'rec-1',
+          'merchant_name': 'Pharmacy',
+          'items': [
+            {'description': 'Insulin pen', 'unit_price': 30.0, 'quantity': 1},
+          ],
+        },
+      );
+
+      await manager.syncAll();
+
+      expect(client.upserts.single.table, 'receipts');
+      expect(client.inserts.where((w) => w.table == 'receipt_training_labels'), isEmpty);
+    });
   });
 }

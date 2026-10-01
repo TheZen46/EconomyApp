@@ -256,11 +256,14 @@ void main() {
     expect(fetchedProfile.isNotEmpty, true);
     print('✓ Confirmed User Profile fetched from Supabase: XP = ${fetchedProfile.first['gamification_xp']}');
 
-    final trainingLabels = await supabase.from('receipt_training_labels').select().eq('receipt_id', receiptId);
-    print('✓ Tier 1 Training Labels automatically created via trigger: ${trainingLabels.length} samples');
-    for (final sample in trainingLabels) {
-      print('  -> Sample: "${sample['anonymized_description']}" | Price: \$${sample['total_price']} | Necessity: ${sample['necessity']}');
+    // The Tier 1 training corpus is readable only by the service role.
+    try {
+      final visibleLabels = await supabase.from('receipt_training_labels').select().eq('receipt_id', receiptId);
+      expect(visibleLabels, isEmpty);
+    } on PostgrestException catch (e) {
+      expect(e.code, '42501');
     }
+    print('Confirmed Tier 1 training labels are not readable by end users');
 
     print('\n===============================================================');
     print(' LIVE SEEDING & VERIFICATION COMPLETE: ALL DATA SAFELY RECEIVED!');

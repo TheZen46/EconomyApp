@@ -23,12 +23,13 @@ class RecordedWrite {
   const RecordedWrite(this.table, this.values);
 }
 
-/// Minimal [SupabaseClient] for SyncManager tests: records upserts and updates,
+/// Minimal [SupabaseClient] for SyncManager tests: records upserts, updates and inserts,
 /// serves canned rows for selects, and can fail writes to selected tables.
 class FakeSupabase extends Fake implements SupabaseClient {
   final Map<String, List<Map<String, dynamic>>> rowsByTable;
   final List<RecordedWrite> upserts = [];
   final List<RecordedWrite> updates = [];
+  final List<RecordedWrite> inserts = [];
 
   /// Error thrown by writes to a table, keyed by table name.
   final Map<String, Object> writeErrors = {};
@@ -67,7 +68,8 @@ class FakeQueryBuilder extends Fake implements SupabaseQueryBuilder {
 
   @override
   PostgrestFilterBuilder<dynamic> insert(Object values, {bool defaultToNull = true}) {
-    return FakeFilterBuilder<dynamic>(null);
+    client.inserts.add(RecordedWrite(table, values));
+    return FakeFilterBuilder<dynamic>(null, error: client.writeErrors[table]);
   }
 
   @override
