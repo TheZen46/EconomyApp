@@ -206,7 +206,9 @@ class ReceiptListNotifier extends StateNotifier<AsyncValue<List<Receipt>>> {
     );
   }
 
-  Future<void> addReceipt(Receipt receipt) async {
+  /// Saves [receipt], updating the list optimistically. On failure the list
+  /// is restored and the failure returned, so that callers can report it.
+  Future<Either<Failure, void>> addReceipt(Receipt receipt) async {
     final previous = state;
     final current = state.valueOrNull ?? [];
     final updated = current.any((r) => r.id == receipt.id)
@@ -222,6 +224,7 @@ class ReceiptListNotifier extends StateNotifier<AsyncValue<List<Receipt>>> {
       },
       (_) {},
     );
+    return result;
   }
 
   Future<void> clearAll({bool includeCloud = false}) async {

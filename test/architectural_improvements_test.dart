@@ -598,7 +598,11 @@ void main() {
         currency: 'USD',
       );
 
-      await notifier.addReceipt(newReceipt);
+      final result = await notifier.addReceipt(newReceipt);
+
+      // The failure reaches the caller, which reports it instead of
+      // navigating away as if the receipt had been saved.
+      expect(result.isLeft(), isTrue);
 
       // State MUST roll back to initial state, preventing ghost receipts
       expect(notifier.state.value!.length, 1);
