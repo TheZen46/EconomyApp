@@ -127,7 +127,9 @@ class RemoteReplicaDataSourceImpl implements RemoteReplicaDataSource {
       return List<Map<String, dynamic>>.from(response);
     } catch (e) {
       debugPrint('RemoteReplica: Error fetching receipts table: $e');
-      return [];
+      // Propagated so that SyncEngine retries instead of reporting an empty
+      // table as a completed replication.
+      rethrow;
     }
   }
 
@@ -140,7 +142,7 @@ class RemoteReplicaDataSourceImpl implements RemoteReplicaDataSource {
           .eq('user_id', userId)
           .timeout(const Duration(seconds: 12));
       return List<Map<String, dynamic>>.from(response);
-    } catch (e) {
+    } catch (e, stack) {
       try {
         final fallbackResponse = await client
             .from('assets')
@@ -149,8 +151,8 @@ class RemoteReplicaDataSourceImpl implements RemoteReplicaDataSource {
             .timeout(const Duration(seconds: 12));
         return List<Map<String, dynamic>>.from(fallbackResponse);
       } catch (e2) {
-        debugPrint('RemoteReplica: Notice fetching assets/vault_assets table: $e2');
-        return [];
+        debugPrint('RemoteReplica: Error fetching assets/vault_assets table: $e2');
+        Error.throwWithStackTrace(e, stack);
       }
     }
   }
@@ -165,8 +167,10 @@ class RemoteReplicaDataSourceImpl implements RemoteReplicaDataSource {
           .timeout(const Duration(seconds: 12));
       return List<Map<String, dynamic>>.from(response);
     } catch (e) {
-      debugPrint('RemoteReplica: Notice fetching boxes table: $e');
-      return [];
+      debugPrint('RemoteReplica: Error fetching boxes table: $e');
+      // Propagated so that SyncEngine retries instead of reporting an empty
+      // table as a completed replication.
+      rethrow;
     }
   }
 
@@ -180,8 +184,10 @@ class RemoteReplicaDataSourceImpl implements RemoteReplicaDataSource {
           .timeout(const Duration(seconds: 12));
       return List<Map<String, dynamic>>.from(response);
     } catch (e) {
-      debugPrint('RemoteReplica: Notice fetching invoices table: $e');
-      return [];
+      debugPrint('RemoteReplica: Error fetching invoices table: $e');
+      // Propagated so that SyncEngine retries instead of reporting an empty
+      // table as a completed replication.
+      rethrow;
     }
   }
 
@@ -195,8 +201,10 @@ class RemoteReplicaDataSourceImpl implements RemoteReplicaDataSource {
           .timeout(const Duration(seconds: 12));
       return List<Map<String, dynamic>>.from(response);
     } catch (e) {
-      debugPrint('RemoteReplica: Notice fetching taxonomies table: $e');
-      return [];
+      debugPrint('RemoteReplica: Error fetching taxonomies table: $e');
+      // Propagated so that SyncEngine retries instead of reporting an empty
+      // table as a completed replication.
+      rethrow;
     }
   }
 }

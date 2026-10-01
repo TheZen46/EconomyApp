@@ -331,15 +331,9 @@ class SyncEngine {
             }
           }
 
-          // ── Step 7: Parity Verification & Finalization ──────────────────────
-          _emit(_currentState.copyWith(
-            stage: SyncStage.verifyingParity,
-            progress: 0.95,
-            message: 'Verifying bit-for-bit directory integrity...',
-          ));
-
-          await Future.delayed(const Duration(milliseconds: 300));
-
+          // ── Step 7: Finalization ─────────────────────────────────────────────
+          // No integrity comparison is performed, so no verification stage is
+          // reported.
           _emit(_currentState.copyWith(
             stage: SyncStage.completed,
             progress: 1.0,
