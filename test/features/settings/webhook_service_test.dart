@@ -22,11 +22,25 @@ void main() {
 
   late Directory tempDir;
   late Box settingsBox;
+  late Map<String, String> secureStore;
 
   setUp(() async {
+    secureStore = {};
     const channel = MethodChannel('plugins.it_nomads.com/flutter_secure_storage');
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(channel, (MethodCall methodCall) async {
+      final args = (methodCall.arguments as Map?) ?? const {};
+      final key = args['key'] as String?;
+      switch (methodCall.method) {
+        case 'read':
+          return secureStore[key];
+        case 'write':
+          secureStore[key!] = args['value'] as String;
+          return null;
+        case 'delete':
+          secureStore.remove(key);
+          return null;
+      }
       return null;
     });
 
@@ -57,7 +71,7 @@ void main() {
     test('throws WebhookFailure when URL is empty', () async {
       final webhookService = WebhookService(settingsBox);
       await settingsBox.put('webhook_enabled', true);
-      await settingsBox.put('webhook_url', '');
+      secureStore['webhook_url'] = '';
 
       expect(
         () => webhookService.sendTestEvent(),
@@ -77,7 +91,7 @@ void main() {
 
       final webhookService = WebhookService(settingsBox, dio);
       await settingsBox.put('webhook_enabled', true);
-      await settingsBox.put('webhook_url', 'http://127.0.0.1:54321/webhook');
+      secureStore['webhook_url'] = 'http://127.0.0.1:54321/webhook';
 
       expect(
         () => webhookService.sendTestEvent(),
@@ -100,7 +114,7 @@ void main() {
 
       final webhookService = WebhookService(settingsBox, dio);
       await settingsBox.put('webhook_enabled', true);
-      await settingsBox.put('webhook_url', 'http://127.0.0.1:54321/webhook');
+      secureStore['webhook_url'] = 'http://127.0.0.1:54321/webhook';
 
       final receipt = Receipt(
         id: 'rec-test-01',
@@ -115,6 +129,29 @@ void main() {
         () => webhookService.sendWebhook(receipt),
         throwsA(isA<WebhookFailure>().having((f) => f.statusCode, 'statusCode', 500)),
       );
+    });
+
+    test('reads the URL from secure storage, where the startup migration moves it', () async {
+      final dio = Dio();
+      dio.interceptors.add(ErrorInterceptor(
+        DioException(
+          requestOptions: RequestOptions(path: '/webhook'),
+          type: DioExceptionType.connectionError,
+          error: const SocketException('Connection refused'),
+        ),
+      ));
+      final webhookService = WebhookService(settingsBox, dio);
+      await settingsBox.put('webhook_enabled', true);
+      // A value left in the settings box by an earlier version is not consulted.
+      await settingsBox.put('webhook_url', 'http://legacy.invalid/webhook');
+
+      await expectLater(
+        webhookService.sendTestEvent(),
+        throwsA(isA<WebhookFailure>().having((f) => f.message, 'message', 'No webhook URL configured')),
+      );
+
+      secureStore['webhook_url'] = 'http://127.0.0.1:54321/webhook';
+      await expectLater(webhookService.sendTestEvent(), throwsA(isA<NetworkFailure>()));
     });
   });
 }

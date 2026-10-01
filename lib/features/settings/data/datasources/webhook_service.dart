@@ -18,12 +18,18 @@ class WebhookService {
               sendTimeout: const Duration(seconds: 10),
             ));
 
+  /// The endpoint is kept in secure storage, like the shared secret, because
+  /// webhook URLs commonly embed access tokens.
+  Future<String> _configuredUrl() async {
+    return (await SecureStorageService.readSecret(SecretKeys.webhookUrl))?.trim() ?? '';
+  }
+
   Future<void> sendWebhook(Receipt receipt) async {
     if (!settingsBox.get('webhook_enabled', defaultValue: false)) {
       throw const WebhookFailure('Webhook is disabled');
     }
 
-    final url = settingsBox.get('webhook_url', defaultValue: '') as String;
+    final url = await _configuredUrl();
     if (url.isEmpty) return;
 
     // Read secret from secure storage, not Hive
@@ -54,7 +60,7 @@ class WebhookService {
       throw const WebhookFailure('Webhook is disabled');
     }
 
-    final url = settingsBox.get('webhook_url', defaultValue: '') as String;
+    final url = await _configuredUrl();
     if (url.isEmpty) {
       throw const WebhookFailure('No webhook URL configured');
     }

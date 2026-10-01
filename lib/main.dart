@@ -158,8 +158,10 @@ void main() async {
   );
 }
 
-/// One-time migration: moves any plaintext secrets from the Hive settings box
-/// into flutter_secure_storage, then deletes them from Hive.
+/// Moves any plaintext secrets left in the Hive settings box (written by
+/// earlier versions) into flutter_secure_storage, then deletes them from Hive.
+/// Secure storage is the only location these keys are read from, so the
+/// routine is a no-op once nothing is left to move.
 Future<void> _migrateSecretsToSecureStorage(Box settingsBox) async {
   const keysToMigrate = ['gemini_api_key', 'webhook_secret', 'webhook_url'];
 
