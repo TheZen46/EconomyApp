@@ -76,9 +76,11 @@ class FakeSupabaseDataSource implements SupabaseDataSource {
     deletedIds.addAll(ids);
   }
 
+  final List<String> hardDeletedIds = [];
+
   @override
   Future<void> deleteReceipts(List<String> ids) async {
-    deletedIds.addAll(ids);
+    hardDeletedIds.addAll(ids);
   }
 
   @override
@@ -387,6 +389,8 @@ void main() {
         expect(result.isRight(), isTrue);
         expect(fakeLocal.store, isEmpty);
         expect(fakeSupabase.deletedIds, contains('rcpt-a'));
+        // Rows are soft-deleted through the tombstones, never hard-deleted.
+        expect(fakeSupabase.hardDeletedIds, isEmpty);
         final deletes = outboxService.getPendingMutations().where((m) => m.mutationType == 'delete').toList();
         expect(deletes.map((m) => m.entityId), ['rcpt-a']);
       });

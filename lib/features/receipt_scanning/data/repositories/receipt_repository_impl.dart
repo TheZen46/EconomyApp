@@ -154,11 +154,15 @@ class ReceiptRepositoryImpl implements ReceiptRepository {
 
       if (includeCloud) {
         if (ids.isNotEmpty) {
-          await supabaseDataSource.deleteData(ids);
-          await supabaseDataSource.deleteReceipts(ids);
+          await supabaseDataSource.deleteData(
+            ids,
+            imagePaths: [for (final model in receiptModels) model.imagePath ?? ''],
+          );
         }
 
-        // Tombstones propagate the deletion to other devices and supersede any
+        // Rows are soft-deleted through the outbox, as everywhere else: a hard
+        // delete is never observed by other devices, which would keep their
+        // copies and could upload them again. Tombstones also supersede any
         // upsert for the same receipt that is still queued ahead of them.
         if (outboxService != null) {
           for (final id in ids) {
@@ -208,7 +212,7 @@ class ReceiptRepositoryImpl implements ReceiptRepository {
 
       // 3. Delete binary training image/data from storage (Best effort)
       try {
-        await supabaseDataSource.deleteData([id]);
+        await supabaseDataSource.deleteData([id], imagePaths: [existing?.imagePath ?? '']);
       } catch (e) {
         // Ignore storage error; outbox tombstone guarantees eventual DB consistency
       }
