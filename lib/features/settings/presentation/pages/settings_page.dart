@@ -498,6 +498,22 @@ class _SettingsPanelWidgetState extends ConsumerState<SettingsPanelWidget> {
                                             }
                                             return;
                                           }
+                                          // The lock fails closed, so only enable it once the user
+                                          // has shown that they can pass it on this device.
+                                          final verified = await ref
+                                              .read(biometricServiceProvider)
+                                              .authenticate('Confirm to enable the tAIdy lock');
+                                          if (!verified) {
+                                            if (context.mounted) {
+                                              ScaffoldMessenger.of(context).showSnackBar(
+                                                const SnackBar(
+                                                  content: Text('Verification failed. The lock was not enabled.'),
+                                                  backgroundColor: Color(0xFFD4183D),
+                                                ),
+                                              );
+                                            }
+                                            return;
+                                          }
                                         }
                                         await ref.read(biometricEnabledProvider.notifier).setEnabled(val);
                                       },
