@@ -10,6 +10,7 @@ import 'core/routes/app_router.dart';
 import 'core/theme/app_theme.dart';
 import 'core/theme/theme_notifier.dart';
 import 'core/services/secure_storage_service.dart';
+import 'core/services/secure_session_storage.dart';
 import 'core/services/hive_migration_service.dart';
 import 'core/recovery/data_recovery_app.dart';
 import 'features/receipt_scanning/data/models/receipt_model.dart';
@@ -61,6 +62,12 @@ void main() async {
       await Supabase.initialize(
         url: supabaseUrl,
         anonKey: supabaseAnonKey,
+        authOptions: FlutterAuthClientOptions(
+          // Tokens go to the keychain/keystore, not plaintext preferences.
+          localStorage: SecureSessionStorage(
+            legacyPreferencesKey: 'sb-${Uri.parse(supabaseUrl).host.split('.').first}-auth-token',
+          ),
+        ),
       );
     } catch (e) {
       debugPrint('Warning: Supabase initialization failed, running local-only: $e');

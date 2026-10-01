@@ -4,8 +4,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:t_aidy/features/auth/presentation/providers/auth_provider.dart';
 import 'package:t_aidy/features/auth/presentation/widgets/login_form.dart';
 
-class MockAuthNotifier extends StateNotifier<AuthState> implements AuthNotifier {
-  MockAuthNotifier([super.state = const AuthState()]);
+class MockAuthNotifier extends StateNotifier<AppAuthState> implements AuthNotifier {
+  MockAuthNotifier([super.state = const AppAuthState()]);
 
   bool signInWithEmailPasswordCalled = false;
   bool signUpCalled = false;
@@ -49,7 +49,7 @@ class MockAuthNotifier extends StateNotifier<AuthState> implements AuthNotifier 
 
   @override
   Future<void> signOut() async {
-    state = const AuthState(status: AuthStatus.unauthenticated);
+    state = const AppAuthState(status: AuthStatus.unauthenticated);
   }
 
   @override
