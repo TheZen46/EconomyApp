@@ -14,6 +14,9 @@ if (keystorePropertiesFile.exists()) {
     keystoreProperties.load(FileInputStream(keystorePropertiesFile))
 }
 
+// Opt-in for local test builds of the release variant without the release key.
+val allowDebugSigning = project.findProperty("allowDebugSigning")?.toString()?.toBoolean() == true
+
 android {
     namespace = "com.taidy.finance"
     compileSdk = flutter.compileSdkVersion
@@ -87,10 +90,15 @@ android {
 
     buildTypes {
         release {
-            signingConfig = if (keystorePropertiesFile.exists() || System.getenv("STORE_FILE") != null) {
-                signingConfigs.getByName("release")
-            } else {
-                signingConfigs.getByName("debug")
+            // Signed with the release key only. Falling back to the debug key
+            // produced APKs that a correctly signed build cannot update; without
+            // the release key the build fails (see the check at the end of this
+            // file) unless -PallowDebugSigning=true is passed.
+            val releaseSigning = signingConfigs.getByName("release")
+            signingConfig = when {
+                releaseSigning.storeFile != null -> releaseSigning
+                allowDebugSigning -> signingConfigs.getByName("debug")
+                else -> null
             }
             isMinifyEnabled = true
             isShrinkResources = true
@@ -104,4 +112,18 @@ android {
 
 flutter {
     source = "../.."
+}
+
+gradle.taskGraph.whenReady {
+    val buildsRelease = allTasks.any { task ->
+        task.project == project && (task.name == "assembleRelease" || task.name == "bundleRelease")
+    }
+    val releaseSigningMissing = android.signingConfigs.getByName("release").storeFile == null
+    if (buildsRelease && releaseSigningMissing && !allowDebugSigning) {
+        throw GradleException(
+            "Release signing is not configured. Provide android/key.properties or the STORE_FILE, " +
+                "KEY_ALIAS, KEY_PASSWORD and STORE_PASSWORD environment variables, or pass " +
+                "-PallowDebugSigning=true for a local test build."
+        )
+    }
 }
