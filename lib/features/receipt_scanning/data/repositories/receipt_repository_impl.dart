@@ -147,20 +147,24 @@ class ReceiptRepositoryImpl implements ReceiptRepository {
           await supabaseDataSource.deleteData(ids);
           await supabaseDataSource.deleteReceipts(ids);
         }
-      }
 
-      // Enqueue delete tombstones in outbox so cloud replicas delete their state
-      if (outboxService != null) {
-        for (final id in ids) {
-          await outboxService!.enqueue(
-            entityType: 'receipt',
-            entityId: id,
-            mutationType: 'delete',
-            payload: {'id': id},
-          );
+        // Tombstones propagate the deletion to other devices and supersede any
+        // upsert for the same receipt that is still queued ahead of them.
+        if (outboxService != null) {
+          for (final id in ids) {
+            await outboxService!.enqueue(
+              entityType: 'receipt',
+              entityId: id,
+              mutationType: 'delete',
+              payload: {'id': id},
+            );
+          }
         }
       }
-      
+      // Device-only clearing enqueues nothing: synchronized copies stay in the
+      // cloud, and queued upserts still deliver receipts that have not reached
+      // it yet, so the cleared data remains restorable via "Replicate Cloud Data".
+
       // Always clear local
       await localDataSource.clearAll();
       

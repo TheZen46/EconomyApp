@@ -981,7 +981,11 @@ class _SettingsPanelWidgetState extends ConsumerState<SettingsPanelWidget> {
         title: Text('Clear All Data',
             style: GoogleFonts.spaceGrotesk(
                 color: textCol, fontWeight: FontWeight.w500)),
-        content: Text('This cannot be undone. Choose what to delete.',
+        content: Text(
+            'Device Only removes receipts from this device. Copies stored in your '
+            'cloud account are kept and can be restored with Replicate Cloud Data.\n\n'
+            'Everywhere also deletes them from your cloud account and other '
+            'devices. This cannot be undone.',
             style: GoogleFonts.spaceGrotesk(
                 color: textCol.withAlpha(160), fontSize: 14)),
         actions: [

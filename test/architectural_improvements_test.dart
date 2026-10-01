@@ -288,6 +288,60 @@ void main() {
       expect(pendingAfterDelete.any((item) => item.entityType == 'receipt' && item.entityId == 'test-rcpt-1' && item.mutationType == 'delete'), isTrue);
     });
 
+    group('clearAllData', () {
+      late FakeLocalDataSource fakeLocal;
+      late FakeSupabaseDataSource fakeSupabase;
+      late ReceiptRepositoryImpl repo;
+
+      setUp(() {
+        fakeLocal = FakeLocalDataSource()
+          ..store['rcpt-a'] = ReceiptModel(
+            id: 'rcpt-a',
+            merchantName: 'Bakery',
+            date: DateTime.utc(2026, 9, 1),
+            totalAmount: 4.5,
+            currency: 'EUR',
+            items: const [],
+          );
+        fakeSupabase = FakeSupabaseDataSource();
+        repo = ReceiptRepositoryImpl(
+          localDataSource: fakeLocal,
+          aiService: FakeAiService(),
+          supabaseDataSource: fakeSupabase,
+          settingsBox: settingsBox,
+          syncService: SyncService(
+            queueBox: syncQueueBox,
+            localDataSource: fakeLocal,
+            supabaseDataSource: fakeSupabase,
+            settingsBox: settingsBox,
+            googleDriveService: GoogleDriveService(),
+          ),
+          webhookService: WebhookService(settingsBox),
+          assetsBox: assetsBox,
+          outboxService: outboxService,
+        );
+      });
+
+      test('device-only clearing enqueues no delete mutation and leaves the cloud untouched', () async {
+        final result = await repo.clearAllData(includeCloud: false);
+
+        expect(result.isRight(), isTrue);
+        expect(fakeLocal.store, isEmpty);
+        expect(fakeSupabase.deletedIds, isEmpty);
+        expect(outboxService.getPendingMutations().where((m) => m.mutationType == 'delete'), isEmpty);
+      });
+
+      test('clearing everywhere deletes remotely and enqueues tombstones', () async {
+        final result = await repo.clearAllData(includeCloud: true);
+
+        expect(result.isRight(), isTrue);
+        expect(fakeLocal.store, isEmpty);
+        expect(fakeSupabase.deletedIds, contains('rcpt-a'));
+        final deletes = outboxService.getPendingMutations().where((m) => m.mutationType == 'delete').toList();
+        expect(deletes.map((m) => m.entityId), ['rcpt-a']);
+      });
+    });
+
     test('BoxesNotifier enqueues upsert mutations and delete tombstones', () async {
       final notifier = BoxesNotifier(boxesBox, null, outboxService);
 
