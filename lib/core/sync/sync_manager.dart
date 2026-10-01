@@ -6,6 +6,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:synchronized/synchronized.dart';
 
 import '../privacy/pii_scrubber_service.dart';
+import 'conflict_policy.dart';
 import 'outbox_service.dart';
 import '../../features/boxes/data/models/box_model.dart';
 import '../../features/invoices/data/models/invoice_model.dart';
@@ -292,11 +293,12 @@ class SyncManager {
 
   /// Conflict Resolution (Last-Write-Wins with monotonic version validation)
   bool _shouldRemoteOverwrite(DateTime? localUpdated, int localVersion, DateTime? remoteUpdated, int remoteVersion) {
-    if (remoteVersion > localVersion) return true;
-    if (remoteVersion < localVersion) return false;
-    if (localUpdated == null) return true;
-    if (remoteUpdated == null) return false;
-    return remoteUpdated.isAfter(localUpdated);
+    return shouldRemoteOverwrite(
+      localUpdatedAt: localUpdated,
+      localVersion: localVersion,
+      remoteUpdatedAt: remoteUpdated,
+      remoteVersion: remoteVersion,
+    );
   }
 
   String _mapEntityTypeToTable(String entityType) {

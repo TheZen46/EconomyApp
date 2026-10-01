@@ -1,5 +1,8 @@
+import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:hive/hive.dart';
+import 'package:t_aidy/features/boxes/data/models/box_model.dart';
 import 'package:t_aidy/features/receipt_scanning/data/datasources/hive_receipt_data_source.dart';
 import 'package:t_aidy/features/receipt_scanning/data/models/receipt_model.dart';
 import 'package:t_aidy/features/sync/data/datasources/remote_replica_data_source.dart';
@@ -220,6 +223,120 @@ void main() {
       expect(engine.currentState.message.contains('offline fallback mode'), isTrue);
 
       engine.dispose();
+    });
+  });
+
+  group('SyncEngine - rows shaped like the migration columns', () {
+    late Directory tempDir;
+    late Box<BoxModel> boxesBox;
+    late FakeLocalReceiptDataSource localDS;
+
+    setUp(() async {
+      tempDir = await Directory.systemTemp.createTemp('sync_engine_schema_');
+      Hive.init(tempDir.path);
+      if (!Hive.isAdapterRegistered(10)) Hive.registerAdapter(BoxModelAdapter());
+      boxesBox = await Hive.openBox<BoxModel>('boxes');
+      localDS = FakeLocalReceiptDataSource();
+    });
+
+    tearDown(() async {
+      await Hive.close();
+      if (tempDir.existsSync()) tempDir.deleteSync(recursive: true);
+    });
+
+    Future<void> replicate(FakeRemoteReplicaDataSource remote) async {
+      final engine = SyncEngine(
+        remoteDataSource: remote,
+        localDataSource: localDS,
+        boxesBox: boxesBox,
+      );
+      expect(await engine.executeSync(userId: 'user-1'), isTrue);
+      engine.dispose();
+    }
+
+    test('receipts keep their scanned_date and tombstoned receipts are not imported', () async {
+      await replicate(FakeRemoteReplicaDataSource(mockReceipts: [
+        {
+          'id': 'rec-live',
+          'merchant_name': 'Bakery',
+          'total_amount': 4.5,
+          'currency': 'EUR',
+          'scanned_date': '2026-03-14T09:30:00.000Z',
+          'transaction_time': '09:30',
+          'items': [
+            {'description': 'Bread', 'unit_price': 4.5, 'quantity': 1},
+          ],
+          'version': 3,
+          'updated_at': '2026-03-14T09:31:00.000Z',
+          'deleted_at': null,
+        },
+        {
+          'id': 'rec-deleted',
+          'merchant_name': 'Removed',
+          'total_amount': 1.0,
+          'currency': 'EUR',
+          'scanned_date': '2026-03-01T00:00:00.000Z',
+          'deleted_at': '2026-03-02T00:00:00.000Z',
+        },
+      ]));
+
+      expect(localDS.receipts.keys, ['rec-live']);
+      final receipt = localDS.receipts['rec-live']!;
+      expect(receipt.date, DateTime.utc(2026, 3, 14, 9, 30));
+      expect(receipt.time, '09:30');
+      expect(receipt.version, 3);
+      expect(receipt.items.single.description, 'Bread');
+    });
+
+    test('boxes read color_hex and icon_identifier and skip tombstones', () async {
+      await replicate(FakeRemoteReplicaDataSource(mockBoxes: [
+        {
+          'id': 'box-travel',
+          'name': 'Travel',
+          'budget': 500,
+          'spent': 0,
+          'currency': 'EUR',
+          'color_hex': 0xFF00AA55,
+          'icon_identifier': 'flight',
+          'version': 1,
+          'deleted_at': null,
+        },
+        {
+          'id': 'box-old',
+          'name': 'Old',
+          'budget': 0,
+          'spent': 0,
+          'currency': 'EUR',
+          'color_hex': 0xFF000000,
+          'deleted_at': '2026-03-02T00:00:00.000Z',
+        },
+      ]));
+
+      expect(boxesBox.keys, ['box-travel']);
+      expect(boxesBox.get('box-travel')!.color, 0xFF00AA55);
+      expect(boxesBox.get('box-travel')!.icon, 'flight');
+    });
+
+    test('a local box with a higher version is not overwritten', () async {
+      await boxesBox.put(
+        'box-home',
+        BoxModel(id: 'box-home', name: 'Home (edited)', budget: 900, spent: 0, currency: 'EUR', color: 0xFF112233, version: 4),
+      );
+
+      await replicate(FakeRemoteReplicaDataSource(mockBoxes: [
+        {
+          'id': 'box-home',
+          'name': 'Home',
+          'budget': 800,
+          'spent': 0,
+          'currency': 'EUR',
+          'color_hex': 0xFF112233,
+          'version': 2,
+          'updated_at': '2026-03-14T09:31:00.000Z',
+        },
+      ]));
+
+      expect(boxesBox.get('box-home')!.name, 'Home (edited)');
     });
   });
 }
