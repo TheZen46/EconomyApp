@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:dartz/dartz.dart';
+import 'package:t_aidy/core/error/failures.dart';
 import 'package:t_aidy/features/boxes/data/models/box_model.dart';
 import 'package:t_aidy/features/boxes/data/providers/boxes_provider.dart';
 import 'package:t_aidy/features/receipt_scanning/domain/entities/receipt.dart';
@@ -19,10 +21,11 @@ class MockReceiptListNotifier extends StateNotifier<AsyncValue<List<Receipt>>> i
   Receipt? addedReceipt;
 
   @override
-  Future<void> addReceipt(Receipt receipt) async {
+  Future<Either<Failure, void>> addReceipt(Receipt receipt) async {
     addedReceipt = receipt;
     final current = state.valueOrNull ?? [];
     state = AsyncValue.data([...current, receipt]);
+    return const Right(null);
   }
 
   @override

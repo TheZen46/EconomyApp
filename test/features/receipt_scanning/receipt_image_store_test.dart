@@ -25,7 +25,7 @@ void main() {
 
     final stored = await store.persist('rec-1', picked.path);
 
-    expect(stored, '${docs.path}/${ReceiptImageStore.folderName}/rec-1.png');
+    expect(stored, '${docs.path}${Platform.pathSeparator}${ReceiptImageStore.folderName}${Platform.pathSeparator}rec-1.png');
     expect(File(stored).readAsBytesSync(), [1, 2, 3]);
 
     // The cache may now be purged without losing the image.

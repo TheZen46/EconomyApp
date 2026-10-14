@@ -376,7 +376,7 @@ void main() {
         ));
 
         final storedPath = fakeLocal.store['rcpt-img']!.imagePath!;
-        expect(storedPath, startsWith('${docs.path}/${ReceiptImageStore.folderName}/'));
+        expect(storedPath, startsWith('${docs.path}${Platform.pathSeparator}${ReceiptImageStore.folderName}${Platform.pathSeparator}'));
         expect(File(storedPath).existsSync(), isTrue);
 
         await imageRepo.deleteReceipt('rcpt-img');

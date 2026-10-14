@@ -35,6 +35,8 @@ void main() {
       expect(result.fold((f) => f, (_) => null), isA<ExtractionUnavailableFailure>());
     });
 
+    final service = FallbackAIService();
+
     test('parses European receipt OCR with trailing currency symbol and comma decimals', () {
       const ocr = '''
 SUPERMERCATO ROMA

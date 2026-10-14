@@ -250,6 +250,5 @@ void main() {
       expect(find.text('Draft Unsaved Invoice Entry'), findsOneWidget);
       expect(controller.text, equals('Draft Unsaved Invoice Entry'));
     });
-    });
   });
 }

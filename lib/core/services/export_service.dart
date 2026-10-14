@@ -212,9 +212,19 @@ class ExportService {
     return const ListToCsvConverter().convert(CsvUtils.sanitizeRows(rows));
   }
 
-  /// Prepend single quote to string values starting with formula trigger chars (=, +, -, @, tab, cr)
-  /// to protect against CSV / Excel formula injection (CWE-1236).
-  static dynamic _sanitizeCsvCell(dynamic value) => CsvUtils.sanitizeCell(value);
+  static dynamic _sanitizeCsvCell(dynamic value) {
+    if (value is String && value.isNotEmpty) {
+      if (value.startsWith('=') ||
+          value.startsWith('+') ||
+          value.startsWith('@') ||
+          value.startsWith('\t') ||
+          value.startsWith('\r') ||
+          (value.startsWith('-') && double.tryParse(value) == null)) {
+        return "'$value";
+      }
+    }
+    return value;
+  }
 
   /// Exposed for testing: verifies CSV formula injection sanitization.
   @visibleForTesting
