@@ -15,7 +15,6 @@ import '../../features/boxes/data/models/box_model.dart';
 import '../../features/invoices/data/models/invoice_model.dart';
 import '../../features/evault/data/models/asset_model.dart';
 import '../../features/receipt_scanning/data/models/receipt_model.dart';
-import '../../features/receipt_scanning/data/datasources/sync_service.dart';
 
 /// Bidirectional, offline-first sync coordinator for the RLS-protected user
 /// entity tables (receipts, boxes, invoices, assets).
@@ -33,7 +32,6 @@ class SyncManager {
   final Box settingsBox;
   final VoidCallback? onSyncCompleted;
   final SyncCoordinator coordinator;
-  final SyncService? syncService;
 
   StreamSubscription<List<ConnectivityResult>>? _connectivitySub;
   bool _isSyncing = false;
@@ -47,7 +45,6 @@ class SyncManager {
     required this.assetsBox,
     required this.settingsBox,
     this.onSyncCompleted,
-    this.syncService,
     SyncCoordinator? coordinator,
   }) : coordinator = coordinator ?? SyncCoordinator.instance {
     _initAutoSync();
@@ -97,19 +94,18 @@ class SyncManager {
         // ── STEP 2: Pull Deltas (Pull) ───────────────────────────────────────
         await _pullDeltas(user.id);
 
-        // ── STEP 3: Flush Attachment Queue via SyncService ───────────────────
-        if (syncService != null) {
-          try {
-            await syncService!.syncPendingItems();
-          } catch (e) {
-            debugPrint('SyncManager: Notice flushing attachment queue: $e');
-          }
+        // ── STEP 3: Flush Attachment Queue via Coordinator ───────────────────
+        try {
+          await coordinator.flushAttachments();
+        } catch (e) {
+          debugPrint('SyncManager: Notice flushing attachment queue: $e');
         }
 
         // Time of the last completed cycle, for display only; the pull itself
         // uses the per-table server watermarks (see _pullTable).
         await settingsBox.put('last_synced_at', DateTime.now().toUtc().toIso8601String());
         debugPrint('SyncManager: Synchronization cycle completed successfully.');
+        coordinator.notifySyncCompleted();
         onSyncCompleted?.call();
       } catch (e, stack) {
         debugPrint('SyncManager: Error during sync cycle: $e\n$stack');

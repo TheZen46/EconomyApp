@@ -1,10 +1,6 @@
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../features/boxes/data/models/box_model.dart';
-import '../../features/boxes/data/providers/boxes_provider.dart';
 import '../../features/invoices/data/models/invoice_model.dart';
-import '../../features/invoices/data/providers/invoices_provider.dart';
 import '../../features/receipt_scanning/domain/entities/receipt.dart';
-import '../../features/receipt_scanning/presentation/providers/receipt_provider.dart';
 import 'package:t_aidy/features/mileage/domain/mileage_engine.dart';
 
 /// An individual line item in a consolidated financial statement.
@@ -204,16 +200,3 @@ class ConsolidatedStatementService {
   }
 }
 
-/// Provider for consolidated financial statements.
-final consolidatedStatementProvider = Provider<ConsolidatedFinancialStatement>((ref) {
-  final boxes = ref.watch(boxesProvider);
-  final invoices = ref.watch(invoicesProvider);
-  final receipts = ref.watch(receiptListProvider).valueOrNull ?? [];
-
-  return ConsolidatedStatementService.generateConsolidatedStatement(
-    boxes: boxes,
-    invoices: invoices,
-    receipts: receipts,
-    fiscalYear: DateTime.now().year,
-  );
-});

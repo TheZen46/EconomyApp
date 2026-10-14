@@ -110,9 +110,12 @@ class SyncProgressNotifier extends StateNotifier<SyncProgressState> {
   final SyncEngine _engine;
   final Ref _ref;
   StreamSubscription<SyncProgressState>? _engineSubscription;
+  late final SyncCoordinator _coordinator;
 
   SyncProgressNotifier(this._engine, this._ref)
       : super(_engine.currentState) {
+    _coordinator = _ref.read(syncCoordinatorProvider);
+    _coordinator.addSyncCompletedListener(_onSyncCoordinatorCompleted);
     _engineSubscription = _engine.stateStream.listen((state) {
       this.state = state;
       if (state.isCompleted) {
@@ -123,6 +126,21 @@ class SyncProgressNotifier extends StateNotifier<SyncProgressState> {
         } catch (_) {}
       }
     });
+  }
+
+  void _onSyncCoordinatorCompleted() {
+    try {
+      _ref.read(receiptListProvider.notifier).loadReceipts();
+    } catch (_) {}
+    try {
+      _ref.read(boxesProvider.notifier).reload();
+    } catch (_) {}
+    try {
+      _ref.read(invoicesProvider.notifier).reload();
+    } catch (_) {}
+    try {
+      _ref.read(assetListProvider.notifier).reload();
+    } catch (_) {}
   }
 
   /// Initiates initial replication upon successful user login.
@@ -166,6 +184,7 @@ class SyncProgressNotifier extends StateNotifier<SyncProgressState> {
 
   @override
   void dispose() {
+    _coordinator.removeSyncCompletedListener(_onSyncCoordinatorCompleted);
     _engineSubscription?.cancel();
     super.dispose();
   }

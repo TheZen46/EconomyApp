@@ -64,6 +64,8 @@ class SyncService {
 
     // Initial check
     syncPendingItems();
+
+    this.coordinator.registerAttachmentFlusher(syncPendingItems);
   }
 
   static bool _noPrivateBoxes(String? boxId) => false;
@@ -266,5 +268,6 @@ class SyncService {
 
   void dispose() {
     _connectivitySubscription?.cancel();
+    coordinator.unregisterAttachmentFlusher();
   }
 }

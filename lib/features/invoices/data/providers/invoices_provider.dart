@@ -4,19 +4,12 @@ import 'package:hive/hive.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
 import '../models/invoice_model.dart';
-import '../../../../features/receipt_scanning/presentation/providers/receipt_provider.dart';
 import '../../../../core/sync/outbox_service.dart';
 import '../../../../core/sync/sync_providers.dart';
 import '../../../../core/providers/supabase_providers.dart';
-
-/// Hive box storing persisted [InvoiceModel] records (`invoices`).
-///
-/// **Lifetime:** App-scoped singleton.
-/// **Override:** Required. Must be overridden with an encrypted box instance in `main()`.
-/// **Dependencies:** None.
-final invoicesHiveBoxProvider = Provider<Box<InvoiceModel>>((ref) {
-  throw UnimplementedError('invoicesHiveBoxProvider must be overridden in main.dart');
-});
+import '../../../../core/providers/storage_providers.dart';
+export '../../../../core/providers/storage_providers.dart'
+    show invoicesHiveBoxProvider, invoicesBoxProvider;
 
 // ── Persistent counter key ───────────────────────────────────────────────────
 // Stored in the unencrypted settingsBox. It is increment-only and never

@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:hive/hive.dart';
 import 'package:uuid/uuid.dart';
+import 'package:t_aidy/core/entities/syncable_entity.dart';
 
 part 'invoice_model_adapter.dart';
 
@@ -18,7 +19,8 @@ class InvoiceStatus {
 /// Stored by the hand-written [InvoiceModelAdapter] (typeId 11) in invoice_model_adapter.dart.
 /// Intentionally not annotated with @HiveType: generating the adapter would drop the
 /// compatibility handling for records written by earlier versions.
-class InvoiceModel {
+class InvoiceModel implements SyncableEntity {
+  @override
   @HiveField(0)
   final String id;
 
@@ -46,18 +48,22 @@ class InvoiceModel {
   @HiveField(8)
   final String currency;
 
+  @override
   @HiveField(9)
   final String? userId;
 
   @HiveField(10)
   final DateTime? createdAt;
 
+  @override
   @HiveField(11)
   final DateTime? updatedAt;
 
+  @override
   @HiveField(12)
   final DateTime? deletedAt;
 
+  @override
   @HiveField(13)
   final int version;
 

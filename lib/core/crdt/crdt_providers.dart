@@ -1,7 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 import 'crdt_sync_engine.dart';
-import '../../features/receipt_scanning/presentation/providers/receipt_provider.dart';
+import '../providers/storage_providers.dart';
 
 /// Provider for the CRDT storage engine.
 final crdtStorageProvider = Provider<CrdtStorage?>((ref) {

@@ -16,7 +16,6 @@ import '../../data/datasources/hive_receipt_data_source.dart';
 import '../../data/datasources/mock_ai_service.dart';
 import '../../data/datasources/supabase_data_source.dart';
 import '../../data/datasources/gemini_ai_service.dart';
-import '../../data/models/receipt_model.dart';
 import '../../data/repositories/receipt_repository_impl.dart';
 import '../../domain/entities/receipt.dart';
 import '../../domain/repositories/receipt_repository.dart';
@@ -28,7 +27,6 @@ import '../../data/models/sync_item_model.dart';
 import '../../data/datasources/sync_service.dart';
 import '../../../../core/services/google_drive_service.dart'; // Ensure global access or provider
 import '../../../settings/data/datasources/webhook_service.dart';
-import '../../../evault/presentation/providers/asset_provider.dart';
 import '../../../settings/presentation/providers/llm_provider.dart';
 import '../../../boxes/data/models/box_model.dart';
 import '../../../boxes/data/providers/boxes_provider.dart';
@@ -36,39 +34,20 @@ import '../../data/datasources/csv_parser_service.dart';
 import '../../../../core/sync/outbox_service.dart';
 import '../../../../core/sync/sync_coordinator.dart';
 import '../../../../core/sync/sync_providers.dart';
+import '../../../../core/providers/storage_providers.dart';
+
+export '../../../../core/providers/storage_providers.dart'
+    show
+        hiveBoxProvider,
+        receiptsBoxProvider,
+        settingsBoxProvider,
+        syncBoxProvider;
 
 /// Service for parsing CSV bank and card statement exports.
 ///
 /// **Lifetime:** App-scoped singleton.
 /// **Dependencies:** None.
 final csvParserServiceProvider = Provider<CsvParserService>((ref) => CsvParserService());
-
-/// Hive box storing persisted [ReceiptModel] records (`receipts_v3`).
-///
-/// **Lifetime:** App-scoped singleton.
-/// **Override:** Required. Must be overridden with an encrypted box instance in `main()`.
-/// **Dependencies:** None.
-final hiveBoxProvider = Provider<Box<ReceiptModel>>((ref) {
-  throw UnimplementedError('Hive box must be overridden in main');
-});
-
-/// Shared Hive box storing user preferences and application configuration (`settings`).
-///
-/// **Lifetime:** App-scoped singleton.
-/// **Override:** Required. Must be overridden with an encrypted box instance in `main()`.
-/// **Dependencies:** None.
-final settingsBoxProvider = Provider<Box>((ref) {
-  throw UnimplementedError('Settings Hive box must be overridden in main');
-});
-
-/// Legacy Hive box storing queued sync mutations (`sync_queue`).
-///
-/// **Lifetime:** App-scoped singleton.
-/// **Override:** Required. Must be overridden with an encrypted box instance in `main()`.
-/// **Dependencies:** None.
-final syncBoxProvider = Provider<Box<SyncItemModel>>((ref) {
-  throw UnimplementedError('Sync Queue Hive box must be overridden in main');
-});
 
 /// Local Hive data source for reading and writing receipt records.
 ///

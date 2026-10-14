@@ -1,12 +1,14 @@
 import 'package:hive/hive.dart';
 import 'package:uuid/uuid.dart';
+import 'package:t_aidy/core/entities/syncable_entity.dart';
 
 part 'box_model_adapter.dart';
 
 /// Stored by the hand-written [BoxModelAdapter] (typeId 10) in box_model_adapter.dart.
 /// Intentionally not annotated with @HiveType: generating the adapter would drop the
 /// compatibility handling for records written by earlier versions.
-class BoxModel extends HiveObject {
+class BoxModel extends HiveObject implements SyncableEntity {
+  @override
   @HiveField(0)
   String id;
 
@@ -37,18 +39,22 @@ class BoxModel extends HiveObject {
   @HiveField(9)
   bool isPrivate;
 
+  @override
   @HiveField(10)
   String? userId;
 
   @HiveField(11)
   DateTime? createdAt;
 
+  @override
   @HiveField(12)
   DateTime? updatedAt;
 
+  @override
   @HiveField(13)
   DateTime? deletedAt;
 
+  @override
   @HiveField(14)
   int version;
 

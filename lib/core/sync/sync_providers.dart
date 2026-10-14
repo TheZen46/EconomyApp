@@ -1,28 +1,16 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hive/hive.dart';
-import 'models/sync_outbox_item.dart';
 import 'outbox_service.dart';
 import 'sync_coordinator.dart';
 import 'sync_manager.dart';
 import '../providers/supabase_providers.dart';
-import '../../features/receipt_scanning/presentation/providers/receipt_provider.dart';
-import '../../features/receipt_scanning/data/datasources/sync_service.dart';
+import '../providers/storage_providers.dart';
 import '../../features/receipt_scanning/data/models/receipt_model.dart';
-import '../../features/boxes/data/providers/boxes_provider.dart';
 import '../../features/boxes/data/models/box_model.dart';
-import '../../features/invoices/data/providers/invoices_provider.dart';
 import '../../features/invoices/data/models/invoice_model.dart';
-import '../../features/evault/presentation/providers/asset_provider.dart';
 import '../../features/evault/data/models/asset_model.dart';
 
-/// Hive box storing persistent outgoing [SyncOutboxItem] mutations.
-///
-/// **Lifetime:** App-scoped singleton.
-/// **Override:** Required. Must be overridden with an opened encrypted box in `main()`.
-/// **Dependencies:** None.
-final outboxHiveBoxProvider = Provider<Box<SyncOutboxItem>>((ref) {
-  throw UnimplementedError('Outbox Hive box must be overridden in main');
-});
+export '../providers/storage_providers.dart' show outboxHiveBoxProvider;
 
 /// Service responsible for queueing, executing, and deduplicating offline mutations.
 ///
@@ -87,11 +75,6 @@ final syncManagerProvider = Provider<SyncManager?>((ref) {
     return null;
   }
 
-  SyncService? syncService;
-  try {
-    syncService = ref.watch(syncServiceProvider);
-  } catch (_) {}
-
   final coordinator = ref.watch(syncCoordinatorProvider);
 
   final manager = SyncManager(
@@ -103,21 +86,7 @@ final syncManagerProvider = Provider<SyncManager?>((ref) {
     assetsBox: assets,
     settingsBox: settings,
     coordinator: coordinator,
-    syncService: syncService,
-    onSyncCompleted: () {
-      try {
-        ref.read(receiptListProvider.notifier).loadReceipts();
-      } catch (_) {}
-      try {
-        ref.read(boxesProvider.notifier).reload();
-      } catch (_) {}
-      try {
-        ref.read(invoicesProvider.notifier).reload();
-      } catch (_) {}
-      try {
-        ref.read(assetListProvider.notifier).reload();
-      } catch (_) {}
-    },
+    onSyncCompleted: coordinator.notifySyncCompleted,
   );
   ref.onDispose(manager.dispose);
   return manager;

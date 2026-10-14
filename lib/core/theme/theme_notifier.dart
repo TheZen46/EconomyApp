@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hive/hive.dart';
-import '../../features/receipt_scanning/presentation/providers/receipt_provider.dart';
+import '../providers/storage_providers.dart';
 
 /// State notifier managing the application's active [ThemeMode] (light, dark, or system).
 ///

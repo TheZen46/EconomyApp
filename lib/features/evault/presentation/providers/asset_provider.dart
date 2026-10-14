@@ -6,15 +6,8 @@ import '../../../receipt_scanning/domain/entities/receipt.dart';
 import 'package:uuid/uuid.dart';
 import '../../../../core/sync/outbox_service.dart';
 import '../../../../core/sync/sync_providers.dart';
-
-/// Hive box storing persisted [AssetModel] warrantied physical inventory items (`assets`).
-///
-/// **Lifetime:** App-scoped singleton.
-/// **Override:** Required. Must be overridden with an encrypted box instance in `main()`.
-/// **Dependencies:** None.
-final assetsBoxProvider = Provider<Box<AssetModel>>((ref) {
-  throw UnimplementedError('Assets Box must be overridden in main');
-});
+import '../../../../core/providers/storage_providers.dart';
+export '../../../../core/providers/storage_providers.dart' show assetsBoxProvider;
 
 /// Provides the reactive list of warrantied physical assets in the user's EVault.
 ///

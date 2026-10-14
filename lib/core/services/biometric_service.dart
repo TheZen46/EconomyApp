@@ -2,7 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hive/hive.dart';
 import 'package:local_auth/local_auth.dart';
-import '../../features/receipt_scanning/presentation/providers/receipt_provider.dart';
+import '../providers/storage_providers.dart';
 
 final biometricServiceProvider = Provider<BiometricService>((ref) {
   return BiometricService();

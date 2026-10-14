@@ -1,5 +1,6 @@
 import 'package:hive/hive.dart';
 import 'package:uuid/uuid.dart';
+import 'package:t_aidy/core/entities/syncable_entity.dart';
 import 'package:t_aidy/core/financial/price_basis.dart';
 import '../../domain/entities/receipt.dart';
 
@@ -8,7 +9,8 @@ part 'receipt_model_adapter.dart';
 /// Stored by the hand-written [ReceiptModelAdapter] (typeId 0) in receipt_model_adapter.dart.
 /// Intentionally not annotated with @HiveType: generating the adapter would drop the
 /// compatibility handling for records written by earlier versions.
-class ReceiptModel extends HiveObject {
+class ReceiptModel extends HiveObject implements SyncableEntity {
+  @override
   @HiveField(0)
   final String id;
 
@@ -42,18 +44,22 @@ class ReceiptModel extends HiveObject {
   @HiveField(11)
   final String? boxId;
 
+  @override
   @HiveField(12)
   final String? userId;
 
   @HiveField(13)
   final DateTime? createdAt;
 
+  @override
   @HiveField(14)
   final DateTime? updatedAt;
 
+  @override
   @HiveField(15)
   final DateTime? deletedAt;
 
+  @override
   @HiveField(16)
   final int version;
 

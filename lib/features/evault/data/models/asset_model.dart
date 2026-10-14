@@ -1,12 +1,14 @@
 import 'package:hive/hive.dart';
 import 'package:uuid/uuid.dart';
+import 'package:t_aidy/core/entities/syncable_entity.dart';
 
 part 'asset_model_adapter.dart';
 
 /// Stored by the hand-written [AssetModelAdapter] (typeId 7) in asset_model_adapter.dart.
 /// Intentionally not annotated with @HiveType: generating the adapter would drop the
 /// compatibility handling for records written by earlier versions.
-class AssetModel {
+class AssetModel implements SyncableEntity {
+  @override
   @HiveField(0)
   final String id;
 
@@ -31,6 +33,7 @@ class AssetModel {
   @HiveField(7)
   final String? receiptId; // Link back to original receipt
 
+  @override
   @HiveField(8)
   final String? userId;
 
@@ -40,12 +43,15 @@ class AssetModel {
   @HiveField(10)
   final DateTime? createdAt;
 
+  @override
   @HiveField(11)
   final DateTime? updatedAt;
 
+  @override
   @HiveField(12)
   final DateTime? deletedAt;
 
+  @override
   @HiveField(13)
   final int version;
 

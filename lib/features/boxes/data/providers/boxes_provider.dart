@@ -7,15 +7,9 @@ import '../../../../core/sync/outbox_service.dart';
 import '../../../../core/sync/sync_providers.dart';
 import '../../../receipt_scanning/data/models/receipt_model.dart';
 import '../../../receipt_scanning/presentation/providers/receipt_provider.dart';
-
-/// Hive box storing segregated budget envelope [BoxModel] configurations (`boxes`).
-///
-/// **Lifetime:** App-scoped singleton.
-/// **Override:** Required. Must be overridden with an encrypted box instance in `main()`.
-/// **Dependencies:** None.
-final boxesHiveBoxProvider = Provider<Box<BoxModel>>((ref) {
-  throw UnimplementedError('boxesHiveBoxProvider must be overridden in main.dart');
-});
+import '../../../../core/providers/storage_providers.dart';
+export '../../../../core/providers/storage_providers.dart'
+    show boxesHiveBoxProvider, boxesBoxProvider;
 
 /// Currently active budget box identifier used for UI filtering (defaults to `'main'`).
 ///
