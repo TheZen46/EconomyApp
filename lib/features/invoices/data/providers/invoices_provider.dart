@@ -154,6 +154,7 @@ class InvoicesNotifier extends StateNotifier<List<InvoiceModel>> {
     final previous = state;
     try {
       await _box?.put(inv.id, inv);
+      if (!mounted) return inv;
       state = [inv, ...state];
 
       if (_outboxService != null) {
@@ -168,7 +169,7 @@ class InvoicesNotifier extends StateNotifier<List<InvoiceModel>> {
       return inv;
     } catch (e) {
       debugPrint('InvoicesNotifier: Error creating invoice: $e');
-      state = previous;
+      if (mounted) state = previous;
       rethrow;
     }
   }
@@ -207,6 +208,7 @@ class InvoicesNotifier extends StateNotifier<List<InvoiceModel>> {
         version: existing.version + 1,
       );
       await _box?.put(id, updatedInvoice);
+      if (!mounted) return;
       state = state.map((inv) => inv.id == id ? updatedInvoice : inv).toList();
 
       if (_outboxService != null) {
@@ -219,7 +221,7 @@ class InvoicesNotifier extends StateNotifier<List<InvoiceModel>> {
       }
     } catch (e) {
       debugPrint('InvoicesNotifier: Error updating invoice: $e');
-      state = previous;
+      if (mounted) state = previous;
       rethrow;
     }
   }
@@ -231,6 +233,7 @@ class InvoicesNotifier extends StateNotifier<List<InvoiceModel>> {
     final previous = state;
     try {
       await _box?.delete(id);
+      if (!mounted) return;
       state = state.where((i) => i.id != id).toList();
 
       if (_outboxService != null) {
@@ -243,7 +246,7 @@ class InvoicesNotifier extends StateNotifier<List<InvoiceModel>> {
       }
     } catch (e) {
       debugPrint('InvoicesNotifier: Error deleting invoice: $e');
-      state = previous;
+      if (mounted) state = previous;
       rethrow;
     }
     // Monotonic sequence counter is NEVER decremented upon deletion.

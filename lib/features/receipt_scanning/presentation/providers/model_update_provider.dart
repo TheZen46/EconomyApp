@@ -104,14 +104,16 @@ class ModelUpdateService extends StateNotifier<UpdateState> {
 
     try {
       final configEither = await _repository.getLatestModelConfig();
+      if (!mounted) return;
       
       await configEither.fold(
         (failure) async {
+          if (!mounted) return;
           state = state.copyWith(isChecking: false, error: 'Failed to check updates');
         },
         (config) async {
           if (config == null) {
-             state = state.copyWith(isChecking: false, message: null);
+             if (mounted) state = state.copyWith(isChecking: false, message: null);
              return;
           }
 
@@ -122,20 +124,22 @@ class ModelUpdateService extends StateNotifier<UpdateState> {
           if (_isNewer(remoteVersion, localVersion)) {
             final update = validateUpdate(remoteVersion, config.metadata);
             if (update == null) {
-              state = state.copyWith(
-                isChecking: false,
-                error: 'Model update rejected: missing or invalid version, HTTPS URL or SHA-256 digest',
-              );
+              if (mounted) {
+                state = state.copyWith(
+                  isChecking: false,
+                  error: 'Model update rejected: missing or invalid version, HTTPS URL or SHA-256 digest',
+                );
+              }
               return;
             }
             await _downloadModel(update);
           } else {
-            state = state.copyWith(isChecking: false, message: null);
+            if (mounted) state = state.copyWith(isChecking: false, message: null);
           }
         },
       );
     } catch (e) {
-      state = state.copyWith(isChecking: false, error: e.toString());
+      if (mounted) state = state.copyWith(isChecking: false, error: e.toString());
     }
   }
 
@@ -164,7 +168,7 @@ class ModelUpdateService extends StateNotifier<UpdateState> {
         update.downloadUri.toString(),
         partFile.path,
         onReceiveProgress: (received, total) {
-          if (total != -1) {
+          if (total != -1 && mounted) {
             state = state.copyWith(progress: received / total);
           }
         },
@@ -173,10 +177,12 @@ class ModelUpdateService extends StateNotifier<UpdateState> {
       final actualSha256 = await _repository.calculateSha256(partFile);
       if (actualSha256.toLowerCase() != update.sha256) {
         await partFile.delete();
-        state = state.copyWith(
-          isDownloading: false,
-          error: 'Model update failed integrity verification and was discarded',
-        );
+        if (mounted) {
+          state = state.copyWith(
+            isDownloading: false,
+            error: 'Model update failed integrity verification and was discarded',
+          );
+        }
         return;
       }
       await partFile.rename(savePath);
@@ -185,11 +191,13 @@ class ModelUpdateService extends StateNotifier<UpdateState> {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString(_prefKeyLocalVersion, version);
 
-      state = state.copyWith(
-        isDownloading: false,
-        message: 'AI Brain updated to v$version!',
-        progress: 1.0,
-      );
+      if (mounted) {
+        state = state.copyWith(
+          isDownloading: false,
+          message: 'AI Brain updated to v$version!',
+          progress: 1.0,
+        );
+      }
       
       // Clear message after delay
       await Future.delayed(const Duration(seconds: 3));
@@ -201,10 +209,12 @@ class ModelUpdateService extends StateNotifier<UpdateState> {
       if (partFile != null && await partFile.exists()) {
         await partFile.delete();
       }
-      state = state.copyWith(
-        isDownloading: false,
-        error: 'Download failed: $e',
-      );
+      if (mounted) {
+        state = state.copyWith(
+          isDownloading: false,
+          error: 'Download failed: $e',
+        );
+      }
     }
   }
 

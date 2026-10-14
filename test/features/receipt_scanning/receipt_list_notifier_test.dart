@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:dartz/dartz.dart';
@@ -124,4 +125,85 @@ void main() {
       expect(hadLoading, isFalse, reason: 'loadReceipts should not flicker to AsyncLoading if data already exists');
     });
   });
+
+  group('ReceiptListNotifier - In-flight disposal resilience (TAIDY-M04 / Issue #26)', () {
+    test('addReceipt does not throw when disposed during repository save', () async {
+      final completer = Completer<Either<Failure, void>>();
+      final slowRepo = DelayedMockReceiptRepository(saveCompleter: completer);
+      final testNotifier = ReceiptListNotifier(slowRepo);
+      await testNotifier.loadReceipts();
+
+      // Start addReceipt
+      final future = testNotifier.addReceipt(sampleReceipt2);
+      // Dispose notifier while addReceipt is awaiting repository
+      testNotifier.dispose();
+      // Complete save operation with failure or success
+      completer.complete(const Left(CacheFailure('Simulated failure')));
+
+      // Should complete normally without throwing StateError
+      final result = await future;
+      expect(result.isLeft(), isTrue);
+    });
+
+    test('deleteReceipt does not throw when disposed during repository delete', () async {
+      final completer = Completer<Either<Failure, void>>();
+      final slowRepo = DelayedMockReceiptRepository(deleteCompleter: completer);
+      final testNotifier = ReceiptListNotifier(slowRepo);
+      await testNotifier.loadReceipts();
+
+      final future = testNotifier.deleteReceipt('rcpt-1');
+      testNotifier.dispose();
+      completer.complete(const Left(CacheFailure('Simulated delete failure')));
+
+      await expectLater(future, completes);
+    });
+
+    test('loadReceipts does not throw when disposed during repository getReceipts', () async {
+      final completer = Completer<Either<Failure, List<Receipt>>>();
+      final slowRepo = DelayedMockReceiptRepository(getCompleter: completer);
+      final testNotifier = ReceiptListNotifier(slowRepo);
+
+      final future = testNotifier.loadReceipts();
+      testNotifier.dispose();
+      completer.complete(Right([sampleReceipt1]));
+
+      await expectLater(future, completes);
+    });
+  });
+}
+
+class DelayedMockReceiptRepository implements ReceiptRepository {
+  final Completer<Either<Failure, void>>? saveCompleter;
+  final Completer<Either<Failure, void>>? deleteCompleter;
+  final Completer<Either<Failure, List<Receipt>>>? getCompleter;
+
+  DelayedMockReceiptRepository({
+    this.saveCompleter,
+    this.deleteCompleter,
+    this.getCompleter,
+  });
+
+  @override
+  Future<Either<Failure, List<Receipt>>> getReceipts() async {
+    if (getCompleter != null) return getCompleter!.future;
+    return const Right([]);
+  }
+
+  @override
+  Future<Either<Failure, void>> saveReceipt(Receipt receipt) async {
+    if (saveCompleter != null) return saveCompleter!.future;
+    return const Right(null);
+  }
+
+  @override
+  Future<Either<Failure, void>> deleteReceipt(String id) async {
+    if (deleteCompleter != null) return deleteCompleter!.future;
+    return const Right(null);
+  }
+
+  @override
+  Future<Either<Failure, void>> clearAllData({bool includeCloud = false}) async => const Right(null);
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }

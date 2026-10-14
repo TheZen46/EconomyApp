@@ -22,7 +22,8 @@ import '../../../../core/sync/outbox_service.dart';
 
 class ReceiptRepositoryImpl implements ReceiptRepository {
   final LocalReceiptDataSource localDataSource;
-  final AIService aiService;
+  final AIService? aiService;
+  final AIService Function()? aiServiceResolver;
   final SupabaseDataSource supabaseDataSource;
   final Box settingsBox;
   final SyncService syncService;
@@ -33,7 +34,8 @@ class ReceiptRepositoryImpl implements ReceiptRepository {
 
   ReceiptRepositoryImpl({
     required this.localDataSource,
-    required this.aiService,
+    this.aiService,
+    this.aiServiceResolver,
     required this.supabaseDataSource,
     required this.settingsBox,
     required this.syncService,
@@ -55,8 +57,16 @@ class ReceiptRepositoryImpl implements ReceiptRepository {
   }
 
   @override
-  Future<Either<Failure, Receipt>> processReceiptImage(String imagePath, {Map<String, Map<String, List<TaxonomyItem>>>? taxonomy}) async {
-    return await aiService.extractReceiptData(imagePath, taxonomy: taxonomy);
+  Future<Either<Failure, Receipt>> processReceiptImage(
+    String imagePath, {
+    Map<String, Map<String, List<TaxonomyItem>>>? taxonomy,
+    AIService? aiService,
+  }) async {
+    final service = aiService ?? this.aiService ?? aiServiceResolver?.call();
+    if (service == null) {
+      return const Left(AIProcessingFailure('AI service not configured'));
+    }
+    return await service.extractReceiptData(imagePath, taxonomy: taxonomy);
   }
 
   @override

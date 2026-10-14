@@ -78,6 +78,7 @@ class BoxesNotifier extends StateNotifier<List<BoxModel>> {
     final previous = state;
     try {
       await _box?.put(box.id, box);
+      if (!mounted) return;
       state = [...state, box];
       if (_outboxService != null) {
         await _outboxService.enqueue(
@@ -89,7 +90,7 @@ class BoxesNotifier extends StateNotifier<List<BoxModel>> {
       }
     } catch (e) {
       debugPrint('BoxesNotifier: Error adding box: $e');
-      state = previous;
+      if (mounted) state = previous;
       rethrow;
     }
   }
@@ -98,6 +99,7 @@ class BoxesNotifier extends StateNotifier<List<BoxModel>> {
     final previous = state;
     try {
       await _box?.put(id, updated);
+      if (!mounted) return;
       state = state.map((b) => b.id == id ? updated : b).toList();
       if (_outboxService != null) {
         await _outboxService.enqueue(
@@ -109,7 +111,7 @@ class BoxesNotifier extends StateNotifier<List<BoxModel>> {
       }
     } catch (e) {
       debugPrint('BoxesNotifier: Error updating box: $e');
-      state = previous;
+      if (mounted) state = previous;
       rethrow;
     }
   }
@@ -122,6 +124,7 @@ class BoxesNotifier extends StateNotifier<List<BoxModel>> {
     try {
       await _moveReceiptsToMain(id);
       await _box?.delete(id);
+      if (!mounted) return;
       state = state.where((b) => b.id != id).toList();
       if (_ref != null && _ref.read(activeBoxIdProvider) == id) {
         _ref.read(activeBoxIdProvider.notifier).state = 'main';
@@ -136,7 +139,7 @@ class BoxesNotifier extends StateNotifier<List<BoxModel>> {
       }
     } catch (e) {
       debugPrint('BoxesNotifier: Error deleting box: $e');
-      state = previous;
+      if (mounted) state = previous;
       rethrow;
     }
   }

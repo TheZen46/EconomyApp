@@ -177,7 +177,12 @@ class _ScanPageState extends ConsumerState<ScanPage> with SingleTickerProviderSt
       final stopwatch = Stopwatch()..start();
       final repository = ref.read(receiptRepositoryProvider);
       final taxonomy = ref.read(taxonomyProvider);
-      final result = await repository.processReceiptImage(image.path, taxonomy: taxonomy);
+      final aiService = ref.read(aiServiceProvider);
+      final result = await repository.processReceiptImage(
+        image.path,
+        taxonomy: taxonomy,
+        aiService: aiService,
+      );
       stopwatch.stop();
       final elapsedMs = stopwatch.elapsedMilliseconds;
 

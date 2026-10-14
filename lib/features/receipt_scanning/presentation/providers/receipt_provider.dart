@@ -64,7 +64,7 @@ final syncServiceProvider = Provider<SyncService>((ref) {
     boxes = ref.watch(boxesHiveBoxProvider);
   } catch (_) {}
 
-  return SyncService(
+  final service = SyncService(
     queueBox: queueBox,
     localDataSource: localDS,
     supabaseDataSource: supabaseDS,
@@ -72,6 +72,8 @@ final syncServiceProvider = Provider<SyncService>((ref) {
     googleDriveService: googleDriveService,
     isPrivateBox: (boxId) => boxId != null && (boxes?.get(boxId)?.isPrivate ?? false),
   );
+  ref.onDispose(service.dispose);
+  return service;
 });
 
 final syncQueueStreamProvider = StreamProvider<List<SyncItemModel>>((ref) async* {
@@ -162,7 +164,6 @@ bool _cloudAllowed(Ref ref) {
 
 final receiptRepositoryProvider = Provider<ReceiptRepository>((ref) {
   final localDS = ref.watch(localDataSourceProvider);
-  final aiService = ref.watch(aiServiceProvider);
   final supabaseDS = ref.watch(supabaseDataSourceProvider);
   final settingsBox = ref.watch(settingsBoxProvider);
   final syncService = ref.watch(syncServiceProvider);
@@ -176,13 +177,13 @@ final receiptRepositoryProvider = Provider<ReceiptRepository>((ref) {
   
   return ReceiptRepositoryImpl(
     localDataSource: localDS, 
-    aiService: aiService,
     supabaseDataSource: supabaseDS,
     settingsBox: settingsBox,
     syncService: syncService,
     webhookService: webhookService,
     assetsBox: assetsBox,
     outboxService: outbox,
+    aiServiceResolver: () => ref.read(aiServiceProvider),
   );
 });
 
@@ -238,6 +239,7 @@ class ReceiptListNotifier extends StateNotifier<AsyncValue<List<Receipt>>> {
       state = const AsyncValue.loading();
     }
     final result = await _repository.getReceipts();
+    if (!mounted) return;
     result.fold(
       (failure) => state = AsyncValue.error(failure, StackTrace.current),
       (receipts) => state = AsyncValue.data(receipts),
@@ -255,6 +257,7 @@ class ReceiptListNotifier extends StateNotifier<AsyncValue<List<Receipt>>> {
     state = AsyncValue.data(updated);
 
     final result = await _repository.saveReceipt(receipt);
+    if (!mounted) return result;
     result.fold(
       (failure) {
         debugPrint('Error saving receipt: ${failure.message}');
@@ -269,6 +272,7 @@ class ReceiptListNotifier extends StateNotifier<AsyncValue<List<Receipt>>> {
     final previous = state;
     state = const AsyncValue.data([]);
     final result = await _repository.clearAllData(includeCloud: includeCloud);
+    if (!mounted) return;
     result.fold(
       (failure) {
         debugPrint('Error clearing receipts: ${failure.message}');
@@ -284,6 +288,7 @@ class ReceiptListNotifier extends StateNotifier<AsyncValue<List<Receipt>>> {
     state = AsyncValue.data(current.where((r) => r.id != id).toList());
 
     final result = await _repository.deleteReceipt(id);
+    if (!mounted) return;
     result.fold(
       (failure) {
         debugPrint('Error deleting receipt: ${failure.message}');
@@ -313,7 +318,9 @@ class ReceiptListNotifier extends StateNotifier<AsyncValue<List<Receipt>>> {
               (_) => newlyAdded.add(r),
             );
           }
-          state = AsyncValue.data([...newlyAdded, ...current]);
+          if (mounted) {
+            state = AsyncValue.data([...newlyAdded, ...current]);
+          }
           return Right(report);
         },
       );
@@ -342,6 +349,7 @@ class BudgetNotifier extends StateNotifier<double> {
 
   Future<void> setBudget(double newLimit) async {
     await _box?.put(_key, newLimit);
+    if (!mounted) return;
     state = newLimit;
   }
 }
@@ -363,6 +371,7 @@ class CurrentBalanceNotifier extends StateNotifier<double> {
 
   Future<void> setBalance(double newBalance) async {
     await _box?.put(_key, newBalance);
+    if (!mounted) return;
     state = newBalance;
   }
 }
@@ -384,6 +393,7 @@ class ProjectedIncomeNotifier extends StateNotifier<double> {
 
   Future<void> setIncome(double newIncome) async {
     await _box?.put(_key, newIncome);
+    if (!mounted) return;
     state = newIncome;
   }
 }
@@ -406,11 +416,13 @@ class PrivacyModeNotifier extends StateNotifier<bool> {
   Future<void> toggle() async {
     final next = !state;
     await _box?.put(_key, next);
+    if (!mounted) return;
     state = next;
   }
 
   Future<void> setEnabled(bool enabled) async {
     await _box?.put(_key, enabled);
+    if (!mounted) return;
     state = enabled;
   }
 }
@@ -434,6 +446,7 @@ class TaxNestRateNotifier extends StateNotifier<double> {
 
   Future<void> setRate(double rate) async {
     await _box?.put(_key, rate);
+    if (!mounted) return;
     state = rate;
   }
 }
@@ -457,6 +470,7 @@ class TaxNestGoalNotifier extends StateNotifier<double> {
 
   Future<void> setGoal(double goal) async {
     await _box?.put(_key, goal);
+    if (!mounted) return;
     state = goal;
   }
 }

@@ -54,6 +54,7 @@ class AssetNotifier extends StateNotifier<List<AssetModel>> {
     
     try {
       await _box?.put(asset.id, asset);
+      if (!mounted) return;
       state = _box?.values.toList() ?? [asset, ...state];
 
       if (_outboxService != null) {
@@ -66,7 +67,7 @@ class AssetNotifier extends StateNotifier<List<AssetModel>> {
       }
     } catch (e) {
       debugPrint('AssetNotifier: Error adding asset: $e');
-      state = previous;
+      if (mounted) state = previous;
       rethrow;
     }
   }
@@ -75,6 +76,7 @@ class AssetNotifier extends StateNotifier<List<AssetModel>> {
     final previous = state;
     try {
       await _box?.delete(id);
+      if (!mounted) return;
       state = state.where((a) => a.id != id).toList();
 
       if (_outboxService != null) {
@@ -87,7 +89,7 @@ class AssetNotifier extends StateNotifier<List<AssetModel>> {
       }
     } catch (e) {
       debugPrint('AssetNotifier: Error deleting asset: $e');
-      state = previous;
+      if (mounted) state = previous;
       rethrow;
     }
   }

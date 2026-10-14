@@ -63,7 +63,7 @@ final syncManagerProvider = Provider<SyncManager?>((ref) {
     return null;
   }
 
-  return SyncManager(
+  final manager = SyncManager(
     supabase: client,
     outboxService: outbox,
     receiptsBox: receipts,
@@ -86,6 +86,8 @@ final syncManagerProvider = Provider<SyncManager?>((ref) {
       } catch (_) {}
     },
   );
+  ref.onDispose(manager.dispose);
+  return manager;
 });
 
 /// Number of dead-lettered outbox mutations (no longer retried automatically),
