@@ -1,6 +1,7 @@
 import 'package:hive/hive.dart';
 import 'package:uuid/uuid.dart';
 import 'package:t_aidy/core/entities/syncable_entity.dart';
+import 'package:t_aidy/core/financial/money.dart';
 import 'package:t_aidy/core/financial/price_basis.dart';
 import 'package:t_aidy/core/data_contracts/remote_dtos.dart';
 import '../../domain/entities/receipt.dart';
@@ -67,6 +68,12 @@ class ReceiptModel extends HiveObject implements SyncableEntity {
   @HiveField(17)
   final PriceBasis priceBasis;
 
+  @HiveField(18)
+  final int totalAmountMinor;
+
+  /// Converts internal minor units to an exact fixed-point [Money] instance.
+  Money get totalMoney => Money.fromMinorUnits(totalAmountMinor, currency: currency);
+
   ReceiptModel({
     required this.id,
     required this.merchantName,
@@ -85,7 +92,8 @@ class ReceiptModel extends HiveObject implements SyncableEntity {
     this.deletedAt,
     this.version = 1,
     this.priceBasis = PriceBasis.gross,
-  });
+    int? totalAmountMinor,
+  }) : totalAmountMinor = totalAmountMinor ?? Money.fromDecimal(totalAmount, currency: currency).cents;
 
   factory ReceiptModel.fromJson(Map<String, dynamic> json) {
     // 1. Flatten Merchant
@@ -107,6 +115,8 @@ class ReceiptModel extends HiveObject implements SyncableEntity {
     final totalAmount = (json['total_amount'] as num?)?.toDouble() ??
         (transaction['total_amount'] as num?)?.toDouble() ??
         0.0;
+    final totalAmountMinor = (json['total_amount_minor'] as num?)?.toInt() ??
+        (transaction['total_amount_minor'] as num?)?.toInt();
     final boxId = (json['box_id'] as String?) ?? 'main';
 
     final itemsList = (json['items'] as List<dynamic>?)
@@ -132,6 +142,7 @@ class ReceiptModel extends HiveObject implements SyncableEntity {
       deletedAt: json['deleted_at'] != null ? DateTime.tryParse(json['deleted_at'] as String) : null,
       version: (json['version'] as num?)?.toInt() ?? 1,
       priceBasis: PriceBasis.fromString(json['price_basis'] as String?),
+      totalAmountMinor: totalAmountMinor,
     );
   }
 
@@ -142,6 +153,7 @@ class ReceiptModel extends HiveObject implements SyncableEntity {
       'date': date.toUtc().toIso8601String(),
       'scanned_date': date.toUtc().toIso8601String(),
       'total_amount': totalAmount,
+      'total_amount_minor': totalAmountMinor,
       'currency': currency,
       'items': items.map((e) => e.toJson()).toList(),
       'image_path': imagePath,
@@ -215,6 +227,46 @@ class ReceiptModel extends HiveObject implements SyncableEntity {
     );
   }
 
+  factory ReceiptModel.fromMoney({
+    required String id,
+    required String merchantName,
+    required DateTime date,
+    required Money totalMoney,
+    required List<ReceiptItemModel> items,
+    String? imagePath,
+    String vatNumber = '',
+    String merchantAddress = '',
+    String time = '',
+    String? boxId = 'main',
+    String? userId,
+    DateTime? createdAt,
+    DateTime? updatedAt,
+    DateTime? deletedAt,
+    int version = 1,
+    PriceBasis priceBasis = PriceBasis.gross,
+  }) {
+    return ReceiptModel(
+      id: id,
+      merchantName: merchantName,
+      date: date,
+      totalAmount: totalMoney.toDouble,
+      currency: totalMoney.currency,
+      items: items,
+      imagePath: imagePath,
+      vatNumber: vatNumber,
+      merchantAddress: merchantAddress,
+      time: time,
+      boxId: boxId,
+      userId: userId,
+      createdAt: createdAt,
+      updatedAt: updatedAt,
+      deletedAt: deletedAt,
+      version: version,
+      priceBasis: priceBasis,
+      totalAmountMinor: totalMoney.cents,
+    );
+  }
+
   factory ReceiptModel.fromEntity(Receipt receipt, {String? userId, int version = 1}) {
     return ReceiptModel(
       id: receipt.id,
@@ -222,7 +274,7 @@ class ReceiptModel extends HiveObject implements SyncableEntity {
       date: receipt.date,
       totalAmount: receipt.totalAmount,
       currency: receipt.currency,
-      items: receipt.items.map((e) => ReceiptItemModel.fromEntity(e)).toList(),
+      items: receipt.items.map((e) => ReceiptItemModel.fromEntity(e, currency: receipt.currency)).toList(),
       imagePath: receipt.imagePath,
       vatNumber: receipt.vatNumber,
       merchantAddress: receipt.merchantAddress,
@@ -231,6 +283,7 @@ class ReceiptModel extends HiveObject implements SyncableEntity {
       userId: userId,
       version: version,
       priceBasis: receipt.priceBasis,
+      totalAmountMinor: receipt.totalMoney.cents,
     );
   }
 
@@ -252,13 +305,15 @@ class ReceiptModel extends HiveObject implements SyncableEntity {
     DateTime? deletedAt,
     int? version,
     PriceBasis? priceBasis,
+    int? totalAmountMinor,
   }) {
+    final effectiveCurrency = currency ?? this.currency;
     return ReceiptModel(
       id: id ?? this.id,
       merchantName: merchantName ?? this.merchantName,
       date: date ?? this.date,
       totalAmount: totalAmount ?? this.totalAmount,
-      currency: currency ?? this.currency,
+      currency: effectiveCurrency,
       items: items ?? this.items,
       imagePath: imagePath ?? this.imagePath,
       vatNumber: vatNumber ?? this.vatNumber,
@@ -271,6 +326,10 @@ class ReceiptModel extends HiveObject implements SyncableEntity {
       deletedAt: deletedAt ?? this.deletedAt,
       version: version ?? this.version,
       priceBasis: priceBasis ?? this.priceBasis,
+      totalAmountMinor: totalAmountMinor ??
+          (totalAmount != null
+              ? Money.fromDecimal(totalAmount, currency: effectiveCurrency).cents
+              : this.totalAmountMinor),
     );
   }
 }
@@ -327,6 +386,20 @@ class ReceiptItemModel {
   @HiveField(15)
   final String id;
 
+  @HiveField(16)
+  final int unitPriceMinor;
+
+  @HiveField(17)
+  final int? totalPriceMinor;
+
+  /// Converts unit price to fixed-point [Money].
+  Money unitPriceMoney([String currency = 'EUR']) =>
+      Money.fromMinorUnits(unitPriceMinor, currency: currency);
+
+  /// Converts line item total price to fixed-point [Money].
+  Money totalPriceMoney([String currency = 'EUR']) =>
+      Money.fromMinorUnits(totalPriceMinor ?? (unitPriceMinor * quantity), currency: currency);
+
   ReceiptItemModel({
     String? id,
     required this.description,
@@ -344,15 +417,28 @@ class ReceiptItemModel {
     this.deletedAt,
     this.version = 1,
     this.priceBasis = PriceBasis.gross,
-  }) : id = (id != null && id.isNotEmpty) ? id : const Uuid().v4();
+    int? unitPriceMinor,
+    int? totalPriceMinor,
+    String currency = 'EUR',
+  })  : id = (id != null && id.isNotEmpty) ? id : const Uuid().v4(),
+        unitPriceMinor = unitPriceMinor ?? Money.fromDecimal(unitPrice, currency: currency).cents,
+        totalPriceMinor = totalPriceMinor ??
+            (totalPrice != null
+                ? Money.fromDecimal(totalPrice, currency: currency).cents
+                : Money.fromDecimal(unitPrice, currency: currency).multiplyInt(quantity).cents);
 
   factory ReceiptItemModel.fromJson(Map<String, dynamic> json) {
+    final unitPrice = (json['unit_price'] as num?)?.toDouble() ?? 0.0;
+    final totalPrice = (json['total_price'] as num?)?.toDouble();
+    final unitPriceMinor = (json['unit_price_minor'] as num?)?.toInt();
+    final totalPriceMinor = (json['total_price_minor'] as num?)?.toInt();
+
     return ReceiptItemModel(
       id: json['id'] as String?,
       description: json['description'] as String? ?? 'Item',
-      unitPrice: (json['unit_price'] as num?)?.toDouble() ?? 0.0,
+      unitPrice: unitPrice,
       quantity: (json['quantity'] as num?)?.toInt() ?? 1,
-      totalPrice: (json['total_price'] as num?)?.toDouble(),
+      totalPrice: totalPrice,
       category: json['category'] as String?,
       necessity: json['necessity'] as String? ?? 'unknown',
       mainCategory: json['main_category'] as String?,
@@ -364,6 +450,8 @@ class ReceiptItemModel {
       deletedAt: json['deleted_at'] != null ? DateTime.tryParse(json['deleted_at'].toString()) : null,
       version: (json['version'] as num?)?.toInt() ?? 1,
       priceBasis: PriceBasis.fromString(json['price_basis'] as String?),
+      unitPriceMinor: unitPriceMinor,
+      totalPriceMinor: totalPriceMinor,
     );
   }
 
@@ -372,8 +460,10 @@ class ReceiptItemModel {
       'id': id,
       'description': description,
       'unit_price': unitPrice,
+      'unit_price_minor': unitPriceMinor,
       'quantity': quantity,
       'total_price': totalPrice ?? (unitPrice * quantity),
+      'total_price_minor': totalPriceMinor ?? (unitPriceMinor * quantity),
       'category': category,
       'necessity': necessity ?? 'unknown',
       'main_category': mainCategory,
@@ -405,7 +495,11 @@ class ReceiptItemModel {
     DateTime? deletedAt,
     int? version,
     PriceBasis? priceBasis,
+    int? unitPriceMinor,
+    int? totalPriceMinor,
+    String? currency,
   }) {
+    final effectiveCurrency = currency ?? 'EUR';
     return ReceiptItemModel(
       id: id ?? this.id,
       description: description ?? this.description,
@@ -423,6 +517,15 @@ class ReceiptItemModel {
       deletedAt: deletedAt ?? this.deletedAt,
       version: version ?? this.version,
       priceBasis: priceBasis ?? this.priceBasis,
+      unitPriceMinor: unitPriceMinor ??
+          (unitPrice != null
+              ? Money.fromDecimal(unitPrice, currency: effectiveCurrency).cents
+              : this.unitPriceMinor),
+      totalPriceMinor: totalPriceMinor ??
+          (totalPrice != null
+              ? Money.fromDecimal(totalPrice, currency: effectiveCurrency).cents
+              : this.totalPriceMinor),
+      currency: effectiveCurrency,
     );
   }
 
@@ -452,7 +555,7 @@ class ReceiptItemModel {
     }
   }
   
-  factory ReceiptItemModel.fromEntity(ReceiptItem item) => ReceiptItemModel(
+  factory ReceiptItemModel.fromEntity(ReceiptItem item, {String currency = 'EUR'}) => ReceiptItemModel(
     id: item.id.isNotEmpty ? item.id : const Uuid().v4(),
     description: item.description,
     unitPrice: item.unitPrice,
@@ -466,5 +569,8 @@ class ReceiptItemModel {
     boxId: item.boxId ?? 'main',
     priceBasis: item.priceBasis,
     isUserCorrected: item.isUserCorrected,
+    unitPriceMinor: item.unitPriceMoney(currency).cents,
+    totalPriceMinor: item.totalPriceMoney(currency).cents,
+    currency: currency,
   );
 }

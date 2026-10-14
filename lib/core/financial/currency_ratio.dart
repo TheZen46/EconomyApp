@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'money.dart';
 
 /// Exact rational exchange rate representation between two currencies.
@@ -63,21 +64,37 @@ class CurrencyRatio {
       );
     }
 
+    final int targetScale = Money.defaultScale(quoteCurrency);
     if (baseCurrency.toUpperCase() == quoteCurrency.toUpperCase()) {
-      return Money(cents: source.cents, currency: quoteCurrency, scale: source.scale);
+      if (source.scale == targetScale) {
+        return Money(cents: source.cents, currency: quoteCurrency, scale: targetScale);
+      }
+      final diff = targetScale - source.scale;
+      final adjustedCents = diff >= 0
+          ? source.cents * math.pow(10, diff).toInt()
+          : (source.cents / math.pow(10, -diff)).round();
+      return Money(cents: adjustedCents, currency: quoteCurrency, scale: targetScale);
     }
 
-    final int num = source.cents * numerator;
+    final int rawNum = source.cents * numerator;
+    final int scaleAdjustment = targetScale - source.scale;
+    final int adjustedNum = scaleAdjustment >= 0
+        ? rawNum * math.pow(10, scaleAdjustment).toInt()
+        : rawNum;
+    final int adjustedDen = scaleAdjustment < 0
+        ? denominator * math.pow(10, -scaleAdjustment).toInt()
+        : denominator;
+
     final int convertedCents = Money.roundIntegerDivision(
-      num,
-      denominator,
+      adjustedNum,
+      adjustedDen,
       rounding: rounding,
     );
 
     return Money(
       cents: convertedCents,
       currency: quoteCurrency,
-      scale: source.scale,
+      scale: targetScale,
     );
   }
 

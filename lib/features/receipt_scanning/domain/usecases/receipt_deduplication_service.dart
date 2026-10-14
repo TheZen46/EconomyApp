@@ -1,4 +1,4 @@
-﻿import 'package:t_aidy/features/receipt_scanning/domain/entities/receipt.dart';
+import 'package:t_aidy/features/receipt_scanning/domain/entities/receipt.dart';
 
 /// Result of a duplicate scan comparison against existing receipts.
 class DuplicateMatchResult {
@@ -50,11 +50,19 @@ class ReceiptDeduplicationService {
 
     // 1. Amount Similarity (Weight: 40%)
     double amountScore = 0.0;
-    if (a.totalAmount > 0 && b.totalAmount > 0) {
+    if (a.totalMoney.cents > 0 && b.totalMoney.cents > 0 && a.currency.toUpperCase() == b.currency.toUpperCase()) {
+      final diffCents = (a.totalMoney.cents - b.totalMoney.cents).abs();
+      if (diffCents == 0) {
+        amountScore = 1.0;
+        reasons.add('Identical total amount (${a.totalMoney.format()})');
+      } else if (diffCents <= 50) {
+        amountScore = 0.8;
+      }
+    } else if (a.totalAmount > 0 && b.totalAmount > 0) {
       final diff = (a.totalAmount - b.totalAmount).abs();
       if (diff < 0.01) {
         amountScore = 1.0;
-        reasons.add('Identical total amount (\$${a.totalAmount.toStringAsFixed(2)})');
+        reasons.add('Identical total amount (${a.totalMoney.format()})');
       } else if (diff < 0.50) {
         amountScore = 0.8;
       }

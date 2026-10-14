@@ -28,7 +28,9 @@ import '../../data/datasources/sync_service.dart';
 import '../../../../core/services/google_drive_service.dart'; // Ensure global access or provider
 import '../../../settings/data/datasources/webhook_service.dart';
 import '../../../settings/presentation/providers/llm_provider.dart';
+import '../../../boxes/data/models/box_model.dart';
 import '../../../boxes/data/providers/boxes_provider.dart';
+import '../../../../core/financial/money.dart';
 import '../../data/datasources/csv_parser_service.dart';
 import '../../../../core/sync/sync_coordinator.dart';
 import '../../../../core/sync/sync_providers.dart';
@@ -302,28 +304,42 @@ final filteredReceiptsByActiveBoxProvider = Provider<AsyncValue<List<Receipt>>>(
   });
 });
 
-/// Family provider calculating the aggregated currency expenditure for a specific budget box ID.
+/// Family provider calculating the aggregated currency expenditure for a specific budget box ID as [Money].
 ///
 /// **Lifetime:** Parameterized family provider.
-/// **Dependencies:** `receiptListProvider`.
-final boxSpentAmountProvider = Provider.family<double, String>((ref, boxId) {
+/// **Dependencies:** `receiptListProvider`, `boxesProvider`.
+final boxSpentMoneyProvider = Provider.family<Money, String>((ref, boxId) {
   final receipts = ref.watch(receiptListProvider).valueOrNull ?? [];
-  double total = 0.0;
+  final boxes = ref.watch(boxesProvider);
+  final box = boxes.cast<BoxModel?>().firstWhere(
+        (b) => b?.id == boxId,
+        orElse: () => null,
+      );
+  final boxCurrency = box?.currency ?? 'USD';
+  var total = Money.zero(boxCurrency);
   for (final receipt in receipts) {
     if (receipt.items.isEmpty) {
       if ((receipt.boxId ?? 'main') == boxId) {
-        total += receipt.totalAmount;
+        total = total + receipt.totalMoney;
       }
     } else {
       for (final item in receipt.items) {
         final itemBox = item.boxId ?? receipt.boxId ?? 'main';
         if (itemBox == boxId) {
-          total += item.totalPrice;
+          total = total + item.totalPriceMoney(receipt.currency);
         }
       }
     }
   }
   return total;
+});
+
+/// Family provider calculating the aggregated currency expenditure for a specific budget box ID.
+///
+/// **Lifetime:** Parameterized family provider.
+/// **Dependencies:** `boxSpentMoneyProvider`.
+final boxSpentAmountProvider = Provider.family<double, String>((ref, boxId) {
+  return ref.watch(boxSpentMoneyProvider(boxId)).toDouble;
 });
 
 /// State notifier maintaining the reactive list of loaded [Receipt] entities.

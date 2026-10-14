@@ -1,4 +1,5 @@
 import 'package:freezed_annotation/freezed_annotation.dart';
+import 'package:t_aidy/core/financial/money.dart';
 import 'package:t_aidy/core/financial/price_basis.dart';
 
 part 'receipt.freezed.dart';
@@ -27,6 +28,9 @@ class Receipt with _$Receipt {
 
   const Receipt._();
 
+  /// Converts the total amount to an exact fixed-point Money representation.
+  Money get totalMoney => Money.fromDecimal(totalAmount, currency: currency);
+
   String get category {
     if (items.isEmpty) return 'Uncategorized';
     
@@ -46,13 +50,17 @@ class Receipt with _$Receipt {
   }
   
   // Helpers for analysis
-  double get essentialTotal => items
+  Money get essentialTotalMoney => items
       .where((i) => i.necessity == ItemNecessity.essential)
-      .fold(0, (sum, i) => sum + i.totalPrice);
-      
-  double get junkTotal => items
+      .fold(Money.zero(currency), (sum, i) => sum + i.totalPriceMoney(currency));
+
+  Money get junkTotalMoney => items
       .where((i) => i.necessity == ItemNecessity.junk)
-      .fold(0, (sum, i) => sum + i.totalPrice);
+      .fold(Money.zero(currency), (sum, i) => sum + i.totalPriceMoney(currency));
+
+  double get essentialTotal => essentialTotalMoney.toDouble;
+      
+  double get junkTotal => junkTotalMoney.toDouble;
 }
 
 enum ItemNecessity {
@@ -84,3 +92,15 @@ class ReceiptItem with _$ReceiptItem {
     String? category, // Keeping for backward compatibility temporarily
   }) = _ReceiptItem;
 }
+
+/// Extension providing exact fixed-point [Money] representation for [ReceiptItem].
+extension ReceiptItemMoneyExtension on ReceiptItem {
+  /// Line item total in fixed-point Money.
+  Money totalPriceMoney([String currency = 'EUR']) =>
+      Money.fromDecimal(totalPrice, currency: currency);
+
+  /// Unit price in fixed-point Money.
+  Money unitPriceMoney([String currency = 'EUR']) =>
+      Money.fromDecimal(unitPrice, currency: currency);
+}
+

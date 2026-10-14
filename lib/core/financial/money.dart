@@ -25,7 +25,7 @@ class Money implements Comparable<Money> {
   /// Amount in minor currency units (e.g., cents for USD/EUR, yen for JPY).
   final int cents;
 
-  /// ISO 4217 Currency Code (e.g., 'EUR', 'USD', 'GBP').
+  /// ISO 4217 Currency Code (e.g., 'EUR', 'USD', 'GBP', 'JPY').
   final String currency;
 
   /// Number of decimal places for standard currency representation (default 2).
@@ -37,14 +37,48 @@ class Money implements Comparable<Money> {
     this.scale = 2,
   });
 
-  /// Factory from decimal major units (e.g. 19.99 EUR -> 1999 cents).
+  /// Standard ISO 4217 minor unit decimal places for currencies.
+  static int defaultScale(String curr) {
+    switch (curr.toUpperCase()) {
+      case 'BIF':
+      case 'CLP':
+      case 'DJF':
+      case 'GNF':
+      case 'ISK':
+      case 'JPY':
+      case 'KMF':
+      case 'KRW':
+      case 'PYG':
+      case 'RWF':
+      case 'UGX':
+      case 'VND':
+      case 'VUV':
+      case 'XAF':
+      case 'XOF':
+      case 'XPF':
+        return 0;
+      case 'BHD':
+      case 'IQD':
+      case 'JOD':
+      case 'KWD':
+      case 'LYD':
+      case 'OMR':
+      case 'TND':
+        return 3;
+      default:
+        return 2;
+    }
+  }
+
+  /// Factory from decimal major units (e.g. 19.99 EUR -> 1999 cents, 150 JPY -> 150 yen).
   factory Money.fromDecimal(
     num majorUnits, {
     String currency = 'EUR',
-    int scale = 2,
+    int? scale,
     MidpointRounding rounding = MidpointRounding.toEven,
   }) {
-    final scalingFactor = math.pow(10, scale).toInt();
+    final effectiveScale = scale ?? defaultScale(currency);
+    final scalingFactor = math.pow(10, effectiveScale).toInt();
     // Convert to scaled integer using exact rational representation
     final scaledValue = (majorUnits * scalingFactor * 1000).round();
     final int roundedCents = roundIntegerDivision(
@@ -52,11 +86,22 @@ class Money implements Comparable<Money> {
       1000,
       rounding: rounding,
     );
-    return Money(cents: roundedCents, currency: currency, scale: scale);
+    return Money(cents: roundedCents, currency: currency, scale: effectiveScale);
+  }
+
+  /// Factory from minor currency units (cents/fils/yen).
+  factory Money.fromMinorUnits(
+    int minorUnits, {
+    String currency = 'EUR',
+    int? scale,
+  }) {
+    final effectiveScale = scale ?? defaultScale(currency);
+    return Money(cents: minorUnits, currency: currency, scale: effectiveScale);
   }
 
   /// Factory for zero monetary value in specified currency.
-  factory Money.zero([String currency = 'EUR']) => Money(cents: 0, currency: currency);
+  factory Money.zero([String currency = 'EUR', int? scale]) =>
+      Money(cents: 0, currency: currency, scale: scale ?? defaultScale(currency));
 
   /// Converts internal minor units (cents) to double representation for display/UI.
   double get toDouble => cents / math.pow(10, scale);
@@ -87,12 +132,24 @@ class Money implements Comparable<Money> {
 
   Money operator +(Money other) {
     _assertSameCurrency(other);
-    return Money(cents: cents + other.cents, currency: currency, scale: scale);
+    if (scale == other.scale) {
+      return Money(cents: cents + other.cents, currency: currency, scale: scale);
+    }
+    final maxScale = math.max(scale, other.scale);
+    final c1 = cents * math.pow(10, maxScale - scale).toInt();
+    final c2 = other.cents * math.pow(10, maxScale - other.scale).toInt();
+    return Money(cents: c1 + c2, currency: currency, scale: maxScale);
   }
 
   Money operator -(Money other) {
     _assertSameCurrency(other);
-    return Money(cents: cents - other.cents, currency: currency, scale: scale);
+    if (scale == other.scale) {
+      return Money(cents: cents - other.cents, currency: currency, scale: scale);
+    }
+    final maxScale = math.max(scale, other.scale);
+    final c1 = cents * math.pow(10, maxScale - scale).toInt();
+    final c2 = other.cents * math.pow(10, maxScale - other.scale).toInt();
+    return Money(cents: c1 - c2, currency: currency, scale: maxScale);
   }
 
   Money operator -() {
@@ -223,7 +280,13 @@ class Money implements Comparable<Money> {
   @override
   int compareTo(Money other) {
     _assertSameCurrency(other);
-    return cents.compareTo(other.cents);
+    if (scale == other.scale) {
+      return cents.compareTo(other.cents);
+    }
+    final maxScale = math.max(scale, other.scale);
+    final c1 = cents * math.pow(10, maxScale - scale).toInt();
+    final c2 = other.cents * math.pow(10, maxScale - other.scale).toInt();
+    return c1.compareTo(c2);
   }
 
   bool operator <(Money other) => compareTo(other) < 0;
@@ -234,23 +297,26 @@ class Money implements Comparable<Money> {
   @override
   bool operator ==(Object other) {
     if (identical(this, other)) return true;
-    return other is Money &&
-        other.cents == cents &&
-        other.currency.toUpperCase() == currency.toUpperCase() &&
-        other.scale == scale;
+    if (other is! Money) return false;
+    if (other.currency.toUpperCase() != currency.toUpperCase()) return false;
+    if (other.scale == scale) return other.cents == cents;
+    final maxScale = math.max(scale, other.scale);
+    final c1 = cents * math.pow(10, maxScale - scale).toInt();
+    final c2 = other.cents * math.pow(10, maxScale - other.scale).toInt();
+    return c1 == c2;
   }
 
   @override
-  int get hashCode => Object.hash(cents, currency.toUpperCase(), scale);
+  int get hashCode => Object.hash(cents / math.pow(10, scale), currency.toUpperCase());
 
-  /// Standard formatted currency string (e.g. "€ 19,99" or "$19.99").
+  /// Standard formatted currency string (e.g. "€ 19,99" or "$19.99" or "¥ 100").
   String format({bool showSymbol = true, String locale = 'it_IT'}) {
     final isNegative = cents < 0;
     final absCents = cents.abs();
     final int divisor = math.pow(10, scale).toInt();
     final int intPart = absCents ~/ divisor;
-    final int fracPart = absCents % divisor;
-    final String fracStr = fracPart.toString().padLeft(scale, '0');
+    final int fracPart = scale > 0 ? absCents % divisor : 0;
+    final String fracStr = scale > 0 ? fracPart.toString().padLeft(scale, '0') : '';
 
     final bool isEuropean = locale.startsWith('it') || locale.startsWith('de') || locale.startsWith('fr');
     final String decimalSep = isEuropean ? ',' : '.';
@@ -266,7 +332,9 @@ class Money implements Comparable<Money> {
       buffer.write(rawInt[i]);
     }
 
-    final formattedNumber = '${isNegative ? '-' : ''}${buffer.toString()}$decimalSep$fracStr';
+    final formattedNumber = scale > 0
+        ? '${isNegative ? '-' : ''}${buffer.toString()}$decimalSep$fracStr'
+        : '${isNegative ? '-' : ''}${buffer.toString()}';
 
     if (!showSymbol) return formattedNumber;
 
@@ -286,9 +354,38 @@ class Money implements Comparable<Money> {
         return 'CHF';
       case 'JPY':
         return '¥';
+      case 'KRW':
+        return '₩';
+      case 'VND':
+        return '₫';
+      case 'INR':
+        return '₹';
+      case 'CAD':
+      case 'AUD':
+      case 'NZD':
+      case 'SGD':
+      case 'HKD':
+        return '\$';
       default:
         return curr;
     }
+  }
+
+  Map<String, dynamic> toJson() => {
+        'cents': cents,
+        'currency': currency,
+        'scale': scale,
+      };
+
+  factory Money.fromJson(Map<String, dynamic> json) {
+    final currency = json['currency'] as String? ?? 'EUR';
+    final scale = (json['scale'] as num?)?.toInt() ?? defaultScale(currency);
+    final rawMinor = json['cents'] ?? json['amount_minor'] ?? 0;
+    return Money(
+      cents: (rawMinor as num).toInt(),
+      currency: currency,
+      scale: scale,
+    );
   }
 
   @override
@@ -300,5 +397,14 @@ class Money implements Comparable<Money> {
         'Currency mismatch: cannot operate on $currency and ${other.currency}',
       );
     }
+  }
+}
+
+/// Aggregation extensions for collections of [Money].
+extension MoneyIterableExtension on Iterable<Money> {
+  /// Computes the fixed-point sum across all monetary values in this iterable.
+  Money sum([String currency = 'EUR', int? scale]) {
+    if (isEmpty) return Money.zero(currency, scale);
+    return fold(Money.zero(first.currency, first.scale), (acc, m) => acc + m);
   }
 }

@@ -1,4 +1,5 @@
 import 'package:equatable/equatable.dart';
+import '../../../../core/financial/money.dart';
 
 class StatementTransaction extends Equatable {
   final String id;
@@ -10,6 +11,8 @@ class StatementTransaction extends Equatable {
   final bool isReconciled;
   final String? matchedReceiptId;
   final double matchConfidence;
+
+  Money get amountMoney => Money.fromDecimal(amount, currency: currency);
 
   const StatementTransaction({
     required this.id,

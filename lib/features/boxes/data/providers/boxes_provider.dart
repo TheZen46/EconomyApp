@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hive/hive.dart';
 import 'package:uuid/uuid.dart';
 import '../models/box_model.dart';
+import '../../../../core/financial/money.dart';
 import '../../../../core/sync/outbox_service.dart';
 import '../../../../core/sync/sync_providers.dart';
 import '../../../receipt_scanning/data/models/receipt_model.dart';
@@ -33,11 +34,13 @@ class BoxesNotifier extends StateNotifier<List<BoxModel>> {
     final items = _box?.values.toList() ?? [];
     if (items.isEmpty) {
       // Seed default box
+      final mainSpentMoney = _computeSpentMoneyForBox('main');
       final main = BoxModel(
         id: 'main',
         name: 'Out of the Box (Main Life)',
         budget: 0,
-        spent: _computeSpentForBox('main'),
+        spent: mainSpentMoney.toDouble,
+        spentMinor: mainSpentMoney.cents,
         currency: 'USD',
         color: Colors.black.value,
         icon: 'Home',
@@ -46,9 +49,12 @@ class BoxesNotifier extends StateNotifier<List<BoxModel>> {
       state = [main];
     } else {
       state = items.map((b) {
-        final calculated = _computeSpentForBox(b.id);
-        if ((b.spent - calculated).abs() > 0.001) {
-          final updated = b.copyWith(spent: calculated);
+        final calculatedMoney = _computeSpentMoneyForBox(b.id);
+        if (b.spentMoney != calculatedMoney) {
+          final updated = b.copyWith(
+            spent: calculatedMoney.toDouble,
+            spentMinor: calculatedMoney.cents,
+          );
           _box?.put(b.id, updated);
           return updated;
         }
@@ -57,20 +63,21 @@ class BoxesNotifier extends StateNotifier<List<BoxModel>> {
     }
   }
 
-  double _computeSpentForBox(String boxId) {
+  Money _computeSpentMoneyForBox(String boxId) {
     final receipts = _receiptsBox?.values;
-    if (receipts == null) return 0.0;
-    double total = 0.0;
+    final boxCurrency = findById(boxId)?.currency ?? 'USD';
+    if (receipts == null) return Money.zero(boxCurrency);
+    Money total = Money.zero(boxCurrency);
     for (final r in receipts) {
       if (r.items.isEmpty) {
         if ((r.boxId ?? 'main') == boxId) {
-          total += r.totalAmount;
+          total = total + r.totalMoney;
         }
       } else {
         for (final item in r.items) {
           final itemBox = item.boxId ?? r.boxId ?? 'main';
           if (itemBox == boxId) {
-            total += item.totalPrice ?? (item.unitPrice * item.quantity);
+            total = total + item.totalPriceMoney(r.currency);
           }
         }
       }
@@ -231,8 +238,11 @@ class BoxesNotifier extends StateNotifier<List<BoxModel>> {
   Future<void> addSpent(String id, double amount) async {
     final box = findById(id);
     if (box == null) return;
+    final additional = Money.fromDecimal(amount, currency: box.currency);
+    final newSpent = box.spentMoney + additional;
     final updated = box.copyWith(
-      spent: box.spent + amount,
+      spent: newSpent.toDouble,
+      spentMinor: newSpent.cents,
       updatedAt: DateTime.now().toUtc(),
       version: box.version + 1,
     );
@@ -245,10 +255,11 @@ class BoxesNotifier extends StateNotifier<List<BoxModel>> {
     final receipts = _receiptsBox?.values;
     if (receipts == null) return;
     for (final b in state) {
-      final calculated = _computeSpentForBox(b.id);
-      if ((b.spent - calculated).abs() > 0.001) {
+      final calculatedMoney = _computeSpentMoneyForBox(b.id);
+      if (b.spentMoney != calculatedMoney) {
         final updated = b.copyWith(
-          spent: calculated,
+          spent: calculatedMoney.toDouble,
+          spentMinor: calculatedMoney.cents,
           updatedAt: DateTime.now().toUtc(),
           version: b.version + 1,
         );

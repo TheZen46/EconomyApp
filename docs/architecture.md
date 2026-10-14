@@ -308,8 +308,9 @@ undecryptable. No key-escrow or re-keying mechanism exists.
 on all non-web platforms, aligning directly with `Hive.initFlutter()` so backups reliably locate box files across both mobile and desktop platforms.
 
 `runSchemaMigrations(Box settingsBox, {HiveCipher? cipher})` reads `schema_version` (default 1) and
-applies ordered migrations up to `currentSchemaVersion` (3). Migration v1 to v2 writes `activeBoxId =
-'main'` when absent; migration v2 to v3 upgrades entities to UUID v4 identifiers. Migrations must be
+applies ordered migrations up to `currentSchemaVersion` (4). Migration v1 to v2 writes `activeBoxId =
+'main'` when absent; migration v2 to v3 upgrades entities to UUID v4 identifiers; migration v3 to v4
+persists integer minor units across BoxModel, ReceiptModel, ReceiptItemModel, and InvoiceModel for lossless fixed-point financial calculations. Migrations must be
 idempotent because the version is written after the migration body completes; an interruption re-executes
 the body.
 

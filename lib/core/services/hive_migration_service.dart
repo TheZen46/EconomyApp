@@ -7,6 +7,7 @@ import 'package:uuid/uuid.dart';
 
 import '../../features/boxes/data/models/box_model.dart';
 import '../../features/evault/data/models/asset_model.dart';
+import '../../features/invoices/data/models/invoice_model.dart';
 import '../../features/receipt_scanning/data/models/receipt_model.dart';
 import 'secure_storage_service.dart';
 
@@ -51,7 +52,7 @@ class SchemaCorruptionException implements Exception {
 /// **No destructive operation is ever performed automatically.**
 class HiveMigrationService {
   /// Current target schema version of the database.
-  static const int currentSchemaVersion = 3;
+  static const int currentSchemaVersion = 4;
 
   /// Hive settings key used to persist the active schema version.
   static const String schemaVersionKey = 'schema_version';
@@ -207,6 +208,13 @@ class HiveMigrationService {
       await setSchemaVersion(settingsBox, 3);
     }
 
+    // Migration from v3 to v4:
+    // Ensures minor-unit integers are populated across BoxModel, ReceiptModel, ReceiptItemModel, and InvoiceModel
+    if (currentVersion < 4) {
+      await _migrateV3ToV4(settingsBox, cipher);
+      await setSchemaVersion(settingsBox, 4);
+    }
+
     debugPrint(
       'HiveMigrationService: Successfully completed migrations to v$currentSchemaVersion.',
     );
@@ -343,6 +351,54 @@ class HiveMigrationService {
     final activeBox = settingsBox.get('activeBoxId');
     if (activeBox == 'main') {
       await settingsBox.put('activeBoxId', defaultBoxId);
+    }
+  }
+
+  static Future<void> _migrateV3ToV4(Box settingsBox, HiveCipher? cipher) async {
+    debugPrint('HiveMigrationService: Running migration v3 -> v4 (fixed-point minor unit migration)...');
+
+    // 1. Migrate Boxes: re-saving ensures budgetMinor and spentMinor are persisted
+    try {
+      final boxesBox = await openBoxSafe<BoxModel>('boxes', encryptionCipher: cipher);
+      for (final key in boxesBox.keys) {
+        final box = boxesBox.get(key);
+        if (box != null) {
+          final updated = box.copyWith();
+          await boxesBox.put(key, updated);
+        }
+      }
+    } catch (e) {
+      debugPrint('HiveMigrationService: Boxes v4 migration notice: $e');
+    }
+
+    // 2. Migrate Receipts & Items: re-saving ensures totalAmountMinor and item minor units are persisted
+    try {
+      final receiptsBox = await openBoxSafe<ReceiptModel>('receipts', encryptionCipher: cipher);
+      for (final key in receiptsBox.keys) {
+        final receipt = receiptsBox.get(key);
+        if (receipt != null) {
+          final updated = receipt.copyWith(
+            items: receipt.items.map((i) => i.copyWith()).toList(),
+          );
+          await receiptsBox.put(key, updated);
+        }
+      }
+    } catch (e) {
+      debugPrint('HiveMigrationService: Receipts v4 migration notice: $e');
+    }
+
+    // 3. Migrate Invoices: re-saving ensures amountMinor is persisted
+    try {
+      final invoicesBox = await openBoxSafe<InvoiceModel>('invoices', encryptionCipher: cipher);
+      for (final key in invoicesBox.keys) {
+        final invoice = invoicesBox.get(key);
+        if (invoice != null) {
+          final updated = invoice.copyWith();
+          await invoicesBox.put(key, updated);
+        }
+      }
+    } catch (e) {
+      debugPrint('HiveMigrationService: Invoices v4 migration notice: $e');
     }
   }
 

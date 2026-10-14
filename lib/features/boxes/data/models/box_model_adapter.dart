@@ -15,12 +15,22 @@ class BoxModelAdapter extends TypeAdapter<BoxModel> {
     final fields = <int, dynamic>{
       for (int i = 0; i < numOfFields; i++) reader.readByte(): reader.read(),
     };
+    final currency = fields[4] as String;
+    final budgetDouble = (fields[2] as num).toDouble();
+    final spentDouble = (fields[3] as num).toDouble();
+    final budgetMinor = fields[15] != null
+        ? (fields[15] as num).toInt()
+        : Money.fromDecimal(budgetDouble, currency: currency).cents;
+    final spentMinor = fields[16] != null
+        ? (fields[16] as num).toInt()
+        : Money.fromDecimal(spentDouble, currency: currency).cents;
+
     return BoxModel(
       id: fields[0] as String,
       name: fields[1] as String,
-      budget: (fields[2] as num).toDouble(),
-      spent: (fields[3] as num).toDouble(),
-      currency: fields[4] as String,
+      budget: budgetDouble,
+      spent: spentDouble,
+      currency: currency,
       color: fields[5] as int,
       icon: fields[6] as String?,
       autoCategorize: fields[7] as bool? ?? false,
@@ -31,13 +41,15 @@ class BoxModelAdapter extends TypeAdapter<BoxModel> {
       updatedAt: fields[12] as DateTime?,
       deletedAt: fields[13] as DateTime?,
       version: (fields[14] as num?)?.toInt() ?? 1,
+      budgetMinor: budgetMinor,
+      spentMinor: spentMinor,
     );
   }
 
   @override
   void write(BinaryWriter writer, BoxModel obj) {
     writer
-      ..writeByte(15)
+      ..writeByte(17)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -67,7 +79,11 @@ class BoxModelAdapter extends TypeAdapter<BoxModel> {
       ..writeByte(13)
       ..write(obj.deletedAt)
       ..writeByte(14)
-      ..write(obj.version);
+      ..write(obj.version)
+      ..writeByte(15)
+      ..write(obj.budgetMinor)
+      ..writeByte(16)
+      ..write(obj.spentMinor);
   }
 
   @override

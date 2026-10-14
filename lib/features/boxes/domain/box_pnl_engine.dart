@@ -1,4 +1,5 @@
-﻿import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:t_aidy/core/financial/money.dart';
 import 'package:t_aidy/features/boxes/data/models/box_model.dart';
 import 'package:t_aidy/features/boxes/data/providers/boxes_provider.dart';
 import 'package:t_aidy/features/invoices/data/models/invoice_model.dart';
@@ -19,19 +20,33 @@ class BoxPnlStatement {
   final int invoiceCount;
   final int receiptCount;
   final int mileageTripCount;
+  final Money grossRevenueMoney;
+  final Money directExpensesMoney;
+  final Money mileageDeductionsMoney;
+  final Money totalCostsMoney;
+  final Money netOperatingProfitMoney;
 
-  const BoxPnlStatement({
+  BoxPnlStatement({
     required this.box,
-    required this.grossRevenue,
-    required this.directExpenses,
-    required this.mileageDeductions,
-    required this.totalCosts,
-    required this.netOperatingProfit,
+    required this.grossRevenueMoney,
+    required this.directExpensesMoney,
+    required this.mileageDeductionsMoney,
+    required this.totalCostsMoney,
+    required this.netOperatingProfitMoney,
     required this.profitMarginPercent,
     required this.invoiceCount,
     required this.receiptCount,
     required this.mileageTripCount,
-  });
+    double? grossRevenue,
+    double? directExpenses,
+    double? mileageDeductions,
+    double? totalCosts,
+    double? netOperatingProfit,
+  })  : grossRevenue = grossRevenue ?? grossRevenueMoney.toDouble,
+        directExpenses = directExpenses ?? directExpensesMoney.toDouble,
+        mileageDeductions = mileageDeductions ?? mileageDeductionsMoney.toDouble,
+        totalCosts = totalCosts ?? totalCostsMoney.toDouble,
+        netOperatingProfit = netOperatingProfit ?? netOperatingProfitMoney.toDouble;
 }
 
 /// Consolidated multi-entity P&L portfolio report.
@@ -41,14 +56,22 @@ class PortfolioPnlReport {
   final double totalPortfolioCosts;
   final double totalPortfolioNetProfit;
   final double overallProfitMarginPercent;
+  final Money totalPortfolioRevenueMoney;
+  final Money totalPortfolioCostsMoney;
+  final Money totalPortfolioNetProfitMoney;
 
-  const PortfolioPnlReport({
+  PortfolioPnlReport({
     required this.boxStatements,
-    required this.totalPortfolioRevenue,
-    required this.totalPortfolioCosts,
-    required this.totalPortfolioNetProfit,
+    required this.totalPortfolioRevenueMoney,
+    required this.totalPortfolioCostsMoney,
+    required this.totalPortfolioNetProfitMoney,
     required this.overallProfitMarginPercent,
-  });
+    double? totalPortfolioRevenue,
+    double? totalPortfolioCosts,
+    double? totalPortfolioNetProfit,
+  })  : totalPortfolioRevenue = totalPortfolioRevenue ?? totalPortfolioRevenueMoney.toDouble,
+        totalPortfolioCosts = totalPortfolioCosts ?? totalPortfolioCostsMoney.toDouble,
+        totalPortfolioNetProfit = totalPortfolioNetProfit ?? totalPortfolioNetProfitMoney.toDouble;
 }
 
 /// Engine for generating isolated, per-box Profit & Loss balance statements.
@@ -60,66 +83,76 @@ class BoxPnlEngine {
     required List<Receipt> receipts,
     required List<MileageTrip> mileageTrips,
   }) {
-    double totalRev = 0.0;
-    double totalCosts = 0.0;
+    final portfolioCurrency = boxes.isNotEmpty ? boxes.first.currency : 'USD';
+    final hasSingleCurrency = boxes.every((b) => b.currency.toUpperCase() == portfolioCurrency.toUpperCase());
+
+    var totalRevMoney = Money.zero(portfolioCurrency);
+    var totalCostsMoney = Money.zero(portfolioCurrency);
+    double totalRevFallback = 0.0;
+    double totalCostsFallback = 0.0;
 
     final List<BoxPnlStatement> statements = [];
 
     for (final box in boxes) {
+      final boxCurrency = box.currency;
+
       // 1. Invoiced Revenue for this box
-      double boxRev = 0.0;
+      var boxRev = Money.zero(boxCurrency);
       int invCount = 0;
       for (final inv in invoices) {
-        // Matching by notes or direct box attribution
         if (inv.notes.toLowerCase().contains(box.name.toLowerCase()) || box.id == 'main') {
           if (inv.status == InvoiceStatus.settled || inv.status == InvoiceStatus.sent) {
-            boxRev += inv.amount;
+            boxRev = boxRev + inv.amountMoney;
             invCount++;
           }
         }
       }
 
       // 2. Direct Receipts & Split Line-Items for this box
-      double boxExpenses = 0.0;
+      var boxExpenses = Money.zero(boxCurrency);
       int recCount = 0;
       for (final r in receipts) {
         if (r.boxId == box.id) {
-          boxExpenses += r.totalAmount;
+          boxExpenses = boxExpenses + r.totalMoney;
           recCount++;
         } else {
-          // Check line items
           for (final item in r.items) {
             if (item.boxId == box.id) {
-              boxExpenses += item.unitPrice * item.quantity;
+              boxExpenses = boxExpenses + item.totalPriceMoney(r.currency);
             }
           }
         }
       }
 
       // 3. Mileage Deductions for this box
-      double boxMileage = 0.0;
+      var boxMileage = Money.zero(boxCurrency);
       int tripCount = 0;
       for (final trip in mileageTrips) {
         if (trip.boxId == box.id || (box.id == 'main' && trip.boxId == null)) {
-          boxMileage += trip.totalDeductible;
+          boxMileage = boxMileage + Money.fromDecimal(trip.totalDeductible, currency: boxCurrency);
           tripCount++;
         }
       }
 
       final boxTotalCost = boxExpenses + boxMileage;
       final netProfit = boxRev - boxTotalCost;
-      final margin = boxRev > 0 ? (netProfit / boxRev) * 100.0 : 0.0;
+      final margin = boxRev.cents > 0 ? (netProfit.cents / boxRev.cents) * 100.0 : 0.0;
 
-      totalRev += boxRev;
-      totalCosts += boxTotalCost;
+      if (hasSingleCurrency) {
+        totalRevMoney = totalRevMoney + boxRev;
+        totalCostsMoney = totalCostsMoney + boxTotalCost;
+      } else {
+        totalRevFallback += boxRev.toDouble;
+        totalCostsFallback += boxTotalCost.toDouble;
+      }
 
       statements.add(BoxPnlStatement(
         box: box,
-        grossRevenue: boxRev,
-        directExpenses: boxExpenses,
-        mileageDeductions: boxMileage,
-        totalCosts: boxTotalCost,
-        netOperatingProfit: netProfit,
+        grossRevenueMoney: boxRev,
+        directExpensesMoney: boxExpenses,
+        mileageDeductionsMoney: boxMileage,
+        totalCostsMoney: boxTotalCost,
+        netOperatingProfitMoney: netProfit,
         profitMarginPercent: margin,
         invoiceCount: invCount,
         receiptCount: recCount,
@@ -127,14 +160,19 @@ class BoxPnlEngine {
       ));
     }
 
-    final totalNet = totalRev - totalCosts;
-    final overallMargin = totalRev > 0 ? (totalNet / totalRev) * 100.0 : 0.0;
+    if (!hasSingleCurrency) {
+      totalRevMoney = Money.fromDecimal(totalRevFallback, currency: portfolioCurrency);
+      totalCostsMoney = Money.fromDecimal(totalCostsFallback, currency: portfolioCurrency);
+    }
+
+    final totalNetMoney = totalRevMoney - totalCostsMoney;
+    final overallMargin = totalRevMoney.cents > 0 ? (totalNetMoney.cents / totalRevMoney.cents) * 100.0 : 0.0;
 
     return PortfolioPnlReport(
       boxStatements: statements,
-      totalPortfolioRevenue: totalRev,
-      totalPortfolioCosts: totalCosts,
-      totalPortfolioNetProfit: totalNet,
+      totalPortfolioRevenueMoney: totalRevMoney,
+      totalPortfolioCostsMoney: totalCostsMoney,
+      totalPortfolioNetProfitMoney: totalNetMoney,
       overallProfitMarginPercent: overallMargin,
     );
   }

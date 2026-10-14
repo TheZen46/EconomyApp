@@ -6,6 +6,7 @@ import 'package:hive/hive.dart';
 import 'package:t_aidy/core/services/hive_migration_service.dart';
 import 'package:t_aidy/features/boxes/data/models/box_model.dart';
 import 'package:t_aidy/features/evault/data/models/asset_model.dart';
+import 'package:t_aidy/features/invoices/data/models/invoice_model.dart';
 import 'package:t_aidy/features/receipt_scanning/data/models/receipt_model.dart';
 
 void main() {
@@ -34,6 +35,7 @@ void main() {
     if (!Hive.isAdapterRegistered(1)) Hive.registerAdapter(ReceiptItemModelAdapter());
     if (!Hive.isAdapterRegistered(7)) Hive.registerAdapter(AssetModelAdapter());
     if (!Hive.isAdapterRegistered(10)) Hive.registerAdapter(BoxModelAdapter());
+    if (!Hive.isAdapterRegistered(11)) Hive.registerAdapter(InvoiceModelAdapter());
   });
 
   tearDown(() async {
@@ -111,7 +113,7 @@ void main() {
       expect(await backupFile.exists(), isTrue);
     });
 
-    test('schema version tracking and runSchemaMigrations upgrades from v1 to v3', () async {
+    test('schema version tracking and runSchemaMigrations upgrades from v1 to v4', () async {
       final settingsBox = await Hive.openBox('test_settings_box');
 
       // Uninitialized schema version defaults to 1
@@ -120,13 +122,13 @@ void main() {
       // Run migrations
       await HiveMigrationService.runSchemaMigrations(settingsBox);
 
-      // Schema version should now be 3
-      expect(HiveMigrationService.getSchemaVersion(settingsBox), 3);
+      // Schema version should now be 4
+      expect(HiveMigrationService.getSchemaVersion(settingsBox), 4);
       expect(settingsBox.get('activeBoxId'), isNotNull);
 
       // Running again should be idempotent
       await HiveMigrationService.runSchemaMigrations(settingsBox);
-      expect(HiveMigrationService.getSchemaVersion(settingsBox), 3);
+      expect(HiveMigrationService.getSchemaVersion(settingsBox), 4);
 
       await settingsBox.close();
     });
@@ -192,7 +194,7 @@ void main() {
       // Run migration
       await HiveMigrationService.runSchemaMigrations(settingsBox);
 
-      expect(HiveMigrationService.getSchemaVersion(settingsBox), 3);
+      expect(HiveMigrationService.getSchemaVersion(settingsBox), 4);
       final defaultBoxId = settingsBox.get('default_box_id') as String;
       expect(defaultBoxId, isNotEmpty);
       expect(defaultBoxId, isNot('main'));
@@ -224,6 +226,82 @@ void main() {
       await reopenedBoxes.close();
       await reopenedReceipts.close();
       await reopenedAssets.close();
+      await settingsBox.close();
+    });
+
+    test('v3 to v4 migration ensures minor units are persisted across boxes, receipts, and invoices', () async {
+      final settingsBox = await Hive.openBox('settings_v4_test');
+      await settingsBox.put(HiveMigrationService.schemaVersionKey, 3);
+
+      final boxesBox = await Hive.openBox<BoxModel>('boxes');
+      final testBox = BoxModel(
+        id: 'box_v3',
+        name: 'Office Box',
+        budget: 150.50,
+        spent: 50.25,
+        currency: 'EUR',
+        color: 0xFF000000,
+      );
+      await boxesBox.put('box_v3', testBox);
+
+      final receiptsBox = await Hive.openBox<ReceiptModel>('receipts');
+      final testReceipt = ReceiptModel(
+        id: '99999999-9999-9999-9999-999999999999',
+        merchantName: 'Stationery Store',
+        date: DateTime(2026, 1, 1),
+        totalAmount: 19.99,
+        currency: 'EUR',
+        items: [
+          ReceiptItemModel(
+            description: 'Pens',
+            unitPrice: 19.99,
+            quantity: 1,
+            totalPrice: 19.99,
+          ),
+        ],
+      );
+      await receiptsBox.put(testReceipt.id, testReceipt);
+
+      final invoicesBox = await Hive.openBox<InvoiceModel>('invoices');
+      final testInvoice = InvoiceModel(
+        id: 'inv_v3',
+        invoiceNumber: 'INV-2026-0001',
+        clientName: 'Client Co',
+        amount: 250.75,
+        status: InvoiceStatus.draft,
+        issuedDate: DateTime(2026, 1, 1),
+        currency: 'EUR',
+      );
+      await invoicesBox.put(testInvoice.id, testInvoice);
+
+      await boxesBox.close();
+      await receiptsBox.close();
+      await invoicesBox.close();
+
+      await HiveMigrationService.runSchemaMigrations(settingsBox);
+
+      expect(HiveMigrationService.getSchemaVersion(settingsBox), 4);
+
+      final reopenedBoxes = await Hive.openBox<BoxModel>('boxes');
+      final migratedBox = reopenedBoxes.get('box_v3');
+      expect(migratedBox, isNotNull);
+      expect(migratedBox!.budgetMinor, 15050);
+      expect(migratedBox.spentMinor, 5025);
+
+      final reopenedReceipts = await Hive.openBox<ReceiptModel>('receipts');
+      final migratedReceipt = reopenedReceipts.get(testReceipt.id);
+      expect(migratedReceipt, isNotNull);
+      expect(migratedReceipt!.totalAmountMinor, 1999);
+      expect(migratedReceipt.items.first.unitPriceMinor, 1999);
+
+      final reopenedInvoices = await Hive.openBox<InvoiceModel>('invoices');
+      final migratedInvoice = reopenedInvoices.get(testInvoice.id);
+      expect(migratedInvoice, isNotNull);
+      expect(migratedInvoice!.amountMinor, 25075);
+
+      await reopenedBoxes.close();
+      await reopenedReceipts.close();
+      await reopenedInvoices.close();
       await settingsBox.close();
     });
   });

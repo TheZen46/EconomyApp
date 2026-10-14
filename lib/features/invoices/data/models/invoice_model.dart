@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:hive/hive.dart';
 import 'package:uuid/uuid.dart';
 import 'package:t_aidy/core/entities/syncable_entity.dart';
+import 'package:t_aidy/core/financial/money.dart';
 import 'package:t_aidy/core/data_contracts/remote_dtos.dart';
 
 part 'invoice_model_adapter.dart';
@@ -68,7 +69,13 @@ class InvoiceModel implements SyncableEntity {
   @HiveField(13)
   final int version;
 
-  const InvoiceModel({
+  @HiveField(14)
+  final int amountMinor;
+
+  /// Invoice amount represented as exact fixed-point [Money].
+  Money get amountMoney => Money.fromMinorUnits(amountMinor, currency: currency);
+
+  InvoiceModel({
     required this.id,
     required this.invoiceNumber,
     required this.clientName,
@@ -83,26 +90,32 @@ class InvoiceModel implements SyncableEntity {
     this.updatedAt,
     this.deletedAt,
     this.version = 1,
-  });
+    int? amountMinor,
+  }) : amountMinor = amountMinor ?? Money.fromDecimal(amount, currency: currency).cents;
 
   factory InvoiceModel.fromJson(Map<String, dynamic> json) {
+    final amount = (json['amount'] as num?)?.toDouble() ?? 0.0;
+    final currency = json['currency'] as String? ?? 'USD';
+    final amountMinor = (json['amount_minor'] as num?)?.toInt();
+
     return InvoiceModel(
       id: json['id']?.toString() ?? const Uuid().v4(),
       invoiceNumber: json['invoice_number'] as String? ?? 'INV-001',
       clientName: json['client_name'] as String? ?? 'Unknown Client',
-      amount: (json['amount'] as num?)?.toDouble() ?? 0.0,
+      amount: amount,
       status: json['status'] as String? ?? InvoiceStatus.draft,
       issuedDate: json['issued_date'] != null
           ? (DateTime.tryParse(json['issued_date'].toString()) ?? DateTime.now())
           : DateTime.now(),
       dueDate: json['due_date'] != null ? DateTime.tryParse(json['due_date'].toString()) : null,
       notes: json['notes'] as String? ?? '',
-      currency: json['currency'] as String? ?? 'USD',
+      currency: currency,
       userId: json['user_id']?.toString(),
       createdAt: json['created_at'] != null ? DateTime.tryParse(json['created_at'].toString()) : null,
       updatedAt: json['updated_at'] != null ? DateTime.tryParse(json['updated_at'].toString()) : null,
       deletedAt: json['deleted_at'] != null ? DateTime.tryParse(json['deleted_at'].toString()) : null,
       version: (json['version'] as num?)?.toInt() ?? 1,
+      amountMinor: amountMinor,
     );
   }
 
@@ -112,6 +125,7 @@ class InvoiceModel implements SyncableEntity {
       'invoice_number': invoiceNumber,
       'client_name': clientName,
       'amount': amount,
+      'amount_minor': amountMinor,
       'status': status,
       'issued_date': issuedDate.toUtc().toIso8601String(),
       'due_date': dueDate?.toUtc().toIso8601String(),
@@ -143,7 +157,9 @@ class InvoiceModel implements SyncableEntity {
     DateTime? updatedAt,
     DateTime? deletedAt,
     int? version,
+    int? amountMinor,
   }) {
+    final effectiveCurrency = currency ?? this.currency;
     return InvoiceModel(
       id: id ?? this.id,
       invoiceNumber: invoiceNumber ?? this.invoiceNumber,
@@ -153,12 +169,16 @@ class InvoiceModel implements SyncableEntity {
       issuedDate: issuedDate ?? this.issuedDate,
       dueDate: dueDate ?? this.dueDate,
       notes: notes ?? this.notes,
-      currency: currency ?? this.currency,
+      currency: effectiveCurrency,
       userId: userId ?? this.userId,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
       deletedAt: deletedAt ?? this.deletedAt,
       version: version ?? this.version,
+      amountMinor: amountMinor ??
+          (amount != null
+              ? Money.fromDecimal(amount, currency: effectiveCurrency).cents
+              : this.amountMinor),
     );
   }
 

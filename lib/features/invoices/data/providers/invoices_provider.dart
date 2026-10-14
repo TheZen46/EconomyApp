@@ -4,6 +4,7 @@ import 'package:hive/hive.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
 import '../models/invoice_model.dart';
+import '../../../../core/financial/money.dart';
 import '../../../../core/sync/outbox_service.dart';
 import '../../../../core/sync/sync_providers.dart';
 import '../../../../core/providers/supabase_providers.dart';
@@ -325,20 +326,38 @@ class InvoicesNotifier extends StateNotifier<List<InvoiceModel>> {
 
   // ── Financial Stats ────────────────────────────────────────────────────────
 
+  /// Aggregated currency total of all invoices currently in `sent` or `overdue` status as [Money].
+  Money get totalOutstandingMoney {
+    final currency = state.isNotEmpty ? state.first.currency : 'USD';
+    final matching = state.where((i) => i.effectiveStatus == InvoiceStatus.sent || i.effectiveStatus == InvoiceStatus.overdue);
+    if (matching.isEmpty) return Money.zero(currency);
+    return matching.map((i) => i.amountMoney).sum(currency);
+  }
+
   /// Aggregated currency total of all invoices currently in `sent` or `overdue` status.
-  double get totalOutstanding => state
-      .where((i) => i.effectiveStatus == InvoiceStatus.sent || i.effectiveStatus == InvoiceStatus.overdue)
-      .fold(0, (sum, i) => sum + i.amount);
+  double get totalOutstanding => totalOutstandingMoney.toDouble;
+
+  /// Aggregated currency total of all past-due invoices as [Money].
+  Money get totalOverdueMoney {
+    final currency = state.isNotEmpty ? state.first.currency : 'USD';
+    final matching = state.where((i) => i.effectiveStatus == InvoiceStatus.overdue);
+    if (matching.isEmpty) return Money.zero(currency);
+    return matching.map((i) => i.amountMoney).sum(currency);
+  }
 
   /// Aggregated currency total of all past-due invoices.
-  double get totalOverdue => state
-      .where((i) => i.effectiveStatus == InvoiceStatus.overdue)
-      .fold(0, (sum, i) => sum + i.amount);
+  double get totalOverdue => totalOverdueMoney.toDouble;
+
+  /// Aggregated currency total of all unfinalized draft invoices as [Money].
+  Money get totalDraftMoney {
+    final currency = state.isNotEmpty ? state.first.currency : 'USD';
+    final matching = state.where((i) => i.effectiveStatus == InvoiceStatus.draft);
+    if (matching.isEmpty) return Money.zero(currency);
+    return matching.map((i) => i.amountMoney).sum(currency);
+  }
 
   /// Aggregated currency total of all unfinalized draft invoices.
-  double get totalDraft => state
-      .where((i) => i.effectiveStatus == InvoiceStatus.draft)
-      .fold(0, (sum, i) => sum + i.amount);
+  double get totalDraft => totalDraftMoney.toDouble;
 }
 
 /// Provides the reactive list of invoices and accounts receivable items.

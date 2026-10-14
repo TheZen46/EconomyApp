@@ -72,13 +72,26 @@ class ReconciliationEngine {
   static _ScoreResult _calculateMatchScore(StatementTransaction trn, Receipt receipt) {
     // 1. Amount Score (Weight: 50%)
     double amountScore = 0.0;
-    final diff = (trn.amount - receipt.totalAmount).abs();
-    if (diff < 0.01) {
-      amountScore = 1.0;
-    } else if (receipt.totalAmount > 0 && diff / receipt.totalAmount <= 0.03) {
-      amountScore = 0.85; // Within 3% tolerance (e.g. FX rate / tip)
-    } else if (receipt.totalAmount > 0 && diff / receipt.totalAmount <= 0.08) {
-      amountScore = 0.40;
+    if (trn.currency.toUpperCase() == receipt.currency.toUpperCase()) {
+      final trnMoney = trn.amountMoney;
+      final receiptMoney = receipt.totalMoney;
+      final diffCents = (trnMoney.cents - receiptMoney.cents).abs();
+      if (diffCents == 0) {
+        amountScore = 1.0;
+      } else if (receiptMoney.cents > 0 && diffCents / receiptMoney.cents <= 0.03) {
+        amountScore = 0.85; // Within 3% tolerance (e.g. FX rate / tip)
+      } else if (receiptMoney.cents > 0 && diffCents / receiptMoney.cents <= 0.08) {
+        amountScore = 0.40;
+      }
+    } else {
+      final diff = (trn.amount - receipt.totalAmount).abs();
+      if (diff < 0.01) {
+        amountScore = 1.0;
+      } else if (receipt.totalAmount > 0 && diff / receipt.totalAmount <= 0.03) {
+        amountScore = 0.85; // Within 3% tolerance (e.g. FX rate / tip)
+      } else if (receipt.totalAmount > 0 && diff / receipt.totalAmount <= 0.08) {
+        amountScore = 0.40;
+      }
     }
 
     if (amountScore == 0.0) {

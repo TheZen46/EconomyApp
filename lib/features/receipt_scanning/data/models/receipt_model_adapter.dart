@@ -15,12 +15,18 @@ class ReceiptModelAdapter extends TypeAdapter<ReceiptModel> {
     final fields = <int, dynamic>{
       for (int i = 0; i < numOfFields; i++) reader.readByte(): reader.read(),
     };
+    final totalAmount = (fields[3] as num).toDouble();
+    final currency = fields[4] as String;
+    final totalAmountMinor = fields[18] != null
+        ? (fields[18] as num).toInt()
+        : Money.fromDecimal(totalAmount, currency: currency).cents;
+
     return ReceiptModel(
       id: fields[0] as String,
       merchantName: fields[1] as String,
       date: fields[2] as DateTime,
-      totalAmount: (fields[3] as num).toDouble(),
-      currency: fields[4] as String,
+      totalAmount: totalAmount,
+      currency: currency,
       items: (fields[5] as List).cast<ReceiptItemModel>(),
       imagePath: fields[7] as String?,
       vatNumber: fields[8] as String? ?? '',
@@ -33,13 +39,14 @@ class ReceiptModelAdapter extends TypeAdapter<ReceiptModel> {
       deletedAt: fields[15] as DateTime?,
       version: (fields[16] as num?)?.toInt() ?? 1,
       priceBasis: PriceBasis.fromString(fields[17] as String?),
+      totalAmountMinor: totalAmountMinor,
     );
   }
 
   @override
   void write(BinaryWriter writer, ReceiptModel obj) {
     writer
-      ..writeByte(17)
+      ..writeByte(18)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -73,7 +80,9 @@ class ReceiptModelAdapter extends TypeAdapter<ReceiptModel> {
       ..writeByte(16)
       ..write(obj.version)
       ..writeByte(17)
-      ..write(obj.priceBasis.name);
+      ..write(obj.priceBasis.name)
+      ..writeByte(18)
+      ..write(obj.totalAmountMinor);
   }
 
   @override
@@ -97,11 +106,23 @@ class ReceiptItemModelAdapter extends TypeAdapter<ReceiptItemModel> {
     final fields = <int, dynamic>{
       for (int i = 0; i < numOfFields; i++) reader.readByte(): reader.read(),
     };
+    final unitPrice = (fields[1] as num).toDouble();
+    final quantity = (fields[2] as num).toInt();
+    final totalPrice = (fields[3] as num?)?.toDouble();
+    final unitPriceMinor = fields[16] != null
+        ? (fields[16] as num).toInt()
+        : Money.fromDecimal(unitPrice).cents;
+    final totalPriceMinor = fields[17] != null
+        ? (fields[17] as num).toInt()
+        : (totalPrice != null
+            ? Money.fromDecimal(totalPrice).cents
+            : unitPriceMinor * quantity);
+
     return ReceiptItemModel(
       description: fields[0] as String,
-      unitPrice: (fields[1] as num).toDouble(),
-      quantity: (fields[2] as num).toInt(),
-      totalPrice: (fields[3] as num?)?.toDouble(),
+      unitPrice: unitPrice,
+      quantity: quantity,
+      totalPrice: totalPrice,
       category: fields[4] as String?,
       necessity: fields[5] as String? ?? 'unknown',
       mainCategory: fields[6] as String?,
@@ -114,13 +135,15 @@ class ReceiptItemModelAdapter extends TypeAdapter<ReceiptItemModel> {
       version: (fields[13] as num?)?.toInt() ?? 1,
       priceBasis: PriceBasis.fromString(fields[14] as String?),
       id: fields[15] as String?,
+      unitPriceMinor: unitPriceMinor,
+      totalPriceMinor: totalPriceMinor,
     );
   }
 
   @override
   void write(BinaryWriter writer, ReceiptItemModel obj) {
     writer
-      ..writeByte(16)
+      ..writeByte(18)
       ..writeByte(0)
       ..write(obj.description)
       ..writeByte(1)
@@ -152,7 +175,11 @@ class ReceiptItemModelAdapter extends TypeAdapter<ReceiptItemModel> {
       ..writeByte(14)
       ..write(obj.priceBasis.name)
       ..writeByte(15)
-      ..write(obj.id);
+      ..write(obj.id)
+      ..writeByte(16)
+      ..write(obj.unitPriceMinor)
+      ..writeByte(17)
+      ..write(obj.totalPriceMinor);
   }
 
   @override

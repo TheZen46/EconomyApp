@@ -15,28 +15,35 @@ class InvoiceModelAdapter extends TypeAdapter<InvoiceModel> {
     final fields = <int, dynamic>{
       for (int i = 0; i < numOfFields; i++) reader.readByte(): reader.read(),
     };
+    final currency = fields[8] as String? ?? 'USD';
+    final amountDouble = (fields[3] as num).toDouble();
+    final amountMinor = fields[14] != null
+        ? (fields[14] as num).toInt()
+        : Money.fromDecimal(amountDouble, currency: currency).cents;
+
     return InvoiceModel(
       id: fields[0] as String,
       invoiceNumber: fields[1] as String,
       clientName: fields[2] as String,
-      amount: (fields[3] as num).toDouble(),
+      amount: amountDouble,
       status: fields[4] as String,
       issuedDate: fields[5] as DateTime,
       dueDate: fields[6] as DateTime?,
       notes: fields[7] as String? ?? '',
-      currency: fields[8] as String? ?? 'USD',
+      currency: currency,
       userId: fields[9] as String?,
       createdAt: fields[10] as DateTime?,
       updatedAt: fields[11] as DateTime?,
       deletedAt: fields[12] as DateTime?,
       version: (fields[13] as num?)?.toInt() ?? 1,
+      amountMinor: amountMinor,
     );
   }
 
   @override
   void write(BinaryWriter writer, InvoiceModel obj) {
     writer
-      ..writeByte(14)
+      ..writeByte(15)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -64,7 +71,9 @@ class InvoiceModelAdapter extends TypeAdapter<InvoiceModel> {
       ..writeByte(12)
       ..write(obj.deletedAt)
       ..writeByte(13)
-      ..write(obj.version);
+      ..write(obj.version)
+      ..writeByte(14)
+      ..write(obj.amountMinor);
   }
 
   @override
