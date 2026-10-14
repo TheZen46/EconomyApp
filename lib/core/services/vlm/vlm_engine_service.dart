@@ -57,15 +57,23 @@ class VlmEngineService implements AIService {
 
       // 1. Locate GGUF model files
       String resolvedModelPath = modelPath ?? '';
+      String? resolvedMmprojPath = mmprojPath;
+
       if (resolvedModelPath.isEmpty) {
         final qwenFile = File('${modelsDir.path}/qwen2_vl_2b.Q4_K_M.gguf');
-        final gemmaFile = File('${modelsDir.path}/gemma-2b-it.Q4_K_M.gguf');
+        final smolFile = File('${modelsDir.path}/smolvlm_500m.Q4_K_M.gguf');
+        final qwenAltFile = File('${modelsDir.path}/Qwen2-VL-2B-Instruct-Q4_K_M.gguf');
+        final smolAltFile = File('${modelsDir.path}/SmolVLM-Instruct-Q4_K_M.gguf');
         final mockFile = File('mock_model_v2.gguf');
 
         if (await qwenFile.exists()) {
           resolvedModelPath = qwenFile.path;
-        } else if (await gemmaFile.exists()) {
-          resolvedModelPath = gemmaFile.path;
+        } else if (await smolFile.exists()) {
+          resolvedModelPath = smolFile.path;
+        } else if (await qwenAltFile.exists()) {
+          resolvedModelPath = qwenAltFile.path;
+        } else if (await smolAltFile.exists()) {
+          resolvedModelPath = smolAltFile.path;
         } else if (await mockFile.exists()) {
           resolvedModelPath = mockFile.path;
         }
@@ -76,17 +84,47 @@ class VlmEngineService implements AIService {
         return false;
       }
 
-      // 2. Generate dynamic GBNF grammar
+      // 2. Locate Multimodal Projector (mmproj) companion file
+      if (resolvedMmprojPath == null || resolvedMmprojPath.isEmpty) {
+        final parentDir = File(resolvedModelPath).parent.path;
+        final candidateNames = [
+          'qwen2_vl_2b.mmproj.gguf',
+          'smolvlm_500m.mmproj.gguf',
+          'mmproj-Qwen2-VL-2B-Instruct-f16.gguf',
+          'mmproj-SmolVLM-Instruct-f16.gguf',
+        ];
+        for (final name in candidateNames) {
+          final candidateFile = File('$parentDir/$name');
+          if (await candidateFile.exists() && await candidateFile.length() > 0) {
+            resolvedMmprojPath = candidateFile.path;
+            break;
+          }
+        }
+      }
+
+      final isMock = resolvedModelPath.contains('mock_model');
+      if (!isMock &&
+          (resolvedMmprojPath == null ||
+              !(await File(resolvedMmprojPath).exists()) ||
+              await File(resolvedMmprojPath).length() == 0)) {
+        debugPrint(
+          'VlmEngineService: Multimodal projector (mmproj) not found or empty. '
+          'Vision-language models require both model weights and a vision projector.',
+        );
+        return false;
+      }
+
+      // 3. Generate dynamic GBNF grammar
       final grammarsDir = Directory('${docsDir.path}/grammars');
       final grammarFile = await GrammarGenerator.generateAndSave(
         directory: grammarsDir,
         customCategories: customCategories,
       );
 
-      // 3. Start worker isolate
+      // 4. Start worker isolate
       final success = await _worker.start(
         modelPath: resolvedModelPath,
-        mmprojPath: mmprojPath,
+        mmprojPath: resolvedMmprojPath,
         grammarPath: grammarFile.path,
       );
 

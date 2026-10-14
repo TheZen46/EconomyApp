@@ -28,11 +28,7 @@ class _ModelManagerPageState extends ConsumerState<ModelManagerPage> {
   String _partPath = '';
   Directory? _modelDir;
 
-  final List<LocalModelInfo> _availableModels = [
-    LocalModelInfo.qwen2vl2b,
-    LocalModelInfo.smolVlm500m,
-    LocalModelInfo.gemma2b,
-  ];
+  final List<LocalModelInfo> _availableModels = LocalModelInfo.vlmCandidates;
 
   @override
   void initState() {
@@ -72,6 +68,16 @@ class _ModelManagerPageState extends ConsumerState<ModelManagerPage> {
       }
     }
 
+    String? mmprojPath;
+    if (_selectedModel.isMultimodal && _selectedModel.mmprojFileName != null) {
+      final mmprojFile = File('${_modelDir!.path}/${_selectedModel.mmprojFileName}');
+      if (await mmprojFile.exists() && await mmprojFile.length() > 0) {
+        mmprojPath = mmprojFile.path;
+      } else {
+        isValid = false;
+      }
+    }
+
     if (mounted) {
       setState(() {
         _exists = isValid;
@@ -82,6 +88,7 @@ class _ModelManagerPageState extends ConsumerState<ModelManagerPage> {
     if (_exists) {
       final vlmSuccess = await ref.read(vlmEngineServiceProvider).initialize(
         modelPath: _modelPath,
+        mmprojPath: mmprojPath,
       );
       if (mounted) {
         ref.read(isVlmReadyProvider.notifier).state = vlmSuccess;
@@ -141,6 +148,55 @@ class _ModelManagerPageState extends ConsumerState<ModelManagerPage> {
     );
 
     if (result.isRight()) {
+      final mmproj = _selectedModel.mmprojInfo;
+      if (mmproj != null) {
+        if (mounted) {
+          ref.read(modelDownloadProgressProvider.notifier).state = 0.0;
+          ref.read(modelDownloadSpeedProvider.notifier).state = '';
+          ref.read(modelDownloadEtaProvider.notifier).state = '';
+          ref.read(isModelVerifyingProvider.notifier).state = false;
+        }
+        final mmprojResult = await repo.downloadModelWithResume(
+          modelInfo: mmproj,
+          destinationDirectory: _modelDir!,
+          onProgress: (received, total) {
+            if (total > 0 && mounted) {
+              ref.read(modelDownloadProgressProvider.notifier).state =
+                  (received / total).clamp(0.0, 1.0);
+            }
+          },
+          onSpeedAndEta: (speed, eta) {
+            if (mounted) {
+              ref.read(modelDownloadSpeedProvider.notifier).state = speed;
+              ref.read(modelDownloadEtaProvider.notifier).state = eta;
+            }
+          },
+          onVerifying: (isVerifying) {
+            if (mounted) {
+              ref.read(isModelVerifyingProvider.notifier).state = isVerifying;
+            }
+          },
+        );
+
+        if (mmprojResult.isLeft()) {
+          final failure = (mmprojResult as Left<Failure, File>).value;
+          if (mounted) {
+            final message = failure is ModelValidationFailure
+                ? 'Vision Projector Integrity Error: ${failure.message}'
+                : 'Vision Projector Download Failed: ${failure.message}';
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(message),
+                backgroundColor: AppTheme.error,
+              ),
+            );
+            ref.read(isModelDownloadingProvider.notifier).state = false;
+            ref.read(isModelVerifyingProvider.notifier).state = false;
+          }
+          return;
+        }
+      }
+
       await ref.read(llmServiceProvider).initialize();
       if (mounted) {
         ref.read(isLlmLoadedProvider.notifier).state = true;
@@ -148,7 +204,7 @@ class _ModelManagerPageState extends ConsumerState<ModelManagerPage> {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('${_selectedModel.name} Downloaded and SHA-256 Verified! 🧠'),
+            content: Text('${_selectedModel.name} & Vision Projector Downloaded and SHA-256 Verified! 🧠'),
             backgroundColor: const Color(0xFF10B981),
           ),
         );
@@ -183,6 +239,16 @@ class _ModelManagerPageState extends ConsumerState<ModelManagerPage> {
       final partFile = File(_partPath);
       if (await partFile.exists()) {
         await partFile.delete();
+      }
+      if (_selectedModel.mmprojFileName != null) {
+        final mmprojFile = File('${_modelDir!.path}/${_selectedModel.mmprojFileName}');
+        if (await mmprojFile.exists()) {
+          await mmprojFile.delete();
+        }
+        final mmprojPartFile = File('${_modelDir!.path}/${_selectedModel.mmprojFileName}.part');
+        if (await mmprojPartFile.exists()) {
+          await mmprojPartFile.delete();
+        }
       }
 
       await ref.read(vlmEngineServiceProvider).unload();

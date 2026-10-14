@@ -14,6 +14,11 @@ class LocalModelInfo {
   final String sizeLabel;
   final String downloadUrl;
   final String expectedSha256;
+  final String? mmprojFileName;
+  final String? mmprojSizeLabel;
+  final String? mmprojDownloadUrl;
+  final String? mmprojExpectedSha256;
+  final bool isMultimodal;
 
   const LocalModelInfo({
     required this.id,
@@ -22,33 +27,70 @@ class LocalModelInfo {
     required this.sizeLabel,
     required this.downloadUrl,
     required this.expectedSha256,
+    this.mmprojFileName,
+    this.mmprojSizeLabel,
+    this.mmprojDownloadUrl,
+    this.mmprojExpectedSha256,
+    this.isMultimodal = false,
   });
 
+  /// Multimodal vision projector companion artifact if this model requires one.
+  LocalModelInfo? get mmprojInfo => (isMultimodal &&
+          mmprojFileName != null &&
+          mmprojDownloadUrl != null &&
+          mmprojExpectedSha256 != null)
+      ? LocalModelInfo(
+          id: '$id-mmproj',
+          name: '$name (Vision Projector)',
+          fileName: mmprojFileName!,
+          sizeLabel: mmprojSizeLabel ?? '',
+          downloadUrl: mmprojDownloadUrl!,
+          expectedSha256: mmprojExpectedSha256!,
+          isMultimodal: false,
+        )
+      : null;
+
   /// Qwen2-VL-2B-Instruct multimodal receipt model & CLIP projector (4GB+ RAM devices)
+  /// Upstream commit: 2160e265f926e84e84dbb1c73e623b5324b23707
   static const qwen2vl2b = LocalModelInfo(
     id: 'qwen2-vl-2b',
     name: 'Qwen2-VL 2B Multimodal (Standard)',
     fileName: 'qwen2_vl_2b.Q4_K_M.gguf',
-    sizeLabel: '~1.35 GB (Requires 4GB+ RAM)',
+    sizeLabel: '~986 MB (Requires 4GB+ RAM)',
     downloadUrl:
-        'https://huggingface.co/Qwen/Qwen2-VL-2B-Instruct-GGUF/resolve/main/qwen2-vl-2b-instruct-q4_k_m.gguf?download=true',
+        'https://huggingface.co/bartowski/Qwen2-VL-2B-Instruct-GGUF/resolve/2160e265f926e84e84dbb1c73e623b5324b23707/Qwen2-VL-2B-Instruct-Q4_K_M.gguf?download=true',
     expectedSha256:
-        'c78f921ea345b85a1a1415df8e4d9b62a6e9a65d79901309f7a77b8b40816bf3',
+        '4ef095263343fc1237e8ca879790bb262bcf209f082e0a9bfce219b7ece55e8b',
+    mmprojFileName: 'qwen2_vl_2b.mmproj.gguf',
+    mmprojSizeLabel: '~1.33 GB (Vision Projector)',
+    mmprojDownloadUrl:
+        'https://huggingface.co/bartowski/Qwen2-VL-2B-Instruct-GGUF/resolve/2160e265f926e84e84dbb1c73e623b5324b23707/mmproj-Qwen2-VL-2B-Instruct-f16.gguf?download=true',
+    mmprojExpectedSha256:
+        '05cc3ae461a7b6aa4023312ccab549ecab77cf8677efee04f049fcbab55b8bc3',
+    isMultimodal: true,
   );
 
-  /// SmolVLM-500M multimodal model for low-memory devices (< 4GB RAM)
+  /// SmolVLM-Instruct multimodal model for low-memory devices (< 4GB RAM)
+  /// Upstream commit: e75618fdae83145c487f1b4d8115bb02a5b58ecc
   static const smolVlm500m = LocalModelInfo(
     id: 'smolvlm-500m',
     name: 'SmolVLM 500M (Low-RAM Devices < 4GB)',
     fileName: 'smolvlm_500m.Q4_K_M.gguf',
-    sizeLabel: '~350 MB (Optimized for <4GB RAM)',
+    sizeLabel: '~1.11 GB (Optimized for <4GB RAM)',
     downloadUrl:
-        'https://huggingface.co/HuggingFaceTB/SmolVLM-Instruct-GGUF/resolve/main/smolvlm-instruct-q4_k_m.gguf?download=true',
+        'https://huggingface.co/ggml-org/SmolVLM-Instruct-GGUF/resolve/e75618fdae83145c487f1b4d8115bb02a5b58ecc/SmolVLM-Instruct-Q4_K_M.gguf?download=true',
     expectedSha256:
-        'a19b8f21ca459b73d2a316df8e4d9b62a6e9a65d79901309f7a77b8b40816bf3',
+        'dc80966bd84789de64115f07888939c03abb1714d431c477dfb405517a554af5',
+    mmprojFileName: 'smolvlm_500m.mmproj.gguf',
+    mmprojSizeLabel: '~872 MB (Vision Projector)',
+    mmprojDownloadUrl:
+        'https://huggingface.co/ggml-org/SmolVLM-Instruct-GGUF/resolve/e75618fdae83145c487f1b4d8115bb02a5b58ecc/mmproj-SmolVLM-Instruct-f16.gguf?download=true',
+    mmprojExpectedSha256:
+        '670c0a23196cce1be845e704775c68a4f757e6aea6898314201b46529070bdb7',
+    isMultimodal: true,
   );
 
-  /// Legacy Gemma 2B IT model endpoint & expected SHA-256 checksum
+  /// Legacy Gemma 2B IT model endpoint & expected SHA-256 checksum (text-only OCR fallback, not a VLM)
   static const gemma2b = LocalModelInfo(
     id: 'gemma-2b-it',
     name: 'Gemma 2B IT',
@@ -58,9 +100,24 @@ class LocalModelInfo {
         'https://huggingface.co/google/gemma-2b-it-GGUF/resolve/main/gemma-2b-it.Q4_K_M.gguf?download=true',
     expectedSha256:
         'e29d72dfbf2e9bcba97fef2b860655bf965c71a3962d3e1dbf3ca3e50a7c490a',
+    isMultimodal: false,
   );
 
   static const defaultModel = qwen2vl2b;
+
+  /// Candidate models for Vision-Language multimodal receipt intelligence.
+  /// Text-only models like Gemma are explicitly excluded.
+  static const List<LocalModelInfo> vlmCandidates = [
+    qwen2vl2b,
+    smolVlm500m,
+  ];
+
+  /// All known model definitions.
+  static const List<LocalModelInfo> allModels = [
+    qwen2vl2b,
+    smolVlm500m,
+    gemma2b,
+  ];
 }
 
 /// Helper to estimate available system physical RAM and recommend appropriate model tier.

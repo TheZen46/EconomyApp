@@ -1,4 +1,4 @@
-﻿import 'dart:convert';
+import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 import 'package:crypto/crypto.dart';
@@ -78,6 +78,65 @@ void main() {
       expect(gemma.fileName, 'gemma-2b-it.Q4_K_M.gguf');
       expect(gemma.downloadUrl.contains('huggingface.co/google/gemma-2b-it-GGUF'), isTrue);
       expect(gemma.expectedSha256, isNotEmpty);
+      expect(gemma.isMultimodal, isFalse);
+    });
+
+    test('vlmCandidates contains only multimodal models and excludes text-only models', () {
+      final candidates = LocalModelInfo.vlmCandidates;
+      expect(candidates, isNotEmpty);
+      for (final model in candidates) {
+        expect(model.isMultimodal, isTrue);
+        expect(model.id, isNot('gemma-2b-it'));
+        expect(model.mmprojFileName, isNotNull);
+        expect(model.mmprojDownloadUrl, isNotNull);
+        expect(model.mmprojExpectedSha256, isNotNull);
+        expect(model.mmprojInfo, isNotNull);
+      }
+    });
+
+    test('model digests are genuine 64-hex strings and do not share synthetic suffixes', () {
+      final allDigests = <String>[];
+      final hexRegex = RegExp(r'^[0-9a-fA-F]{64}$');
+
+      for (final model in LocalModelInfo.allModels) {
+        expect(hexRegex.hasMatch(model.expectedSha256), isTrue,
+            reason: '${model.id} has invalid SHA-256 format: ${model.expectedSha256}');
+        allDigests.add(model.expectedSha256.toLowerCase());
+
+        if (model.isMultimodal && model.mmprojExpectedSha256 != null) {
+          expect(hexRegex.hasMatch(model.mmprojExpectedSha256!), isTrue,
+              reason: '${model.id} mmproj has invalid SHA-256 format: ${model.mmprojExpectedSha256}');
+          allDigests.add(model.mmprojExpectedSha256!.toLowerCase());
+        }
+      }
+
+      // Check for distinctness
+      final uniqueDigests = allDigests.toSet();
+      expect(uniqueDigests.length, allDigests.length,
+          reason: 'Duplicate digests found among model definitions');
+
+      // Guard against synthetic suffixes (e.g. sharing 8+ characters at the end)
+      for (int i = 0; i < allDigests.length; i++) {
+        for (int j = i + 1; j < allDigests.length; j++) {
+          final d1 = allDigests[i];
+          final d2 = allDigests[j];
+          final suffix1 = d1.substring(d1.length - 8);
+          final suffix2 = d2.substring(d2.length - 8);
+          expect(suffix1, isNot(suffix2),
+              reason: 'Digests $d1 and $d2 share an artificial 8-char suffix ($suffix1)');
+        }
+      }
+    });
+
+    test('VLM candidate download URLs are pinned to specific revisions instead of main', () {
+      for (final model in LocalModelInfo.vlmCandidates) {
+        expect(model.downloadUrl.contains('/resolve/main/'), isFalse,
+            reason: '${model.id} download URL must be pinned to a specific commit/revision');
+        if (model.mmprojDownloadUrl != null) {
+          expect(model.mmprojDownloadUrl!.contains('/resolve/main/'), isFalse,
+              reason: '${model.id} mmproj download URL must be pinned to a specific commit/revision');
+        }
+      }
     });
 
     test('calculateSha256 and verifyModelIntegrity accurately validate matching files', () async {
