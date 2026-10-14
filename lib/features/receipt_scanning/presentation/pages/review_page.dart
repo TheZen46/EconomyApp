@@ -324,12 +324,47 @@ class _ReviewPageState extends ConsumerState<ReviewPage> {
 
   Future<void> _saveReceipt() async {
     if (_isSaving) return;
+
+    final merchant = _merchantController.text.trim();
+    if (merchant.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please provide a merchant name.'),
+          backgroundColor: Colors.redAccent,
+        ),
+      );
+      return;
+    }
+
+    final parsedTotal = double.tryParse(_totalController.text);
+    if (parsedTotal == null || parsedTotal < 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please enter a valid, non-negative receipt total amount.'),
+          backgroundColor: Colors.redAccent,
+        ),
+      );
+      return;
+    }
+
+    for (final itemWrapper in _items) {
+      if (itemWrapper.item.totalPrice < 0 || itemWrapper.item.unitPrice < 0) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Item "${itemWrapper.item.description.isNotEmpty ? itemWrapper.item.description : 'Line item'}" cannot have a negative price.'),
+            backgroundColor: Colors.redAccent,
+          ),
+        );
+        return;
+      }
+    }
+
     setState(() => _isSaving = true);
 
     try {
       final updatedReceipt = widget.receipt.copyWith(
-        merchantName: _merchantController.text,
-        totalAmount: double.tryParse(_totalController.text) ?? 0.0,
+        merchantName: merchant,
+        totalAmount: parsedTotal,
         date: _currentDate,
         currency: _selectedCurrency,
         items: _items.map((w) => w.item.copyWith(boxId: w.item.boxId ?? _selectedBoxId)).toList(),

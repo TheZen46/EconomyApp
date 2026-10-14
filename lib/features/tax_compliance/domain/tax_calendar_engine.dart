@@ -1,4 +1,4 @@
-﻿/// A statutory tax payment deadline event.
+/// A statutory tax payment deadline event.
 class TaxCalendarEvent {
   final String id;
   final String title;
@@ -30,12 +30,12 @@ class TaxCalendarEvent {
 VERSION:2.0
 PRODID:-//tAIdy//Freelance Tax Calendar//EN
 BEGIN:VEVENT
-UID:${id}@taidy.app
+UID:$id@taidy.app
 DTSTAMP:${nowStr}Z
-DTSTART;VALUE=DATE:${startStr}
-DTEND;VALUE=DATE:${endStr}
-SUMMARY:${title} (Estimated \$${estimatedPaymentAmount.toStringAsFixed(2)})
-DESCRIPTION:${description} - Estimated amount: \$${estimatedPaymentAmount.toStringAsFixed(2)}
+DTSTART;VALUE=DATE:$startStr
+DTEND;VALUE=DATE:$endStr
+SUMMARY:$title (Estimated \$${estimatedPaymentAmount.toStringAsFixed(2)})
+DESCRIPTION:$description - Estimated amount: \$${estimatedPaymentAmount.toStringAsFixed(2)}
 STATUS:CONFIRMED
 BEGIN:VALARM
 TRIGGER:-P7D

@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:t_aidy/core/constants/app_constants.dart';
@@ -266,7 +266,7 @@ class _TaxSimulatorContentState extends ConsumerState<_TaxSimulatorContent> {
                         children: [
                           Text('Direct Tax Savings', style: GoogleFonts.spaceGrotesk(fontSize: 11, color: colorScheme.onSurfaceVariant)),
                           Text(
-                            '+' + AppConstants.privacyMask('\$${sim.directTaxSavings.toStringAsFixed(2)}', isPrivacy: isPrivacy),
+                            '+${AppConstants.privacyMask('\$${sim.directTaxSavings.toStringAsFixed(2)}', isPrivacy: isPrivacy)}',
                             style: GoogleFonts.jetBrainsMono(fontSize: 14, fontWeight: FontWeight.bold, color: const Color(0xFF10B981)),
                           ),
                         ],

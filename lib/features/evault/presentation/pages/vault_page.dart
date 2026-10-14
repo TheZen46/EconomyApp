@@ -630,7 +630,7 @@ class _AssetCardWidgetState extends ConsumerState<_AssetCardWidget> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              'Book: ' + AppConstants.formatAmount(sched.currentBookValue, isPrivacy: isPrivacy),
+                              'Book: ${AppConstants.formatAmount(sched.currentBookValue, isPrivacy: isPrivacy)}',
                               style: GoogleFonts.jetBrainsMono(
                                 color: Colors.white,
                                 fontSize: 14,
@@ -638,7 +638,7 @@ class _AssetCardWidgetState extends ConsumerState<_AssetCardWidget> {
                               ),
                             ),
                             Text(
-                              'Cost: ' + AppConstants.formatAmount(widget.asset.price, isPrivacy: isPrivacy),
+                              'Cost: ${AppConstants.formatAmount(widget.asset.price, isPrivacy: isPrivacy)}',
                               style: GoogleFonts.jetBrainsMono(
                                 color: Colors.white.withOpacity(0.7),
                                 fontSize: 10,
@@ -795,7 +795,7 @@ class _AssetCardWidgetState extends ConsumerState<_AssetCardWidget> {
                         style: GoogleFonts.spaceGrotesk(fontSize: 13, color: colorScheme.onSurface),
                       ),
                       Text(
-                        'Deduction: ' + AppConstants.privacyMask('\$' + entry.deductionAmount.toStringAsFixed(2), isPrivacy: isPrivacy),
+                        'Deduction: ${AppConstants.privacyMask('\$${entry.deductionAmount.toStringAsFixed(2)}', isPrivacy: isPrivacy)}',
                         style: GoogleFonts.jetBrainsMono(fontSize: 13, fontWeight: FontWeight.bold, color: colorScheme.primary),
                       ),
                     ],
@@ -808,7 +808,7 @@ class _AssetCardWidgetState extends ConsumerState<_AssetCardWidget> {
                 children: [
                   Text('Current Book Value:', style: GoogleFonts.spaceGrotesk(fontWeight: FontWeight.bold)),
                   Text(
-                    AppConstants.privacyMask('\$' + sched.currentBookValue.toStringAsFixed(2), isPrivacy: isPrivacy),
+                    AppConstants.privacyMask('\$${sched.currentBookValue.toStringAsFixed(2)}', isPrivacy: isPrivacy),
                     style: GoogleFonts.jetBrainsMono(fontWeight: FontWeight.bold, color: const Color(0xFF10B981)),
                   ),
                 ],

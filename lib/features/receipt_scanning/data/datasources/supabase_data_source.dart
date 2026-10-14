@@ -301,3 +301,26 @@ class SupabaseDataSourceImpl implements SupabaseDataSource {
     }
   }
 }
+
+/// No-op fallback implementation of [SupabaseDataSource] for offline or uninitialized environments.
+class NoOpSupabaseDataSource implements SupabaseDataSource {
+  const NoOpSupabaseDataSource();
+
+  @override
+  Future<void> uploadTrainingData(Receipt receipt, String imagePath) async {}
+
+  @override
+  Future<int> getStorageUsage() async => 0;
+
+  @override
+  Future<void> deleteData(List<String> ids, {List<String>? imagePaths}) async {}
+
+  @override
+  Future<void> deleteReceipts(List<String> ids) async {}
+
+  @override
+  Future<List<Map<String, dynamic>>> fetchAllReceipts({
+    int pageSize = 100,
+    String tableName = 'receipts',
+  }) async => [];
+}

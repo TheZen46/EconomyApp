@@ -1,4 +1,4 @@
-﻿import 'dart:math';
+import 'dart:math';
 
 /// Representation of the physical home office space configuration under IRS Form 8829.
 class HomeOfficeSpace {
@@ -190,7 +190,7 @@ class HomeOfficeApportionmentEngine {
     final irsLines = <String, dynamic>{
       'Line_1_Office_Area_SqFt': space.dedicatedOfficeSqFt,
       'Line_2_Total_Home_Area_SqFt': space.totalHomeSqFt,
-      'Line_3_Business_Percentage': (pct * 100).toStringAsFixed(2) + '%',
+      'Line_3_Business_Percentage': '${(pct * 100).toStringAsFixed(2)}%',
       'Line_9_Direct_Expenses': direct,
       'Line_10_Indirect_Expenses_Total': expenses.totalIndirectHouseholdExpenses,
       'Line_11_Indirect_Expenses_Apportioned': indirectApportioned,

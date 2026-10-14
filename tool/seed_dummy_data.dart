@@ -35,6 +35,9 @@ void main() async {
 
   // Generate a distinct test user per run if needed
   final uniqueSuffix = DateTime.now().millisecondsSinceEpoch % 100000;
+  final fakeEmail = Platform.environment['SEED_EMAIL'] ??
+      envMap['SEED_EMAIL'] ??
+      'seed_user_$uniqueSuffix@example.com';
   final fakePassword = Platform.environment['SEED_PASSWORD'] ??
       envMap['SEED_PASSWORD'] ??
       'Secured_${DateTime.now().millisecondsSinceEpoch}_!A9';

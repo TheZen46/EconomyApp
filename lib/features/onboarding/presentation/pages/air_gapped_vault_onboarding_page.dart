@@ -1,3 +1,5 @@
+import 'dart:convert';
+import 'package:crypto/crypto.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -6,6 +8,7 @@ import 'package:intl/intl.dart';
 
 import '../../../../core/routes/app_router.dart';
 import '../../../../core/services/biometric_vault_key_service.dart';
+import '../../../../core/services/secure_storage_service.dart';
 import '../../../boxes/data/models/box_model.dart';
 import '../../../boxes/data/providers/boxes_provider.dart';
 
@@ -497,7 +500,7 @@ class _AirGappedVaultOnboardingPageState extends ConsumerState<AirGappedVaultOnb
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
             elevation: 0,
           ),
-          onPressed: _isInitializing ? null : () => _initializeAndProceed(context),
+          onPressed: _isInitializing ? null : _initializeAndProceed,
           child: _isInitializing
               ? const SizedBox(
                   height: 20,
@@ -552,7 +555,7 @@ class _AirGappedVaultOnboardingPageState extends ConsumerState<AirGappedVaultOnb
     );
   }
 
-  Future<void> _initializeAndProceed(BuildContext context) async {
+  Future<void> _initializeAndProceed() async {
     setState(() {
       _isInitializing = true;
     });
@@ -570,7 +573,7 @@ class _AirGappedVaultOnboardingPageState extends ConsumerState<AirGappedVaultOnb
           color: Colors.black.value,
           icon: 'Home',
         );
-        ref.read(boxesProvider.notifier).addBox(initialBox);
+        await ref.read(boxesProvider.notifier).addBox(initialBox);
       }
 
       // Initialize ephemeral biometric key token
@@ -582,6 +585,16 @@ class _AirGappedVaultOnboardingPageState extends ConsumerState<AirGappedVaultOnb
         iterations: 1000,
       );
       keyService.unlockWithHardwareToken(key);
+
+      // Persist biometric vault configuration in secure hardware storage
+      try {
+        await SecureStorageService.writeSecret('biometric_vault_enabled', _isBiometricEnabled.toString());
+        await SecureStorageService.writeSecret('biometric_vault_salt', base64Url.encode(salt));
+        final verifierHash = sha256.convert(key).toString();
+        await SecureStorageService.writeSecret('biometric_vault_verifier', verifierHash);
+      } catch (e) {
+        debugPrint('AirGappedVaultOnboarding: Secure storage notice: $e');
+      }
 
       if (mounted) {
         try {

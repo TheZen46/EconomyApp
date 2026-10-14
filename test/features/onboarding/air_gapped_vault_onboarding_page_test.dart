@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:t_aidy/features/boxes/data/models/box_model.dart';
 import 'package:t_aidy/features/boxes/data/providers/boxes_provider.dart';
@@ -12,6 +13,10 @@ class _FakeBoxesNotifier extends BoxesNotifier {
 }
 
 void main() {
+  setUp(() {
+    FlutterSecureStorage.setMockInitialValues({});
+  });
+
   group('AirGappedVaultOnboardingPage (Gemini Antigravity) Tests', () {
     testWidgets('renders air-gapped security banner, operating models, and live ledger simulation', (tester) async {
       await tester.binding.setSurfaceSize(const Size(1000, 1400));

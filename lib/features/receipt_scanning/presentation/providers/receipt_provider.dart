@@ -120,7 +120,11 @@ final exportServiceProvider = Provider<ExportService>((ref) {
 });
 
 final supabaseDataSourceProvider = Provider<SupabaseDataSource>((ref) {
-   return SupabaseDataSourceImpl(Supabase.instance.client);
+  try {
+    return SupabaseDataSourceImpl(Supabase.instance.client);
+  } catch (_) {
+    return const NoOpSupabaseDataSource();
+  }
 });
 
 final storageUsageProvider = FutureProvider<int>((ref) async {
@@ -130,11 +134,13 @@ final storageUsageProvider = FutureProvider<int>((ref) async {
 
 
 // --- OTA Model Providers ---
-// --- OTA Model Providers ---
 
 final modelRepositoryProvider = Provider<ModelRepository>((ref) {
-  // Assuming Supabase is initialized
-  return SupabaseModelRepository(Supabase.instance.client);
+  try {
+    return SupabaseModelRepository(Supabase.instance.client);
+  } catch (_) {
+    return SupabaseModelRepository();
+  }
 });
 
 final modelUpdateServiceProvider = StateNotifierProvider<ModelUpdateService, UpdateState>((ref) {

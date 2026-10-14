@@ -17,7 +17,11 @@ import '../../domain/entities/sync_progress_state.dart';
 
 /// Provider for RemoteReplicaDataSource
 final remoteReplicaDataSourceProvider = Provider<RemoteReplicaDataSource>((ref) {
-  return RemoteReplicaDataSourceImpl(Supabase.instance.client);
+  try {
+    return RemoteReplicaDataSourceImpl(Supabase.instance.client);
+  } catch (_) {
+    return const NoOpRemoteReplicaDataSource();
+  }
 });
 
 /// Provider for the SyncEngine instance

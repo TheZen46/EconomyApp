@@ -1,4 +1,4 @@
-﻿import 'package:t_aidy/features/receipt_scanning/presentation/widgets/tax_simulator_modal.dart';
+import 'package:t_aidy/features/receipt_scanning/presentation/widgets/tax_simulator_modal.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -116,7 +116,7 @@ class _TheTaxNestWidgetState extends ConsumerState<TheTaxNestWidget> {
                       fit: BoxFit.scaleDown,
                       alignment: Alignment.centerLeft,
                       child: Text(
-                        AppConstants.privacyMask('\$' + stashed.toStringAsFixed(2), isPrivacy: isPrivacy),
+                        AppConstants.privacyMask('\$${stashed.toStringAsFixed(2)}', isPrivacy: isPrivacy),
                         style: GoogleFonts.jetBrainsMono(
                           fontSize: 34,
                           fontWeight: FontWeight.w300,
@@ -198,7 +198,7 @@ class _TheTaxNestWidgetState extends ConsumerState<TheTaxNestWidget> {
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      AppConstants.privacyMask('\$' + taxShield.safeToSpend.toStringAsFixed(2), isPrivacy: isPrivacy),
+                      AppConstants.privacyMask('\$${taxShield.safeToSpend.toStringAsFixed(2)}', isPrivacy: isPrivacy),
                       style: GoogleFonts.jetBrainsMono(
                         fontSize: 18,
                         fontWeight: FontWeight.w600,
@@ -225,7 +225,7 @@ class _TheTaxNestWidgetState extends ConsumerState<TheTaxNestWidget> {
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      '+' + AppConstants.privacyMask('\$' + taxShield.taxSavingsEarned.toStringAsFixed(2), isPrivacy: isPrivacy),
+                      '+${AppConstants.privacyMask('\$${taxShield.taxSavingsEarned.toStringAsFixed(2)}', isPrivacy: isPrivacy)}',
                       style: GoogleFonts.jetBrainsMono(
                         fontSize: 16,
                         fontWeight: FontWeight.w600,
@@ -307,7 +307,7 @@ class _TheTaxNestWidgetState extends ConsumerState<TheTaxNestWidget> {
         barTouchData: BarTouchData(
           touchTooltipData: BarTouchTooltipData(
             getTooltipItem: (group, groupIndex, rod, rodIndex) {
-              final text = isPrivacy ? '••••••' : '\$' + rod.toY.toStringAsFixed(2);
+              final text = isPrivacy ? '••••••' : '\$${rod.toY.toStringAsFixed(2)}';
               return BarTooltipItem(
                 text,
                 GoogleFonts.jetBrainsMono(color: Colors.white, fontSize: 11),
@@ -424,18 +424,18 @@ class _TheTaxNestWidgetState extends ConsumerState<TheTaxNestWidget> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _dialogRow('Gross Invoiced Revenue', '\$' + calc.grossRevenue.toStringAsFixed(2), isPrivacy, colorScheme),
+            _dialogRow('Gross Invoiced Revenue', '\$${calc.grossRevenue.toStringAsFixed(2)}', isPrivacy, colorScheme),
             const SizedBox(height: 6),
-            _dialogRow('Business Deductibles', '-\$' + calc.totalDeductibleExpenses.toStringAsFixed(2), isPrivacy, colorScheme, isGreen: true),
+            _dialogRow('Business Deductibles', '-\$${calc.totalDeductibleExpenses.toStringAsFixed(2)}', isPrivacy, colorScheme, isGreen: true),
             const SizedBox(height: 6),
-            _dialogRow('Net Taxable Base', '\$' + calc.netTaxableIncome.toStringAsFixed(2), isPrivacy, colorScheme),
+            _dialogRow('Net Taxable Base', '\$${calc.netTaxableIncome.toStringAsFixed(2)}', isPrivacy, colorScheme),
             const SizedBox(height: 6),
-            _dialogRow('Tax Reserve Required', '\$' + calc.lockedTaxShield.toStringAsFixed(2), isPrivacy, colorScheme, isBold: true),
+            _dialogRow('Tax Reserve Required', '\$${calc.lockedTaxShield.toStringAsFixed(2)}', isPrivacy, colorScheme, isBold: true),
             const SizedBox(height: 6),
-            _dialogRow('Tax Saved via Expenses', '+\$' + calc.taxSavingsEarned.toStringAsFixed(2), isPrivacy, colorScheme, isGreen: true),
+            _dialogRow('Tax Saved via Expenses', '+\$${calc.taxSavingsEarned.toStringAsFixed(2)}', isPrivacy, colorScheme, isGreen: true),
             const Divider(height: 24),
             Text(
-              'Target Goal: ' + AppConstants.privacyMask('\$' + goal.toStringAsFixed(2), isPrivacy: isPrivacy),
+              'Target Goal: ${AppConstants.privacyMask('\$${goal.toStringAsFixed(2)}', isPrivacy: isPrivacy)}',
               style: GoogleFonts.spaceGrotesk(color: colorScheme.onSurfaceVariant),
             ),
             const SizedBox(height: 12),
@@ -517,7 +517,7 @@ class _TheTaxNestWidgetState extends ConsumerState<TheTaxNestWidget> {
                   ),
                   const SizedBox(height: 24),
                   Text(
-                    'Custom Tax Buffer: ' + (selectedRate * 100).toInt().toString() + '%',
+                    'Custom Tax Buffer: ${(selectedRate * 100).toInt()}%',
                     style: GoogleFonts.spaceGrotesk(
                       fontSize: 14,
                       fontWeight: FontWeight.w600,
@@ -530,7 +530,7 @@ class _TheTaxNestWidgetState extends ConsumerState<TheTaxNestWidget> {
                     max: 0.45,
                     divisions: 8,
                     activeColor: colorScheme.primary,
-                    label: (selectedRate * 100).toInt().toString() + '%',
+                    label: '${(selectedRate * 100).toInt()}%',
                     onChanged: (val) => setModalState(() => selectedRate = val),
                   ),
                   const SizedBox(height: 16),

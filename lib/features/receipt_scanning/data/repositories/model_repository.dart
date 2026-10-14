@@ -145,14 +145,18 @@ abstract class ModelRepository {
 }
 
 class SupabaseModelRepository extends ModelRepository {
-  final SupabaseClient client;
+  final SupabaseClient? client;
 
-  SupabaseModelRepository(this.client);
+  SupabaseModelRepository([this.client]);
 
   @override
   Future<Either<Failure, AppConfig?>> getLatestModelConfig() async {
+    final c = client;
+    if (c == null) {
+      return const Right(null);
+    }
     try {
-      final response = await client
+      final response = await c
           .from('app_config')
           .select()
           .eq('key', 'latest_model_version')

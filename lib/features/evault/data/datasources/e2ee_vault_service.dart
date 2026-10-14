@@ -87,8 +87,12 @@ class E2eeVaultService {
     final rand = Random.secure();
     final salt = Uint8List(kSaltLength);
     final iv = Uint8List(kIvLength);
-    for (int i = 0; i < kSaltLength; i++) salt[i] = rand.nextInt(256);
-    for (int i = 0; i < kIvLength; i++) iv[i] = rand.nextInt(256);
+    for (int i = 0; i < kSaltLength; i++) {
+      salt[i] = rand.nextInt(256);
+    }
+    for (int i = 0; i < kIvLength; i++) {
+      iv[i] = rand.nextInt(256);
+    }
 
     final key = deriveKey(passphrase: passphrase, salt: salt);
     final plaintextBytes = utf8.encode(data);

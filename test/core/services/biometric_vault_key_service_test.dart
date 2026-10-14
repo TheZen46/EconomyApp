@@ -1,4 +1,3 @@
-import 'dart:convert';
 import 'dart:typed_data';
 import 'package:crypto/crypto.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -41,6 +40,7 @@ void main() {
         iterations: 50,
       );
       final verifierHash = sha256.convert(key).toString();
+      expect(verifierHash.isNotEmpty, true);
 
       // Note: service uses deriveKey, test with direct hardware token or verify unlock
       service.unlockWithHardwareToken(key);

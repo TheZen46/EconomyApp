@@ -120,8 +120,19 @@ class TaxReportService {
     String defaultCurrency = 'EUR',
   }) {
     final now = DateTime.now();
-    final start = startDate ?? DateTime(now.year, now.month, 1);
-    final end = endDate ?? DateTime(now.year, now.month + 1, 0, 23, 59, 59);
+    final DateTime start;
+    final DateTime end;
+    if (startDate != null || endDate != null) {
+      start = startDate ?? DateTime(now.year, now.month, 1);
+      end = endDate ?? DateTime(now.year, now.month + 1, 0, 23, 59, 59);
+    } else if (receipts.isNotEmpty) {
+      final sortedDates = receipts.map((r) => r.date).toList()..sort();
+      start = DateTime(sortedDates.first.year, sortedDates.first.month, sortedDates.first.day);
+      end = DateTime(sortedDates.last.year, sortedDates.last.month, sortedDates.last.day, 23, 59, 59);
+    } else {
+      start = DateTime(now.year, now.month, 1);
+      end = DateTime(now.year, now.month + 1, 0, 23, 59, 59);
+    }
 
     final filteredReceipts = receipts.where((r) {
       return r.date.isAfter(start.subtract(const Duration(seconds: 1))) &&

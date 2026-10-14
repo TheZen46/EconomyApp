@@ -45,7 +45,7 @@ class AuthState {
 
 class AuthNotifier extends StateNotifier<AuthState> {
   final AuthRepository _repository;
-  StreamSubscription<AuthState>? _authSubscription;
+  StreamSubscription? _authSubscription;
 
   AuthNotifier(this._repository) : super(const AuthState()) {
     _initialize();
@@ -60,6 +60,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
         result.fold(
           (failure) {
             debugPrint('Session recovery failed: ${failure.message}');
+            if (!mounted) return;
             final user = _repository.currentUser;
             if (user != null) {
               state = AuthState(
@@ -71,6 +72,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
             }
           },
           (user) {
+            if (!mounted) return;
             if (user != null) {
               state = AuthState(
                 status: AuthStatus.authenticated,
@@ -82,6 +84,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
           },
         );
       } else {
+        if (!mounted) return;
         final user = _repository.currentUser;
         if (user != null) {
           state = AuthState(
@@ -95,11 +98,13 @@ class AuthNotifier extends StateNotifier<AuthState> {
     } else {
       // Remember me disabled: do not restore persisted session on cold start
       await _repository.clearPersistedSession();
+      if (!mounted) return;
       state = const AuthState(status: AuthStatus.unauthenticated);
     }
 
     // Listen for auth state changes (login, logout, token refresh)
-    _repository.authStateChanges.listen((data) {
+    _authSubscription = _repository.authStateChanges.listen((data) {
+      if (!mounted) return;
       final event = data.event;
       final session = data.session;
 
@@ -146,6 +151,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
       password,
       rememberMe: rememberMe,
     );
+    if (!mounted) return;
     result.fold(
       (failure) {
         state = state.copyWith(
@@ -193,6 +199,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
       password,
       rememberMe: rememberMe,
     );
+    if (!mounted) return;
     result.fold(
       (failure) {
         state = state.copyWith(
@@ -217,6 +224,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
   Future<void> signInWithGoogle({bool rememberMe = true}) async {
     state = state.copyWith(isLoading: true, status: AuthStatus.loading, errorMessage: null);
     final result = await _repository.signInWithGoogle(rememberMe: rememberMe);
+    if (!mounted) return;
     result.fold(
       (failure) {
         state = state.copyWith(
@@ -236,6 +244,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
   Future<void> signOut() async {
     state = state.copyWith(isLoading: true, status: AuthStatus.loading);
     final result = await _repository.signOut();
+    if (!mounted) return;
     result.fold(
       (failure) {
         state = state.copyWith(
@@ -254,6 +263,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
   Future<void> resetPassword(String email) async {
     state = state.copyWith(isLoading: true, errorMessage: null);
     final result = await _repository.resetPassword(email);
+    if (!mounted) return;
     result.fold(
       (failure) {
         state = state.copyWith(

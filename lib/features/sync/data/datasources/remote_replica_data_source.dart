@@ -200,3 +200,29 @@ class RemoteReplicaDataSourceImpl implements RemoteReplicaDataSource {
     }
   }
 }
+
+/// No-op fallback implementation of [RemoteReplicaDataSource] for offline or uninitialized environments.
+class NoOpRemoteReplicaDataSource implements RemoteReplicaDataSource {
+  const NoOpRemoteReplicaDataSource();
+
+  @override
+  Future<List<RemoteFileEntry>> listRemoteFiles(String userId) async => [];
+
+  @override
+  Future<Uint8List> downloadFile(String path) async => Uint8List(0);
+
+  @override
+  Future<List<Map<String, dynamic>>> fetchReceipts(String userId) async => [];
+
+  @override
+  Future<List<Map<String, dynamic>>> fetchAssets(String userId) async => [];
+
+  @override
+  Future<List<Map<String, dynamic>>> fetchBoxes(String userId) async => [];
+
+  @override
+  Future<List<Map<String, dynamic>>> fetchInvoices(String userId) async => [];
+
+  @override
+  Future<List<Map<String, dynamic>>> fetchTaxonomies(String userId) async => [];
+}

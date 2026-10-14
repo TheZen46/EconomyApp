@@ -8,7 +8,6 @@ import 'package:t_aidy/features/receipt_scanning/domain/entities/receipt.dart';
 import 'package:t_aidy/features/boxes/data/models/box_model.dart';
 import 'package:t_aidy/features/boxes/data/providers/boxes_provider.dart';
 import 'package:t_aidy/features/settings/presentation/pages/settings_page.dart';
-import 'package:t_aidy/core/financial/tax_shield_provider.dart';
 
 class _FakeBoxesNotifier extends BoxesNotifier {
   _FakeBoxesNotifier([List<BoxModel>? initial]) {

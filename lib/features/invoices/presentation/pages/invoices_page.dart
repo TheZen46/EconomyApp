@@ -10,6 +10,7 @@ import '../../../../core/theme/app_theme.dart';
 import '../../../../core/services/export_service.dart';
 import '../../data/models/invoice_model.dart';
 import '../../data/providers/invoices_provider.dart';
+import '../../domain/invoice_filter_engine.dart';
 import '../../../receipt_scanning/presentation/providers/receipt_provider.dart';
 import '../widgets/create_invoice_sheet.dart';
 
@@ -127,7 +128,6 @@ class _InvoicesPageState extends ConsumerState<InvoicesPage> {
   @override
   Widget build(BuildContext context) {
     final invoices = ref.watch(invoicesProvider);
-    final notifier = ref.watch(invoicesProvider.notifier);
     final isPrivacy = ref.watch(privacyModeProvider);
 
     final theme = Theme.of(context);
@@ -139,22 +139,19 @@ class _InvoicesPageState extends ConsumerState<InvoicesPage> {
     final borderCol = colorScheme.outline;
     final accent = colorScheme.primary;
 
-    // Filter invoices
-    final filtered = invoices.where((i) {
-      if (_statusFilter != 'All' && i.status != _statusFilter) return false;
-      if (_searchQuery.isNotEmpty) {
-        final q = _searchQuery.toLowerCase();
-        return i.clientName.toLowerCase().contains(q) ||
-               i.invoiceNumber.toLowerCase().contains(q);
-      }
-      return true;
-    }).toList();
+    // Filter invoices using pure domain engine
+    final filtered = InvoiceFilterEngine.filterInvoices(
+      invoices,
+      statusFilter: _statusFilter,
+      searchQuery: _searchQuery,
+    );
 
-    // Stats
-    final totalOutstanding = notifier.totalOutstanding;
-    final totalOverdue = notifier.totalOverdue;
-    final totalDraft = notifier.totalDraft;
-    final awaitingCount = invoices.where((i) => i.status == InvoiceStatus.sent || i.status == InvoiceStatus.overdue).length;
+    // Derive summary metrics using pure domain engine
+    final stats = InvoiceFilterEngine.computeSummaryStats(invoices);
+    final totalOutstanding = stats.totalOutstanding;
+    final totalOverdue = stats.totalOverdue;
+    final totalDraft = stats.totalDraft;
+    final awaitingCount = stats.awaitingCount;
 
     return Scaffold(
       backgroundColor: bg,
@@ -507,46 +504,28 @@ class _InvoicesPageState extends ConsumerState<InvoicesPage> {
   }
 
   Widget _buildChart(List<InvoiceModel> invoices, ColorScheme colorScheme, Color accent, bool isPrivacy) {
-    final now = DateTime.now();
-    final months = List.generate(6, (i) => DateTime(now.year, now.month - 5 + i));
+    final velocities = InvoiceFilterEngine.computeMonthlyVelocity(invoices);
 
-    List<BarChartGroupData> groups = [];
-    for (int i = 0; i < 6; i++) {
-      final m = months[i];
-      double invoiced = 0;
-      double settled = 0;
-      
-      for (final inv in invoices) {
-        if (inv.issuedDate.year == m.year && inv.issuedDate.month == m.month) {
-          if (inv.status != InvoiceStatus.draft) {
-            invoiced += inv.amount;
-          }
-          if (inv.status == InvoiceStatus.settled) {
-            settled += inv.amount;
-          }
-        }
-      }
-      
-      groups.add(
-        BarChartGroupData(
-          x: i,
-          barRods: [
-            BarChartRodData(
-              toY: invoiced,
-              color: colorScheme.outline.withOpacity(0.5),
-              width: 12,
-              borderRadius: BorderRadius.circular(4),
-            ),
-            BarChartRodData(
-              toY: settled,
-              color: accent,
-              width: 12,
-              borderRadius: BorderRadius.circular(4),
-            ),
-          ],
-        ),
+    final groups = List.generate(velocities.length, (i) {
+      final v = velocities[i];
+      return BarChartGroupData(
+        x: i,
+        barRods: [
+          BarChartRodData(
+            toY: v.invoicedAmount,
+            color: colorScheme.outline.withOpacity(0.5),
+            width: 12,
+            borderRadius: BorderRadius.circular(4),
+          ),
+          BarChartRodData(
+            toY: v.settledAmount,
+            color: accent,
+            width: 12,
+            borderRadius: BorderRadius.circular(4),
+          ),
+        ],
       );
-    }
+    });
 
     return BarChart(
       BarChartData(
@@ -573,8 +552,9 @@ class _InvoicesPageState extends ConsumerState<InvoicesPage> {
             sideTitles: SideTitles(
               showTitles: true,
               getTitlesWidget: (val, meta) {
-                if (val < 0 || val >= 6) return const SizedBox.shrink();
-                final date = months[val.toInt()];
+                final idx = val.toInt();
+                if (idx < 0 || idx >= velocities.length) return const SizedBox.shrink();
+                final date = velocities[idx].month;
                 return Text(DateFormat.MMM().format(date), style: GoogleFonts.spaceGrotesk(fontSize: 10, color: colorScheme.onSurfaceVariant));
               },
               reservedSize: 22,
