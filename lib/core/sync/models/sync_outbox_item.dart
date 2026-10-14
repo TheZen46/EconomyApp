@@ -1,4 +1,4 @@
-﻿import 'package:hive/hive.dart';
+import 'package:hive/hive.dart';
 
 part 'sync_outbox_item_adapter.dart';
 
@@ -6,6 +6,8 @@ part 'sync_outbox_item_adapter.dart';
 /// Stored by the hand-written [SyncOutboxItemAdapter] (typeId 12) in sync_outbox_item_adapter.dart.
 /// Intentionally not annotated with @HiveType: generating the adapter would drop the
 /// compatibility handling for records written by earlier versions.
+///
+/// Full operational lifecycle and retry state machine are documented in `docs/contracts/sync_outbox_contract.md`.
 class SyncOutboxItem extends HiveObject {
   @HiveField(0)
   final String id;

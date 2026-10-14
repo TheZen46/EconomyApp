@@ -335,7 +335,9 @@ class SyncManager {
     }
   }
 
-  /// Conflict Resolution (Last-Write-Wins with monotonic version validation)
+  /// Conflict Resolution (Last-Write-Wins with monotonic version validation).
+  ///
+  /// Full conflict resolution contract is documented in `docs/contracts/sync_outbox_contract.md`.
   bool _shouldRemoteOverwrite(DateTime? localUpdated, int localVersion, DateTime? remoteUpdated, int remoteVersion) {
     return shouldRemoteOverwrite(
       localUpdatedAt: localUpdated,
@@ -346,6 +348,8 @@ class SyncManager {
   }
 
   /// Remote table for [entityType], or null when the type is not synchronized.
+  ///
+  /// Mappings between local entity DTOs and Supabase SQL tables are documented in `docs/contracts/remote_schema_mapping.md`.
   String? _mapEntityTypeToTable(String entityType) {
     switch (entityType) {
       case 'receipt':

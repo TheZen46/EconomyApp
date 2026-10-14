@@ -102,7 +102,8 @@ void main() async {
     return;
   }
 
-  // Register all Hive adapters
+  // Register all Hive adapters.
+  // Authoritative typeId assignments and restrictions are documented in `docs/contracts/hive_registry.md`.
   Hive.registerAdapter(ReceiptModelAdapter());
   Hive.registerAdapter(ReceiptItemModelAdapter());
   Hive.registerAdapter(DashboardWidgetTypeAdapter());
