@@ -731,16 +731,17 @@ class _SettingsPanelWidgetState extends ConsumerState<SettingsPanelWidget> {
                                         final vlmService = ref.read(vlmEngineServiceProvider);
                                         final results = await vlmService.benchmarkInference();
                                         if (!context.mounted) return;
-                                        final grammarMs = results['grammar_latency_ms'];
-                                        final memoryMs = results['memory_latency_ms'];
+                                        final grammarMs = results['grammar_latency_ms'] ?? results['grammar_gen_ms'] ?? 0;
+                                        final memoryMs = results['memory_latency_ms'] ?? results['memory_retrieval_ms'] ?? 0;
                                         final tokensPerSec = results['tokens_per_sec'];
+                                        final status = results['status'] ?? 'N/A';
                                         await showDialog(
                                           context: context,
                                           builder: (ctx) => AlertDialog(
                                             backgroundColor: colorScheme.surface,
                                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                                             title: Text(
-                                              'Inference Benchmark Results',
+                                              'Local Engine Benchmark',
                                               style: GoogleFonts.spaceGrotesk(color: fgCol, fontWeight: FontWeight.bold, fontSize: 18),
                                             ),
                                             content: Column(
@@ -751,7 +752,12 @@ class _SettingsPanelWidgetState extends ConsumerState<SettingsPanelWidget> {
                                                 const SizedBox(height: 8),
                                                 Text('Episodic Retrieval: ${memoryMs}ms', style: GoogleFonts.jetBrainsMono(fontSize: 13, color: fgCol)),
                                                 const SizedBox(height: 8),
-                                                Text('Throughput: $tokensPerSec tokens/sec', style: GoogleFonts.jetBrainsMono(fontSize: 13, color: _accent, fontWeight: FontWeight.bold)),
+                                                Text(
+                                                  tokensPerSec != null
+                                                      ? 'Throughput: $tokensPerSec tokens/sec'
+                                                      : 'Throughput: N/A ($status)',
+                                                  style: GoogleFonts.jetBrainsMono(fontSize: 13, color: _accent, fontWeight: FontWeight.bold),
+                                                ),
                                               ],
                                             ),
                                             actions: [

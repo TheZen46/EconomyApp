@@ -12,7 +12,6 @@ import 'package:uuid/uuid.dart';
 
 import '../../../../core/error/failures.dart';
 import '../../../../core/theme/app_theme.dart';
-import '../../../../core/services/telemetry_service.dart';
 import '../providers/receipt_provider.dart';
 import '../../domain/entities/receipt.dart';
 import '../../../settings/presentation/providers/taxonomy_provider.dart';
@@ -31,7 +30,6 @@ class _ScanPageState extends ConsumerState<ScanPage> with SingleTickerProviderSt
   ScanState _scanState = ScanState.idle;
   final ImagePicker _picker = ImagePicker();
   int _lastLatencyMs = 0;
-  double _lastConfidence = 98.6;
   
   // For the hex counter animation
   Timer? _hexTimer;
@@ -223,26 +221,10 @@ class _ScanPageState extends ConsumerState<ScanPage> with SingleTickerProviderSt
           );
         },
         (receipt) {
-          double confidence = 92.0;
-          if (receipt.merchantName.isNotEmpty && receipt.merchantName != 'Unknown') confidence += 3.5;
-          if (receipt.items.isNotEmpty) confidence += 3.0;
-          if (receipt.totalAmount > 0) confidence += 1.4;
-
           setState(() {
             _lastLatencyMs = elapsedMs;
-            _lastConfidence = confidence.clamp(0.0, 99.9);
             _scanState = ScanState.idle;
           });
-
-          try {
-            ref.read(telemetryServiceProvider).recordInferencePerformance(
-              inferenceDurationMs: elapsedMs,
-              preprocessingMs: 15,
-              tokenCount: receipt.items.length * 10,
-              modelId: 'ocr_vlm_pipeline',
-              quantTier: 'hybrid',
-            );
-          } catch (_) {}
 
           context.push('/review', extra: receipt);
         },
@@ -624,23 +606,6 @@ class _ScanPageState extends ConsumerState<ScanPage> with SingleTickerProviderSt
                         ),
                       ),
                     ],
-                  ),
-                ),
-                const SizedBox(height: 6),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: Colors.black.withOpacity(0.6),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: accentColor.withOpacity(0.5)),
-                  ),
-                  child: Text(
-                    'OCR CONFIDENCE: ${_lastConfidence.toStringAsFixed(1)}%',
-                    style: GoogleFonts.jetBrainsMono(
-                      color: textColor,
-                      fontSize: 10,
-                      fontWeight: FontWeight.bold,
-                    ),
                   ),
                 ),
               ],

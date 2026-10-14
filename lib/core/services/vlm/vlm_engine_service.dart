@@ -25,8 +25,12 @@ class VlmEngineService implements AIService {
   final EpisodicMemoryService _episodicMemory = EpisodicMemoryService();
   bool _isInitialized = false;
   Future<bool>? _initializing;
+  String? _loadedModelId;
+  String? _loadedQuantTier;
 
   bool get isModelLoaded => _isInitialized && _worker.isReady;
+  String? get loadedModelId => _loadedModelId;
+  String? get loadedQuantTier => _loadedQuantTier;
 
   /// Initializes the persistent VLM worker isolate and episodic memory.
   ///
@@ -130,10 +134,19 @@ class VlmEngineService implements AIService {
       );
 
       _isInitialized = success;
+      if (success) {
+        _loadedModelId = _inferModelId(resolvedModelPath);
+        _loadedQuantTier = _inferQuantTier(resolvedModelPath);
+      } else {
+        _loadedModelId = null;
+        _loadedQuantTier = null;
+      }
       return success;
     } catch (e) {
       debugPrint('VlmEngineService: Initialization exception: $e');
       _isInitialized = false;
+      _loadedModelId = null;
+      _loadedQuantTier = null;
       return false;
     }
   }
@@ -221,8 +234,8 @@ class VlmEngineService implements AIService {
         inferenceDurationMs: inferStopwatch.elapsedMilliseconds,
         preprocessingMs: preStopwatch.elapsedMilliseconds,
         tokenCount: estimatedTokens,
-        modelId: 'Qwen2-VL-2B-Instruct',
-        quantTier: 'Q4_K_M',
+        modelId: _loadedModelId ?? 'unknown_vlm',
+        quantTier: _loadedQuantTier ?? 'unknown',
         backend: Platform.isWindows ? 'AVX2/OpenMP' : 'NEON/SIMD',
         customMetadata: {
           'image_size_bytes': imageBytes.length,
@@ -333,7 +346,7 @@ class VlmEngineService implements AIService {
   }
 
   /// Benchmarks the local inference pipeline measuring grammar compilation,
-  /// episodic memory retrieval, and worker isolate throughput.
+  /// episodic memory retrieval, and, if the model is loaded, worker isolate throughput.
   Future<Map<String, dynamic>> benchmarkInference() async {
     final stopwatch = Stopwatch()..start();
 
@@ -349,17 +362,42 @@ class VlmEngineService implements AIService {
     await GrammarGenerator.generateAndSave(directory: grammarsDir);
     grammarStopwatch.stop();
 
+    double? tokensPerSec;
+    int? inferenceLatencyMs;
+
+    // 3. Measure real inference throughput if worker isolate is ready
+    if (_worker.isReady) {
+      try {
+        final inferStopwatch = Stopwatch()..start();
+        final dummyPpm = Uint8List.fromList([
+          0x50, 0x36, 0x0A, 0x31, 0x20, 0x31, 0x0A, 0x32, 0x35, 0x35, 0x0A, 0x00, 0x00, 0x00
+        ]);
+        final output = await _worker.processImage(imageBytes: dummyPpm);
+        inferStopwatch.stop();
+        inferenceLatencyMs = inferStopwatch.elapsedMilliseconds;
+        if (output != null && output.isNotEmpty && inferenceLatencyMs > 0) {
+          final estimatedTokens = (output.length / 3.8).ceil();
+          tokensPerSec = double.parse((estimatedTokens / (inferenceLatencyMs / 1000.0)).toStringAsFixed(1));
+        }
+      } catch (e) {
+        debugPrint('VlmEngineService.benchmarkInference: inference benchmark notice: $e');
+      }
+    }
+
     stopwatch.stop();
     final totalMs = stopwatch.elapsedMilliseconds;
-    final tokensPerSec = totalMs > 0 ? (1000.0 / totalMs * 2.5).clamp(18.0, 65.0) : 32.0;
 
     return {
       'latency_ms': totalMs,
+      'memory_latency_ms': memStopwatch.elapsedMilliseconds,
       'memory_retrieval_ms': memStopwatch.elapsedMilliseconds,
+      'grammar_latency_ms': grammarStopwatch.elapsedMilliseconds,
       'grammar_gen_ms': grammarStopwatch.elapsedMilliseconds,
-      'tokens_per_sec': double.parse(tokensPerSec.toStringAsFixed(1)),
+      'inference_latency_ms': inferenceLatencyMs,
+      'tokens_per_sec': tokensPerSec,
       'is_worker_ready': _worker.isReady,
-      'status': 'PASSED',
+      'loaded_model_id': _loadedModelId,
+      'status': _worker.isReady ? (tokensPerSec != null ? 'PASSED' : 'INFERENCE_FAILED') : 'MODEL_NOT_LOADED',
     };
   }
 
@@ -367,5 +405,31 @@ class VlmEngineService implements AIService {
   Future<void> unload() async {
     await _worker.stop();
     _isInitialized = false;
+    _loadedModelId = null;
+    _loadedQuantTier = null;
+  }
+
+  static String _inferModelId(String path) {
+    final lower = path.toLowerCase();
+    if (lower.contains('qwen2_vl') || lower.contains('qwen2-vl')) {
+      return 'Qwen2-VL-2B-Instruct';
+    } else if (lower.contains('smolvlm')) {
+      return 'SmolVLM-500M-Instruct';
+    } else if (lower.contains('mock_model')) {
+      return 'Mock-VLM-Model';
+    }
+    final segments = File(path).uri.pathSegments;
+    final fileName = segments.isNotEmpty ? segments.last : path;
+    return fileName.replaceAll(RegExp(r'\.gguf$', caseSensitive: false), '');
+  }
+
+  static String _inferQuantTier(String path) {
+    final upper = path.toUpperCase();
+    if (upper.contains('Q4_K_M')) return 'Q4_K_M';
+    if (upper.contains('Q4_K_S')) return 'Q4_K_S';
+    if (upper.contains('Q8_0')) return 'Q8_0';
+    if (upper.contains('F16')) return 'F16';
+    if (upper.contains('Q5_K_M')) return 'Q5_K_M';
+    return 'unknown';
   }
 }
