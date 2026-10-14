@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:hive/hive.dart';
+import 'package:uuid/uuid.dart';
 
 part 'invoice_model_adapter.dart';
 
@@ -79,7 +80,7 @@ class InvoiceModel {
 
   factory InvoiceModel.fromJson(Map<String, dynamic> json) {
     return InvoiceModel(
-      id: json['id']?.toString() ?? DateTime.now().millisecondsSinceEpoch.toString(),
+      id: json['id']?.toString() ?? const Uuid().v4(),
       invoiceNumber: json['invoice_number'] as String? ?? 'INV-001',
       clientName: json['client_name'] as String? ?? 'Unknown Client',
       amount: (json['amount'] as num?)?.toDouble() ?? 0.0,

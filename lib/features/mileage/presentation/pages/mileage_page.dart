@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import 'package:uuid/uuid.dart';
 import '../../../../core/constants/app_constants.dart';
 import 'package:t_aidy/features/mileage/domain/mileage_engine.dart';
 import '../../../boxes/data/providers/boxes_provider.dart';
@@ -442,7 +443,7 @@ class _MileagePageState extends ConsumerState<MileagePage> {
                     final dist = double.tryParse(distCtrl.text) ?? 0.0;
                     if (dist > 0 && purposeCtrl.text.isNotEmpty) {
                       final newTrip = MileageTrip(
-                        id: 'trip-${DateTime.now().millisecondsSinceEpoch}',
+                        id: const Uuid().v4(),
                         date: DateTime.now(),
                         purpose: purposeCtrl.text,
                         startLocation: startCtrl.text.isEmpty ? 'Origin' : startCtrl.text,

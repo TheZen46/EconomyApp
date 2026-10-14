@@ -3,6 +3,9 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hive/hive.dart';
 import 'package:t_aidy/core/services/hive_migration_service.dart';
+import 'package:t_aidy/features/boxes/data/models/box_model.dart';
+import 'package:t_aidy/features/evault/data/models/asset_model.dart';
+import 'package:t_aidy/features/receipt_scanning/data/models/receipt_model.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -25,6 +28,10 @@ void main() {
         return tempDir.path;
       },
     );
+    if (!Hive.isAdapterRegistered(0)) Hive.registerAdapter(ReceiptModelAdapter());
+    if (!Hive.isAdapterRegistered(1)) Hive.registerAdapter(ReceiptItemModelAdapter());
+    if (!Hive.isAdapterRegistered(7)) Hive.registerAdapter(AssetModelAdapter());
+    if (!Hive.isAdapterRegistered(10)) Hive.registerAdapter(BoxModelAdapter());
   });
 
   tearDown(() async {
@@ -102,7 +109,7 @@ void main() {
       expect(await backupFile.exists(), isTrue);
     });
 
-    test('schema version tracking and runSchemaMigrations upgrades from v1 to v2', () async {
+    test('schema version tracking and runSchemaMigrations upgrades from v1 to v3', () async {
       final settingsBox = await Hive.openBox('test_settings_box');
 
       // Uninitialized schema version defaults to 1
@@ -111,14 +118,110 @@ void main() {
       // Run migrations
       await HiveMigrationService.runSchemaMigrations(settingsBox);
 
-      // Schema version should now be 2
-      expect(HiveMigrationService.getSchemaVersion(settingsBox), 2);
-      expect(settingsBox.get('activeBoxId'), 'main');
+      // Schema version should now be 3
+      expect(HiveMigrationService.getSchemaVersion(settingsBox), 3);
+      expect(settingsBox.get('activeBoxId'), isNotNull);
 
       // Running again should be idempotent
       await HiveMigrationService.runSchemaMigrations(settingsBox);
-      expect(HiveMigrationService.getSchemaVersion(settingsBox), 2);
+      expect(HiveMigrationService.getSchemaVersion(settingsBox), 3);
 
+      await settingsBox.close();
+    });
+
+    test('v2 to v3 migration rewrites legacy main box to UUID and updates receipt and asset references', () async {
+      final settingsBox = await Hive.openBox('settings');
+      await settingsBox.put(HiveMigrationService.schemaVersionKey, 2);
+      await settingsBox.put('activeBoxId', 'main');
+
+      // 1. Seed legacy 'main' box
+      final boxesBox = await Hive.openBox<BoxModel>('boxes');
+      final legacyBox = BoxModel(
+        id: 'main',
+        name: 'Main Life',
+        budget: 500,
+        spent: 100,
+        currency: 'USD',
+        color: 0xFF000000,
+      );
+      await boxesBox.put('main', legacyBox);
+
+      // 2. Seed legacy receipt with non-UUID id and 'main' boxId
+      final receiptsBox = await Hive.openBox<ReceiptModel>('receipts');
+      const legacyReceiptId = 'vlm_1728900000000';
+      final legacyReceipt = ReceiptModel(
+        id: legacyReceiptId,
+        merchantName: 'Acme Corp',
+        date: DateTime(2026, 1, 1),
+        totalAmount: 42.50,
+        currency: 'USD',
+        boxId: 'main',
+        items: [
+          ReceiptItemModel(
+            description: 'Item 1',
+            unitPrice: 42.50,
+            quantity: 1,
+            totalPrice: 42.50,
+            boxId: 'main',
+          ),
+        ],
+      );
+      await receiptsBox.put(legacyReceiptId, legacyReceipt);
+
+      // 3. Seed asset referencing legacy receipt id
+      final assetsBox = await Hive.openBox<AssetModel>('assets');
+      final legacyAsset = AssetModel(
+        id: 'asset_1',
+        name: 'Laptop',
+        purchaseDate: DateTime(2026, 1, 1),
+        warrantyMonths: 24,
+        price: 42.50,
+        receiptImagePath: '',
+        merchantName: 'Acme Corp',
+        receiptId: legacyReceiptId,
+      );
+      await assetsBox.put('asset_1', legacyAsset);
+
+      // Close boxes so migration opens them via openBoxSafe
+      await boxesBox.close();
+      await receiptsBox.close();
+      await assetsBox.close();
+
+      // Run migration
+      await HiveMigrationService.runSchemaMigrations(settingsBox);
+
+      expect(HiveMigrationService.getSchemaVersion(settingsBox), 3);
+      final defaultBoxId = settingsBox.get('default_box_id') as String;
+      expect(defaultBoxId, isNotEmpty);
+      expect(defaultBoxId, isNot('main'));
+      expect(settingsBox.get('activeBoxId'), defaultBoxId);
+
+      // Verify boxes
+      final reopenedBoxes = await Hive.openBox<BoxModel>('boxes');
+      expect(reopenedBoxes.get('main'), isNull);
+      final migratedBox = reopenedBoxes.get(defaultBoxId);
+      expect(migratedBox, isNotNull);
+      expect(migratedBox!.id, defaultBoxId);
+      expect(migratedBox.name, 'Main Life');
+
+      // Verify receipts
+      final reopenedReceipts = await Hive.openBox<ReceiptModel>('receipts');
+      expect(reopenedReceipts.get(legacyReceiptId), isNull);
+      expect(reopenedReceipts.length, 1);
+      final migratedReceipt = reopenedReceipts.values.first;
+      expect(migratedReceipt.boxId, defaultBoxId);
+      expect(migratedReceipt.items.first.boxId, defaultBoxId);
+      expect(RegExp(r'^[0-9a-fA-F-]{36}$').hasMatch(migratedReceipt.id), isTrue);
+
+      // Verify assets
+      final reopenedAssets = await Hive.openBox<AssetModel>('assets');
+      final migratedAsset = reopenedAssets.get('asset_1');
+      expect(migratedAsset, isNotNull);
+      expect(migratedAsset!.receiptId, migratedReceipt.id);
+
+      await reopenedBoxes.close();
+      await reopenedReceipts.close();
+      await reopenedAssets.close();
       await settingsBox.close();
     });
   });

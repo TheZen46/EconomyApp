@@ -51,6 +51,22 @@ class BoxesNotifier extends StateNotifier<List<BoxModel>> {
   }
 
   BoxModel? findById(String id) {
+    if (id == 'main' || id.isEmpty) {
+      return state.firstWhere(
+        (b) => b.id == 'main',
+        orElse: () => state.isNotEmpty
+            ? state.first
+            : BoxModel(
+                id: 'main',
+                name: 'Out of the Box (Main Life)',
+                budget: 0,
+                spent: 0,
+                currency: 'USD',
+                color: Colors.black.value,
+                icon: 'Home',
+              ),
+      );
+    }
     try {
       return state.firstWhere((b) => b.id == id);
     } catch (_) {

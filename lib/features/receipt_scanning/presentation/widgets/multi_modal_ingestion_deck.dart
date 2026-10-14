@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
+import 'package:uuid/uuid.dart';
 
 import 'package:t_aidy/features/receipt_scanning/domain/usecases/bayesian_categorizer_engine.dart';
 import 'package:t_aidy/features/receipt_scanning/domain/usecases/voice_dictation_engine.dart';
@@ -676,7 +677,7 @@ class _MultiModalIngestionDeckState extends ConsumerState<MultiModalIngestionDec
             onPressed: () {
               final grandTotal = double.tryParse(_totalAmountController.text) ?? 0.0;
               final newReceipt = Receipt(
-                id: 'rec_${DateTime.now().millisecondsSinceEpoch}',
+                id: const Uuid().v4(),
                 merchantName: _merchantController.text.isNotEmpty ? _merchantController.text : 'Merchant',
                 totalAmount: grandTotal,
                 currency: 'USD',

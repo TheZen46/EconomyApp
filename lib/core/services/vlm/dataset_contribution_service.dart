@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:uuid/uuid.dart';
 import '../../privacy/pii_scrubber_service.dart';
 import '../../../features/receipt_scanning/domain/entities/receipt.dart';
 
@@ -89,7 +90,7 @@ class DatasetContributionService {
 
       // 3. Format as HuggingFace multi-turn chat template
       final record = {
-        'id': 'contrib_${DateTime.now().millisecondsSinceEpoch}',
+        'id': const Uuid().v4(),
         'source': 'user_verified_ground_truth',
         'created_at': DateTime.now().toUtc().toIso8601String(),
         'image_ref': imageIdentifier,

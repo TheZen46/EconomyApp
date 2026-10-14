@@ -1,4 +1,5 @@
 import 'package:hive/hive.dart';
+import 'package:uuid/uuid.dart';
 import '../../domain/entities/receipt.dart';
 
 part 'receipt_model_adapter.dart';
@@ -102,7 +103,7 @@ class ReceiptModel extends HiveObject {
         [];
 
     return ReceiptModel(
-      id: json['id'] as String? ?? DateTime.now().millisecondsSinceEpoch.toString(),
+      id: json['id'] as String? ?? const Uuid().v4(),
       merchantName: merchantName,
       date: DateTime.tryParse(dateStr) ?? DateTime.now(),
       totalAmount: totalAmount,
@@ -356,6 +357,40 @@ class ReceiptItemModel {
       'deleted_at': deletedAt?.toUtc().toIso8601String(),
       'version': version,
     };
+  }
+
+  ReceiptItemModel copyWith({
+    String? description,
+    double? unitPrice,
+    int? quantity,
+    double? totalPrice,
+    String? category,
+    String? necessity,
+    String? mainCategory,
+    String? subCategory,
+    bool? isAsset,
+    String? boxId,
+    bool? isUserCorrected,
+    double? confidenceScore,
+    DateTime? deletedAt,
+    int? version,
+  }) {
+    return ReceiptItemModel(
+      description: description ?? this.description,
+      unitPrice: unitPrice ?? this.unitPrice,
+      quantity: quantity ?? this.quantity,
+      totalPrice: totalPrice ?? this.totalPrice,
+      category: category ?? this.category,
+      necessity: necessity ?? this.necessity,
+      mainCategory: mainCategory ?? this.mainCategory,
+      subCategory: subCategory ?? this.subCategory,
+      isAsset: isAsset ?? this.isAsset,
+      boxId: boxId ?? this.boxId,
+      isUserCorrected: isUserCorrected ?? this.isUserCorrected,
+      confidenceScore: confidenceScore ?? this.confidenceScore,
+      deletedAt: deletedAt ?? this.deletedAt,
+      version: version ?? this.version,
+    );
   }
 
   ReceiptItem toEntity() {

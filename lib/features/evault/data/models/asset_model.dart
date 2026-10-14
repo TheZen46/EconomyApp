@@ -1,4 +1,5 @@
 import 'package:hive/hive.dart';
+import 'package:uuid/uuid.dart';
 
 part 'asset_model_adapter.dart';
 
@@ -67,7 +68,7 @@ class AssetModel {
 
   factory AssetModel.fromJson(Map<String, dynamic> json) {
     return AssetModel(
-      id: json['id']?.toString() ?? DateTime.now().millisecondsSinceEpoch.toString(),
+      id: json['id']?.toString() ?? const Uuid().v4(),
       name: json['name'] as String? ?? 'Protected Item',
       purchaseDate: json['purchase_date'] != null
           ? (DateTime.tryParse(json['purchase_date'].toString()) ?? DateTime.now())

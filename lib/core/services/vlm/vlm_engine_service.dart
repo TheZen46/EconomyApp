@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:dartz/dartz.dart';
 import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:uuid/uuid.dart';
 
 import '../../../features/receipt_scanning/data/models/receipt_model.dart';
 import '../../../features/receipt_scanning/domain/entities/receipt.dart';
@@ -298,7 +299,7 @@ class VlmEngineService implements AIService {
     }).toList();
 
     return ReceiptModel(
-      id: 'vlm_${DateTime.now().millisecondsSinceEpoch}',
+      id: const Uuid().v4(),
       merchantName: merchant,
       merchantAddress: address,
       vatNumber: vat,

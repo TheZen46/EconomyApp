@@ -3,6 +3,11 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:uuid/uuid.dart';
+
+import '../../features/boxes/data/models/box_model.dart';
+import '../../features/evault/data/models/asset_model.dart';
+import '../../features/receipt_scanning/data/models/receipt_model.dart';
 
 // ── Exception Types ──────────────────────────────────────────────────────────
 
@@ -45,7 +50,7 @@ class SchemaCorruptionException implements Exception {
 /// **No destructive operation is ever performed automatically.**
 class HiveMigrationService {
   /// Current target schema version of the database.
-  static const int currentSchemaVersion = 2;
+  static const int currentSchemaVersion = 3;
 
   /// Hive settings key used to persist the active schema version.
   static const String schemaVersionKey = 'schema_version';
@@ -141,6 +146,13 @@ class HiveMigrationService {
       await setSchemaVersion(settingsBox, 2);
     }
 
+    // Migration from v2 to v3:
+    // Rewrites non-unique identifiers ('main' box, millisecond timestamps) and updates references
+    if (currentVersion < 3) {
+      await _migrateV2ToV3(settingsBox, cipher);
+      await setSchemaVersion(settingsBox, 3);
+    }
+
     debugPrint(
       'HiveMigrationService: Successfully completed migrations to v$currentSchemaVersion.',
     );
@@ -151,6 +163,132 @@ class HiveMigrationService {
     // Ensure default activeBox is initialized
     if (!settingsBox.containsKey('activeBoxId')) {
       await settingsBox.put('activeBoxId', 'main');
+    }
+  }
+
+  static Future<void> _migrateV2ToV3(Box settingsBox, HiveCipher? cipher) async {
+    debugPrint('HiveMigrationService: Running migration v2 -> v3 (UUID entity migration & reference rewrite)...');
+
+    String defaultBoxId = settingsBox.get('default_box_id') as String? ?? '';
+    if (defaultBoxId.isEmpty) {
+      defaultBoxId = const Uuid().v4();
+      await settingsBox.put('default_box_id', defaultBoxId);
+    }
+
+    // 1. Migrate Boxes: if legacy 'main' box exists, assign user-specific UUID
+    try {
+      final boxesBox = await openBoxSafe<BoxModel>('boxes', encryptionCipher: cipher);
+      final legacyMainBox = boxesBox.get('main');
+      if (legacyMainBox != null) {
+        final migratedBox = BoxModel(
+          id: defaultBoxId,
+          name: legacyMainBox.name,
+          budget: legacyMainBox.budget,
+          spent: legacyMainBox.spent,
+          currency: legacyMainBox.currency,
+          color: legacyMainBox.color,
+          icon: legacyMainBox.icon,
+          autoCategorize: legacyMainBox.autoCategorize,
+          keywords: legacyMainBox.keywords,
+          isPrivate: legacyMainBox.isPrivate,
+          userId: legacyMainBox.userId,
+          createdAt: legacyMainBox.createdAt,
+          updatedAt: DateTime.now(),
+          version: legacyMainBox.version + 1,
+        );
+        await boxesBox.put(defaultBoxId, migratedBox);
+        await boxesBox.delete('main');
+      }
+    } catch (e) {
+      debugPrint('HiveMigrationService: Boxes v3 migration notice: $e');
+    }
+
+    // 2. Migrate Receipts & Items: rewrite 'main' boxId to defaultBoxId and ensure UUID receipt ids
+    final Map<String, String> receiptIdMap = {};
+    try {
+      final receiptsBox = await openBoxSafe<ReceiptModel>('receipts', encryptionCipher: cipher);
+      final receiptsToPut = <ReceiptModel>[];
+      final keysToDelete = <dynamic>[];
+
+      for (final key in receiptsBox.keys) {
+        final receipt = receiptsBox.get(key);
+        if (receipt == null) continue;
+
+        bool updated = false;
+        String newId = receipt.id;
+        final isUuid = RegExp(r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$').hasMatch(receipt.id);
+        if (!isUuid) {
+          newId = const Uuid().v4();
+          receiptIdMap[receipt.id] = newId;
+          keysToDelete.add(key);
+          updated = true;
+        }
+
+        String targetBoxId = receipt.boxId ?? defaultBoxId;
+        if (targetBoxId == 'main') {
+          targetBoxId = defaultBoxId;
+          updated = true;
+        }
+
+        final updatedItems = receipt.items.map<ReceiptItemModel>((item) {
+          if (item.boxId == 'main' || item.boxId == null) {
+            updated = true;
+            return item.copyWith(boxId: defaultBoxId);
+          }
+          return item;
+        }).toList();
+
+        if (updated) {
+          receiptsToPut.add(receipt.copyWith(
+            id: newId,
+            boxId: targetBoxId,
+            items: updatedItems,
+          ));
+        }
+      }
+
+      for (final key in keysToDelete) {
+        await receiptsBox.delete(key);
+      }
+      for (final r in receiptsToPut) {
+        await receiptsBox.put(r.id, r);
+      }
+    } catch (e) {
+      debugPrint('HiveMigrationService: Receipts v3 migration notice: $e');
+    }
+
+    // 3. Migrate Assets: update receiptId if referenced receipt was re-keyed
+    try {
+      final assetsBox = await openBoxSafe<AssetModel>('assets', encryptionCipher: cipher);
+      for (final key in assetsBox.keys) {
+        final asset = assetsBox.get(key);
+        if (asset != null && asset.receiptId != null && receiptIdMap.containsKey(asset.receiptId)) {
+          final updatedAsset = AssetModel(
+            id: asset.id,
+            name: asset.name,
+            purchaseDate: asset.purchaseDate,
+            warrantyMonths: asset.warrantyMonths,
+            price: asset.price,
+            receiptImagePath: asset.receiptImagePath,
+            merchantName: asset.merchantName,
+            receiptId: receiptIdMap[asset.receiptId]!,
+            userId: asset.userId,
+            documentPath: asset.documentPath,
+            createdAt: asset.createdAt,
+            updatedAt: DateTime.now(),
+            version: asset.version + 1,
+          );
+          await assetsBox.put(key, updatedAsset);
+        }
+      }
+    } catch (e) {
+      debugPrint('HiveMigrationService: Assets v3 migration notice: $e');
+    }
+
+    // 4. Update activeBoxId in settings if it was 'main'
+    final activeBox = settingsBox.get('activeBoxId');
+    if (activeBox == 'main') {
+      await settingsBox.put('activeBoxId', defaultBoxId);
     }
   }
 

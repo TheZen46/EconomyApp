@@ -1,4 +1,5 @@
 import 'package:hive/hive.dart';
+import 'package:uuid/uuid.dart';
 
 part 'box_model_adapter.dart';
 
@@ -73,7 +74,7 @@ class BoxModel extends HiveObject {
     final colorVal = json['color_hex'] ?? json['color'];
     final iconVal = json['icon_identifier'] ?? json['icon'];
     return BoxModel(
-      id: json['id']?.toString() ?? DateTime.now().millisecondsSinceEpoch.toString(),
+      id: json['id']?.toString() ?? const Uuid().v4(),
       name: json['name'] as String? ?? 'Untitled Box',
       budget: (json['budget'] as num?)?.toDouble() ?? 0.0,
       spent: (json['spent'] as num?)?.toDouble() ?? 0.0,

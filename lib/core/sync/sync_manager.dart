@@ -156,8 +156,11 @@ class SyncManager {
             'updated_at': DateTime.now().toUtc().toIso8601String(),
           }).eq('id', item.entityId).eq('user_id', userId);
         } else {
-          // Insert / Update (Upsert)
-          await supabase.from(table).upsert(payload);
+          // Insert / Update (Upsert) with tenant-scoped conflict target
+          await supabase.from(table).upsert(
+            payload,
+            onConflict: table == 'user_profiles' ? 'id' : 'user_id, id',
+          );
         }
 
         await outboxService.markCompleted(item.id);
