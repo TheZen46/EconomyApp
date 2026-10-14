@@ -40,6 +40,12 @@ struct llama_context;
 struct llama_grammar;
 struct clip_ctx;
 struct clip_image_u8;
+struct clip_image_f32 {
+    int nx;
+    int ny;
+    float* data;
+    size_t size;
+};
 
 typedef int32_t llama_pos;
 typedef int32_t llama_token;
@@ -204,6 +210,22 @@ extern "C" {
     void llama_grammar_free(llama_grammar* grammar) {
         if (grammar) delete reinterpret_cast<int*>(grammar);
     }
+    clip_ctx* clip_model_load(const char* fname, int verbosity) {
+        if (!fname) return nullptr;
+        return reinterpret_cast<clip_ctx*>(new int(123));
+    }
+    void clip_free(clip_ctx* ctx) {
+        if (ctx) delete reinterpret_cast<int*>(ctx);
+    }
+    bool clip_image_encode(clip_ctx* ctx, int n_threads, clip_image_f32* img, float* vec) {
+        return ctx != nullptr && vec != nullptr;
+    }
+    int clip_n_patches(const clip_ctx* ctx) {
+        return 64;
+    }
+    int clip_n_mmproj_embd(const clip_ctx* ctx) {
+        return 1024;
+    }
 }
 #endif
 
@@ -281,6 +303,7 @@ static std::string build_composite_prompt(
 static std::string execute_grammar_constrained_sampling(
     receipt_engine_t* engine,
     const receipt::DecodedImage& image,
+    const std::vector<float>& vision_tensor,
     const std::string& prompt,
     receipt_token_callback_t callback = nullptr,
     void* user_data = nullptr
@@ -305,6 +328,55 @@ static std::string execute_grammar_constrained_sampling(
 
     // If native llama model pointer is loaded into memory, execute the full autoregressive decode loop:
     if (engine->model && engine->ctx) {
+        // 1. Multimodal Path: Encode image into CLIP embeddings and evaluate into llama context before text
+        int n_image_tokens = 0;
+        std::vector<float> image_embeddings;
+        bool has_vision = (!vision_tensor.empty() || image.isValid());
+
+        if (has_vision && engine->clip_context) {
+            int n_patches = clip_n_patches(engine->clip_context);
+            int n_embd = clip_n_mmproj_embd(engine->clip_context);
+            if (n_patches <= 0) n_patches = 64;
+            if (n_embd <= 0) n_embd = 1024;
+            n_image_tokens = n_patches;
+            image_embeddings.resize(n_patches * n_embd, 0.0f);
+
+            clip_image_f32 f32_img = {};
+            f32_img.nx = image.width;
+            f32_img.ny = image.height;
+            f32_img.data = const_cast<float*>(vision_tensor.data());
+            f32_img.size = vision_tensor.size();
+
+            bool encoded = clip_image_encode(
+                engine->clip_context,
+                engine->n_threads,
+                &f32_img,
+                image_embeddings.data()
+            );
+            if (!encoded) {
+                set_error(engine, "clip_image_encode failed to project vision embeddings");
+                return "";
+            }
+
+            // Ingest image embeddings into context KV-cache before text tokens
+            llama_batch img_batch = llama_batch_init(n_image_tokens, n_embd, 1);
+            img_batch.n_tokens = n_image_tokens;
+            for (int i = 0; i < n_image_tokens; ++i) {
+                img_batch.pos[i] = i;
+                img_batch.n_seq_id[i] = 1;
+                img_batch.seq_id[i][0] = 0;
+                img_batch.logits[i] = 0;
+            }
+            img_batch.embd = image_embeddings.data();
+
+            if (llama_decode(engine->ctx, img_batch) != 0) {
+                llama_batch_free(img_batch);
+                set_error(engine, "llama_decode failed during multimodal image embedding evaluation");
+                return "";
+            }
+            llama_batch_free(img_batch);
+        }
+
         std::vector<llama_token> prompt_tokens(engine->n_ctx);
         int n_prompt = llama_tokenize(
             engine->model,
@@ -324,24 +396,26 @@ static std::string execute_grammar_constrained_sampling(
 
         // If prefix was a miss, allocate paged KV blocks and register in cache
         if (!prefix_hit && engine->kv_cache) {
-            size_t blocks_needed = (n_prompt + receipt::KV_BLOCK_SIZE - 1) / receipt::KV_BLOCK_SIZE;
+            size_t total_prompt_tokens = n_image_tokens + n_prompt;
+            size_t blocks_needed = (total_prompt_tokens + receipt::KV_BLOCK_SIZE - 1) / receipt::KV_BLOCK_SIZE;
             std::vector<int> allocated_blocks;
             for (size_t b = 0; b < blocks_needed; ++b) {
                 int bid = engine->kv_cache->allocate_block();
                 if (bid >= 0) allocated_blocks.push_back(bid);
             }
             if (!allocated_blocks.empty()) {
-                engine->kv_cache->register_prefix_cache(prompt_hash, allocated_blocks, n_prompt);
+                engine->kv_cache->register_prefix_cache(prompt_hash, allocated_blocks, total_prompt_tokens);
             }
         }
 
         // Initialize batch
         llama_batch batch = llama_batch_init(std::max(n_prompt, 512), 0, 1);
 
-        // Feed prompt tokens into batch
+        // Feed prompt tokens into batch offset by vision tokens
+        int prompt_offset = n_image_tokens;
         for (int i = 0; i < n_prompt; ++i) {
             batch.token[i] = prompt_tokens[i];
-            batch.pos[i] = i;
+            batch.pos[i] = prompt_offset + i;
             batch.n_seq_id[i] = 1;
             batch.seq_id[i][0] = 0;
             batch.logits[i] = (i == n_prompt - 1) ? 1 : 0; // Request logits on last prompt token
@@ -365,7 +439,7 @@ static std::string execute_grammar_constrained_sampling(
         generated_json.reserve(2048);
 
         const int max_tokens = 1536;
-        int n_cur = n_prompt;
+        int n_cur = prompt_offset + n_prompt;
         const int n_vocab = llama_n_vocab(engine->model);
 
         // Autoregressive generation loop
@@ -638,9 +712,22 @@ RECEIPT_ENGINE_API receipt_engine_t* receipt_engine_init(
         }
     }
 
+    // 2b. Load Multimodal Projector (mmproj/CLIP) if specified
+    if (!engine->mmproj_path.empty()) {
+        std::ifstream mpf(engine->mmproj_path);
+        if (mpf.good()) {
+            mpf.close();
+            engine->clip_context = clip_model_load(engine->mmproj_path.c_str(), 1);
+        }
+    }
+
     // An engine without a model and context cannot produce output; report failure
     // to the caller instead of handing out a handle that claims to be ready.
     if (!engine->model || !engine->ctx) {
+        if (engine->clip_context) {
+            clip_free(engine->clip_context);
+            engine->clip_context = nullptr;
+        }
         if (engine->ctx) {
             llama_free(engine->ctx);
         }
@@ -673,6 +760,10 @@ RECEIPT_ENGINE_API void receipt_engine_free(receipt_engine_t* engine) {
         std::lock_guard<std::mutex> lock(engine->engine_mutex);
         engine->is_initialized = false;
 
+        if (engine->clip_context) {
+            clip_free(engine->clip_context);
+            engine->clip_context = nullptr;
+        }
         if (engine->ctx) {
             llama_free(engine->ctx);
             engine->ctx = nullptr;
@@ -775,7 +866,9 @@ RECEIPT_ENGINE_API int receipt_engine_process_image(
     );
 
     // 4. Autoregressive Decoding with GBNF Constrained Sampling
-    std::string json_result = execute_grammar_constrained_sampling(engine, processed, prompt, nullptr, nullptr);
+    std::string json_result = execute_grammar_constrained_sampling(
+        engine, processed, normalized_vision_tensor, prompt, nullptr, nullptr
+    );
 
     if (json_result.empty()) {
         // Generation failed; execute_grammar_constrained_sampling recorded the reason.
@@ -832,12 +925,18 @@ RECEIPT_ENGINE_API int receipt_engine_process_image_streaming(
     decoded.data.clear();
     decoded.data.shrink_to_fit();
 
-    // 2. Prompt Assembly & Inference
+    // 2. Multimodal CLIP Vision Normalization
+    std::vector<float> normalized_vision_tensor;
+    receipt::ImagePreprocessor::normalizeForClip(processed, normalized_vision_tensor, true);
+
+    // 3. Prompt Assembly & Inference
     std::string prompt = build_composite_prompt(
         few_shot_context, system_prompt, engine->default_system_prompt
     );
 
-    std::string generated = execute_grammar_constrained_sampling(engine, processed, prompt, callback, user_data);
+    std::string generated = execute_grammar_constrained_sampling(
+        engine, processed, normalized_vision_tensor, prompt, callback, user_data
+    );
     if (generated.empty()) {
         // Generation failed; execute_grammar_constrained_sampling recorded the reason.
         return -6;

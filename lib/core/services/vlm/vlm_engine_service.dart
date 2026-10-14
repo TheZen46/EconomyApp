@@ -93,7 +93,7 @@ class VlmEngineService implements AIService {
         }
       }
 
-      if (resolvedModelPath.isEmpty) {
+      if (resolvedModelPath.isEmpty || !await File(resolvedModelPath).exists()) {
         debugPrint('VlmEngineService: No GGUF model found on disk.');
         return false;
       }

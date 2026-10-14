@@ -200,12 +200,24 @@ class VlmFfiBindings {
           lib = DynamicLibrary.process();
         }
       } else if (Platform.isLinux) {
-        lib = DynamicLibrary.open('libreceipt_engine.so');
+        try {
+          lib = DynamicLibrary.open('libreceipt_engine.so');
+        } catch (_) {
+          try {
+            lib = DynamicLibrary.open('lib/libreceipt_engine.so');
+          } catch (_) {
+            lib = DynamicLibrary.process();
+          }
+        }
       } else if (Platform.isMacOS || Platform.isIOS) {
         try {
           lib = DynamicLibrary.open('libreceipt_engine.dylib');
         } catch (_) {
-          lib = DynamicLibrary.process();
+          try {
+            lib = DynamicLibrary.open('receipt_engine.framework/receipt_engine');
+          } catch (_) {
+            lib = DynamicLibrary.process();
+          }
         }
       } else {
         return null;

@@ -265,6 +265,16 @@ class _TAIdyAppState extends ConsumerState<TAIdyApp> {
         await llmService.initialize();
         if (mounted) ref.read(isLlmLoadedProvider.notifier).state = llmService.isModelLoaded;
       });
+      await _startupTask('VLM readiness initialization', () async {
+        final vlmService = ref.read(vlmEngineServiceProvider);
+        final vlmSuccess = await vlmService.initialize();
+        if (mounted) {
+          ref.read(isVlmReadyProvider.notifier).state = vlmSuccess;
+          if (vlmSuccess) {
+            ref.read(isLlmLoadedProvider.notifier).state = true;
+          }
+        }
+      });
       await _startupTask('SyncManager creation', () async {
         if (mounted) ref.read(syncManagerProvider);
       });

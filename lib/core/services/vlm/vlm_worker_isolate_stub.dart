@@ -1,8 +1,10 @@
-﻿import 'dart:async';
+import 'dart:async';
 import 'package:flutter/foundation.dart';
 
 /// Web / Unsupported platform stub for VlmWorkerIsolate.
 class VlmWorkerIsolate {
+  VlmWorkerIsolate({@visibleForTesting dynamic entryPoint});
+
   bool get isReady => false;
 
   bool get isBusy => false;

@@ -93,9 +93,10 @@ bool ImagePreprocessor::decodeImage(
             while (p < end && (*p == ' ' || *p == '\t' || *p == '\r' || *p == '\n')) p++;
         }
         int w = 0, h = 0, maxval = 0;
-        if (p < end && sscanf(p, "%d %d %d", &w, &h, &maxval) == 3 && maxval == 255 && w > 0 && h > 0) {
-            while (p < end && *p != '\n') p++;
-            if (p < end && *p == '\n') p++;
+        int n_read = 0;
+        if (p < end && sscanf(p, "%d %d %d%n", &w, &h, &maxval, &n_read) == 3 && maxval == 255 && w > 0 && h > 0 && n_read > 0) {
+            p += n_read;
+            if (p < end && (*p == '\n' || *p == ' ' || *p == '\r' || *p == '\t')) p++;
             size_t header_len = p - reinterpret_cast<const char*>(compressed_data);
             size_t expected_bytes = static_cast<size_t>(w) * h * 3;
             if (compressed_len >= header_len + expected_bytes && w <= MAX_DIMENSION && h <= MAX_DIMENSION) {
@@ -109,6 +110,9 @@ bool ImagePreprocessor::decodeImage(
     }
 
     // Attempt decoding via vendored stb_image (JPEG, PNG, BMP)
+    int width = 0;
+    int height = 0;
+    int channels = 0;
     unsigned char* decoded = stbi_load_from_memory(
         compressed_data,
         static_cast<int>(compressed_len),
