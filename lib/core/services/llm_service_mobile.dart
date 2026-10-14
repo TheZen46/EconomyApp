@@ -10,6 +10,7 @@ import 'package:path_provider/path_provider.dart';
 import '../../features/receipt_scanning/domain/entities/receipt.dart';
 import '../error/failures.dart';
 import 'ai_service.dart';
+import 'ai_backend_registry.dart';
 import 'llm_receipt_mapper.dart';
 import '../../core/constants/taxonomy_constants.dart';
 import '../utils/json_parser_utils.dart';
@@ -21,6 +22,22 @@ class LLMService implements AIService {
   String? _modelPath;
 
   bool get isModelLoaded => _isModelLoaded;
+
+  @override
+  AiBackendDescriptor get descriptor => AiBackendDescriptor(
+        id: 'on_device_llm',
+        name: 'On-Device LLM (Legacy)',
+        modelIdentifier: _modelPath ?? 'gemma-2b-it.Q4_K_M.gguf',
+        version: '1.2.0',
+        privacyClass: AiPrivacyClass.onDevice,
+        capabilities: const {
+          AiCapability.textExtraction,
+          AiCapability.structuredJson,
+          AiCapability.lineItemParsing,
+        },
+        isReady: _isModelLoaded,
+        notReadyReason: _isModelLoaded ? null : 'Model weights not loaded.',
+      );
 
   Future<void> initialize() async {
     try {
@@ -53,6 +70,7 @@ class LLMService implements AIService {
     if (!_isModelLoaded || _modelPath == null) return const Left(CacheFailure());
 
     try {
+      final stopwatch = Stopwatch()..start();
       // 1. OCR (uses platform channels — must stay on main isolate)
       final text = await extractTextFromImage(imagePath);
       if (text.trim().isEmpty) {
@@ -104,7 +122,17 @@ $text
         return const Left(AIProcessingFailure('Failed to parse AI output'));
       }
 
-      return Right(LlmReceiptMapper.map(data, imagePath));
+      final receipt = LlmReceiptMapper.map(data, imagePath);
+      final provenance = ExtractionProvenance(
+        backendId: descriptor.id,
+        modelIdentifier: descriptor.modelIdentifier,
+        version: descriptor.version,
+        privacyClass: descriptor.privacyClass,
+        confidence: 0.85,
+        extractedAt: DateTime.now().toUtc(),
+        latencyMs: stopwatch.elapsedMilliseconds,
+      );
+      return Right(receipt.copyWith(provenance: provenance));
     } catch (e) {
       debugPrint('LLM Extract Error: $e');
       return const Left(AIProcessingFailure('Failed to parse AI output'));

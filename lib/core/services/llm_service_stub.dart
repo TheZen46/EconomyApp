@@ -3,10 +3,26 @@ import 'package:dartz/dartz.dart';
 import '../../features/receipt_scanning/domain/entities/receipt.dart';
 import '../error/failures.dart';
 import 'ai_service.dart';
+import 'ai_backend_registry.dart';
 import '../../core/constants/taxonomy_constants.dart';
 
 class LLMService implements AIService {
   bool get isModelLoaded => false;
+
+  @override
+  AiBackendDescriptor get descriptor => const AiBackendDescriptor(
+        id: 'on_device_llm',
+        name: 'OCR Engine (ML Kit)',
+        modelIdentifier: 'unsupported_web_stub',
+        version: '1.2.0',
+        privacyClass: AiPrivacyClass.onDevice,
+        capabilities: {
+          AiCapability.textExtraction,
+          AiCapability.structuredJson,
+        },
+        isReady: false,
+        notReadyReason: 'On-device LLM not supported on web.',
+      );
 
   Future<void> initialize() async {}
 

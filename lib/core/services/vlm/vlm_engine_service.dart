@@ -11,6 +11,7 @@ import '../../constants/taxonomy_constants.dart';
 import '../../error/failures.dart';
 import '../../data_contracts/ai_receipt_parser.dart';
 import '../ai_service.dart';
+import '../ai_backend_registry.dart';
 import '../telemetry_service.dart';
 import 'episodic_memory_service.dart';
 import 'grammar_generator.dart';
@@ -40,6 +41,22 @@ class VlmEngineService implements AIService {
   bool get isModelLoaded => _isInitialized && _worker.isReady;
   String? get loadedModelId => _loadedModelId;
   String? get loadedQuantTier => _loadedQuantTier;
+
+  @override
+  AiBackendDescriptor get descriptor => AiBackendDescriptor(
+        id: 'on_device_vlm',
+        name: 'VLM Engine (Qwen2-VL)',
+        modelIdentifier: _loadedModelId ?? 'Qwen2-VL-2B-Instruct',
+        version: '2.0.0',
+        privacyClass: AiPrivacyClass.onDevice,
+        capabilities: const {
+          AiCapability.multimodalVision,
+          AiCapability.structuredJson,
+          AiCapability.lineItemParsing,
+        },
+        isReady: isModelLoaded,
+        notReadyReason: isModelLoaded ? null : 'VLM model weights not loaded or isolate not initialized.',
+      );
 
   /// Initializes the persistent VLM worker isolate and episodic memory.
   ///
@@ -260,9 +277,19 @@ class VlmEngineService implements AIService {
         return Left(ParsingFailure('Failed to parse GBNF output: $e', rawJson));
       }
 
-      // 6. Map JSON schema to ReceiptModel entity
+      // 6. Map JSON schema to ReceiptModel entity and attach provenance
       final receiptModel = _mapJsonToReceiptModel(jsonMap, imagePath);
-      return Right(receiptModel.toEntity());
+      final provenance = ExtractionProvenance(
+        backendId: descriptor.id,
+        modelIdentifier: _loadedModelId ?? descriptor.modelIdentifier,
+        version: descriptor.version,
+        privacyClass: descriptor.privacyClass,
+        confidence: 0.95,
+        extractedAt: DateTime.now().toUtc(),
+        latencyMs: totalStopwatch.elapsedMilliseconds,
+      );
+      final entity = receiptModel.toEntity().copyWith(provenance: provenance);
+      return Right(entity);
     } catch (e, stack) {
       debugPrint('VlmEngineService: Processing error: $e');
       unawaited(_telemetryService.recordCrash(

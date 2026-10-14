@@ -1,6 +1,7 @@
 import 'package:freezed_annotation/freezed_annotation.dart';
 import 'package:t_aidy/core/financial/money.dart';
 import 'package:t_aidy/core/financial/price_basis.dart';
+import 'package:t_aidy/core/services/ai_backend_registry.dart';
 
 part 'receipt.freezed.dart';
 
@@ -24,6 +25,7 @@ class Receipt with _$Receipt {
     @Default(false) bool dateUncertain,
     @Default(PriceBasis.gross) PriceBasis priceBasis,
     @Default(false) bool isUserCorrected,
+    ExtractionProvenance? provenance,
   }) = _Receipt;
 
   const Receipt._();

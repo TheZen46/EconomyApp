@@ -4,6 +4,7 @@ import 'package:t_aidy/core/entities/syncable_entity.dart';
 import 'package:t_aidy/core/financial/money.dart';
 import 'package:t_aidy/core/financial/price_basis.dart';
 import 'package:t_aidy/core/data_contracts/remote_dtos.dart';
+import 'package:t_aidy/core/services/ai_backend_registry.dart';
 import '../../domain/entities/receipt.dart';
 
 part 'receipt_model_adapter.dart';
@@ -71,6 +72,9 @@ class ReceiptModel extends HiveObject implements SyncableEntity {
   @HiveField(18)
   final int totalAmountMinor;
 
+  @HiveField(19)
+  final ExtractionProvenance? provenance;
+
   /// Converts internal minor units to an exact fixed-point [Money] instance.
   Money get totalMoney => Money.fromMinorUnits(totalAmountMinor, currency: currency);
 
@@ -93,6 +97,7 @@ class ReceiptModel extends HiveObject implements SyncableEntity {
     this.version = 1,
     this.priceBasis = PriceBasis.gross,
     int? totalAmountMinor,
+    this.provenance,
   }) : totalAmountMinor = totalAmountMinor ?? Money.fromDecimal(totalAmount, currency: currency).cents;
 
   factory ReceiptModel.fromJson(Map<String, dynamic> json) {
@@ -143,6 +148,9 @@ class ReceiptModel extends HiveObject implements SyncableEntity {
       version: (json['version'] as num?)?.toInt() ?? 1,
       priceBasis: PriceBasis.fromString(json['price_basis'] as String?),
       totalAmountMinor: totalAmountMinor,
+      provenance: json['provenance'] is Map
+          ? ExtractionProvenance.fromJson((json['provenance'] as Map).cast<String, dynamic>())
+          : null,
     );
   }
 
@@ -167,6 +175,7 @@ class ReceiptModel extends HiveObject implements SyncableEntity {
       'deleted_at': deletedAt?.toUtc().toIso8601String(),
       'version': version,
       'price_basis': priceBasis.name,
+      if (provenance != null) 'provenance': provenance!.toJson(),
     };
   }
 
@@ -224,6 +233,7 @@ class ReceiptModel extends HiveObject implements SyncableEntity {
       boxId: boxId ?? 'main',
       priceBasis: priceBasis,
       isUserCorrected: isUserCorrected,
+      provenance: provenance,
     );
   }
 
@@ -244,6 +254,7 @@ class ReceiptModel extends HiveObject implements SyncableEntity {
     DateTime? deletedAt,
     int version = 1,
     PriceBasis priceBasis = PriceBasis.gross,
+    ExtractionProvenance? provenance,
   }) {
     return ReceiptModel(
       id: id,
@@ -264,6 +275,7 @@ class ReceiptModel extends HiveObject implements SyncableEntity {
       version: version,
       priceBasis: priceBasis,
       totalAmountMinor: totalMoney.cents,
+      provenance: provenance,
     );
   }
 
@@ -284,6 +296,7 @@ class ReceiptModel extends HiveObject implements SyncableEntity {
       version: version,
       priceBasis: receipt.priceBasis,
       totalAmountMinor: receipt.totalMoney.cents,
+      provenance: receipt.provenance,
     );
   }
 
@@ -306,6 +319,7 @@ class ReceiptModel extends HiveObject implements SyncableEntity {
     int? version,
     PriceBasis? priceBasis,
     int? totalAmountMinor,
+    ExtractionProvenance? provenance,
   }) {
     final effectiveCurrency = currency ?? this.currency;
     return ReceiptModel(
@@ -330,6 +344,7 @@ class ReceiptModel extends HiveObject implements SyncableEntity {
           (totalAmount != null
               ? Money.fromDecimal(totalAmount, currency: effectiveCurrency).cents
               : this.totalAmountMinor),
+      provenance: provenance ?? this.provenance,
     );
   }
 }

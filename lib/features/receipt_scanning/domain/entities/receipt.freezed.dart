@@ -33,6 +33,7 @@ mixin _$Receipt {
   bool get dateUncertain => throw _privateConstructorUsedError;
   PriceBasis get priceBasis => throw _privateConstructorUsedError;
   bool get isUserCorrected => throw _privateConstructorUsedError;
+  ExtractionProvenance? get provenance => throw _privateConstructorUsedError;
 
   @JsonKey(ignore: true)
   $ReceiptCopyWith<Receipt> get copyWith => throw _privateConstructorUsedError;
@@ -57,7 +58,8 @@ abstract class $ReceiptCopyWith<$Res> {
       String? boxId,
       bool dateUncertain,
       PriceBasis priceBasis,
-      bool isUserCorrected});
+      bool isUserCorrected,
+      ExtractionProvenance? provenance});
 }
 
 /// @nodoc
@@ -87,6 +89,7 @@ class _$ReceiptCopyWithImpl<$Res, $Val extends Receipt>
     Object? dateUncertain = null,
     Object? priceBasis = null,
     Object? isUserCorrected = null,
+    Object? provenance = freezed,
   }) {
     return _then(_value.copyWith(
       id: null == id
@@ -145,6 +148,10 @@ class _$ReceiptCopyWithImpl<$Res, $Val extends Receipt>
           ? _value.isUserCorrected
           : isUserCorrected // ignore: cast_nullable_to_non_nullable
               as bool,
+      provenance: freezed == provenance
+          ? _value.provenance
+          : provenance // ignore: cast_nullable_to_non_nullable
+              as ExtractionProvenance?,
     ) as $Val);
   }
 }
@@ -170,7 +177,8 @@ abstract class _$$ReceiptImplCopyWith<$Res> implements $ReceiptCopyWith<$Res> {
       String? boxId,
       bool dateUncertain,
       PriceBasis priceBasis,
-      bool isUserCorrected});
+      bool isUserCorrected,
+      ExtractionProvenance? provenance});
 }
 
 /// @nodoc
@@ -198,6 +206,7 @@ class __$$ReceiptImplCopyWithImpl<$Res>
     Object? dateUncertain = null,
     Object? priceBasis = null,
     Object? isUserCorrected = null,
+    Object? provenance = freezed,
   }) {
     return _then(_$ReceiptImpl(
       id: null == id
@@ -256,6 +265,10 @@ class __$$ReceiptImplCopyWithImpl<$Res>
           ? _value.isUserCorrected
           : isUserCorrected // ignore: cast_nullable_to_non_nullable
               as bool,
+      provenance: freezed == provenance
+          ? _value.provenance
+          : provenance // ignore: cast_nullable_to_non_nullable
+              as ExtractionProvenance?,
     ));
   }
 }
@@ -277,7 +290,8 @@ class _$ReceiptImpl extends _Receipt {
       this.boxId = 'main',
       this.dateUncertain = false,
       this.priceBasis = PriceBasis.gross,
-      this.isUserCorrected = false})
+      this.isUserCorrected = false,
+      this.provenance})
       : _items = items,
         super._();
 
@@ -327,10 +341,12 @@ class _$ReceiptImpl extends _Receipt {
   @override
   @JsonKey()
   final bool isUserCorrected;
+  @override
+  final ExtractionProvenance? provenance;
 
   @override
   String toString() {
-    return 'Receipt(id: $id, merchantName: $merchantName, vatNumber: $vatNumber, merchantAddress: $merchantAddress, date: $date, time: $time, totalAmount: $totalAmount, currency: $currency, items: $items, imagePath: $imagePath, boxId: $boxId, dateUncertain: $dateUncertain, priceBasis: $priceBasis, isUserCorrected: $isUserCorrected)';
+    return 'Receipt(id: $id, merchantName: $merchantName, vatNumber: $vatNumber, merchantAddress: $merchantAddress, date: $date, time: $time, totalAmount: $totalAmount, currency: $currency, items: $items, imagePath: $imagePath, boxId: $boxId, dateUncertain: $dateUncertain, priceBasis: $priceBasis, isUserCorrected: $isUserCorrected, provenance: $provenance)';
   }
 
   @override
@@ -360,7 +376,9 @@ class _$ReceiptImpl extends _Receipt {
             (identical(other.priceBasis, priceBasis) ||
                 other.priceBasis == priceBasis) &&
             (identical(other.isUserCorrected, isUserCorrected) ||
-                other.isUserCorrected == isUserCorrected));
+                other.isUserCorrected == isUserCorrected) &&
+            (identical(other.provenance, provenance) ||
+                other.provenance == provenance));
   }
 
   @override
@@ -379,7 +397,8 @@ class _$ReceiptImpl extends _Receipt {
       boxId,
       dateUncertain,
       priceBasis,
-      isUserCorrected);
+      isUserCorrected,
+      provenance);
 
   @JsonKey(ignore: true)
   @override
@@ -403,7 +422,8 @@ abstract class _Receipt extends Receipt {
       final String? boxId,
       final bool dateUncertain,
       final PriceBasis priceBasis,
-      final bool isUserCorrected}) = _$ReceiptImpl;
+      final bool isUserCorrected,
+      final ExtractionProvenance? provenance}) = _$ReceiptImpl;
   const _Receipt._() : super._();
 
   @override
@@ -435,6 +455,8 @@ abstract class _Receipt extends Receipt {
   PriceBasis get priceBasis;
   @override
   bool get isUserCorrected;
+  @override
+  ExtractionProvenance? get provenance;
   @override
   @JsonKey(ignore: true)
   _$$ReceiptImplCopyWith<_$ReceiptImpl> get copyWith =>

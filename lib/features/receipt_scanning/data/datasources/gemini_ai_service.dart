@@ -5,6 +5,7 @@ import 'package:image_picker/image_picker.dart' show XFile;
 
 import '../../../../core/error/failures.dart';
 import '../../../../core/services/ai_service.dart';
+import '../../../../core/services/ai_backend_registry.dart';
 import '../../../../core/utils/json_parser_utils.dart';
 import '../../domain/entities/receipt.dart';
 import '../../../../core/data_contracts/ai_receipt_parser.dart';
@@ -32,6 +33,24 @@ class GeminiAIService implements AIService {
     );
   }
 
+  @override
+  AiBackendDescriptor get descriptor => AiBackendDescriptor(
+        id: 'cloud_gemini',
+        name: 'Google Gemini',
+        modelIdentifier: modelName,
+        version: '2.5.0',
+        privacyClass: AiPrivacyClass.cloud,
+        capabilities: const {
+          AiCapability.multimodalVision,
+          AiCapability.textExtraction,
+          AiCapability.structuredJson,
+          AiCapability.lineItemParsing,
+          AiCapability.cloudReasoning,
+        },
+        isReady: apiKey.isNotEmpty,
+        notReadyReason: apiKey.isEmpty ? 'Gemini API key is not configured.' : null,
+      );
+
   /// MIME type of an image from its file signature, or null when the format
   /// is not one Gemini accepts (JPEG, PNG, WebP, HEIC/HEIF).
   static String? detectImageMimeType(Uint8List bytes) {
@@ -56,6 +75,7 @@ class GeminiAIService implements AIService {
 
   @override
   Future<Either<Failure, Receipt>> extractReceiptData(String imagePath, {Map<String, Map<String, List<TaxonomyItem>>>? taxonomy}) async {
+    final stopwatch = Stopwatch()..start();
     try {
       // XFile reads files on native platforms and blob URLs on web.
       final Uint8List imageBytes;
@@ -148,8 +168,16 @@ ${taxonomyBuffer.toString()}
           jsonMap,
           imagePath: imagePath,
         );
-
-        return Right(receipt);
+        final provenance = ExtractionProvenance(
+          backendId: descriptor.id,
+          modelIdentifier: descriptor.modelIdentifier,
+          version: descriptor.version,
+          privacyClass: descriptor.privacyClass,
+          confidence: 0.98,
+          extractedAt: DateTime.now().toUtc(),
+          latencyMs: stopwatch.elapsedMilliseconds,
+        );
+        return Right(receipt.copyWith(provenance: provenance));
       } catch (e) {
         debugPrint("Gemini JSON Parse Error: $e");
         if (kDebugMode) debugPrint("Raw Response: ${response.text}");

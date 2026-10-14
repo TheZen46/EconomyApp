@@ -111,7 +111,7 @@ class _SettingsPanelWidgetState extends ConsumerState<SettingsPanelWidget> {
           ref.read(settingsBoxProvider).put('is_dev_mode', true);
         } catch (_) {}
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Developer Mode Unlocked! 🛠️')),
+          const SnackBar(content: Text('Developer Mode Unlocked!')),
         );
       } else if (_devModeClicks > 2) {
         ScaffoldMessenger.of(context).clearSnackBars();
@@ -306,7 +306,7 @@ class _SettingsPanelWidgetState extends ConsumerState<SettingsPanelWidget> {
                                         if (context.mounted) {
                                           ScaffoldMessenger.of(context).showSnackBar(
                                             SnackBar(
-                                              content: Text(authSuccess ? 'Biometrics verified successfully! 🛡️' : 'Biometric verification cancelled.'),
+                                              content: Text(authSuccess ? 'Biometrics verified successfully!' : 'Biometric verification cancelled.'),
                                               backgroundColor: authSuccess ? const Color(0xFF10B981) : const Color(0xFFD4183D),
                                             ),
                                           );
@@ -659,9 +659,13 @@ class _SettingsPanelWidgetState extends ConsumerState<SettingsPanelWidget> {
                             Consumer(builder: (context, ref, _) {
                               final box = ref.watch(settingsBoxProvider);
                               final isEnabled = box.get('enable_gemini_ai', defaultValue: false) as bool;
-                              final isVlmActive = ref.watch(isVlmReadyProvider);
+                              final decision = ref.watch(activeAiDecisionProvider);
                               final apiKeyAsync = ref.watch(geminiApiKeyProvider);
                               final apiKey = apiKeyAsync.valueOrNull ?? '';
+                              final currentPolicy = ref.watch(aiSelectionPolicyProvider);
+
+                              final isCloud = decision.descriptor.isCloud;
+                              final engineDisplayName = decision.descriptor.name;
 
                               return Column(
                                 children: [
@@ -680,8 +684,12 @@ class _SettingsPanelWidgetState extends ConsumerState<SettingsPanelWidget> {
                                               ),
                                               const SizedBox(height: 4),
                                               Text(
-                                                isVlmActive ? 'Qwen2-VL 2B (Local 4-Bit)' : (isEnabled ? 'Gemini 1.5 Flash (Cloud)' : 'ML Kit OCR (Local Hybrid)'),
-                                                style: GoogleFonts.jetBrainsMono(fontSize: 13, color: isVlmActive ? const Color(0xFF10B981) : const Color(0xFF0891B2), fontWeight: FontWeight.bold),
+                                                '$engineDisplayName (${isCloud ? 'Cloud' : 'On-Device'})',
+                                                style: GoogleFonts.jetBrainsMono(
+                                                  fontSize: 13,
+                                                  color: isCloud ? const Color(0xFF0891B2) : const Color(0xFF10B981),
+                                                  fontWeight: FontWeight.bold,
+                                                ),
                                                 overflow: TextOverflow.ellipsis,
                                               ),
                                             ],
@@ -690,9 +698,9 @@ class _SettingsPanelWidgetState extends ConsumerState<SettingsPanelWidget> {
                                         const SizedBox(width: 8),
                                         Builder(builder: (_) {
                                           final String memLabel;
-                                          if (isVlmActive) {
+                                          if (decision.descriptor.id == 'on_device_vlm') {
                                             memLabel = 'VRAM: ~669 MB';
-                                          } else if (isEnabled && apiKey.isNotEmpty) {
+                                          } else if (isCloud) {
                                             memLabel = 'RAM: ~12 MB (Cloud)';
                                           } else {
                                             memLabel = 'RAM: ~38 MB (ML Kit)';
@@ -715,6 +723,32 @@ class _SettingsPanelWidgetState extends ConsumerState<SettingsPanelWidget> {
                                   ),
                                   Divider(color: divider, height: 1, indent: 20, endIndent: 20),
                                   _row(
+                                    label: 'AI Selection Policy',
+                                    subtitle: decision.rationale,
+                                    fgCol: fgCol,
+                                    muted: muted,
+                                    trailing: DropdownButton<AiSelectionPolicy>(
+                                      value: currentPolicy,
+                                      dropdownColor: colorScheme.surface,
+                                      underline: const SizedBox.shrink(),
+                                      style: GoogleFonts.spaceGrotesk(fontSize: 12, color: fgCol),
+                                      items: const [
+                                        DropdownMenuItem(value: AiSelectionPolicy.auto, child: Text('Auto (Privacy-First)')),
+                                        DropdownMenuItem(value: AiSelectionPolicy.onDeviceOnly, child: Text('On-Device Only')),
+                                        DropdownMenuItem(value: AiSelectionPolicy.cloudOnly, child: Text('Cloud Only')),
+                                        DropdownMenuItem(value: AiSelectionPolicy.localHeuristicOnly, child: Text('Heuristic Only')),
+                                      ],
+                                      onChanged: (policy) async {
+                                        if (policy != null) {
+                                          await box.put('ai_selection_policy', policy.toStorageString());
+                                          ref.invalidate(aiServiceProvider);
+                                          setState(() {});
+                                        }
+                                      },
+                                    ),
+                                  ),
+                                  Divider(color: divider, height: 1, indent: 20, endIndent: 20),
+                                  _row(
                                     label: 'Benchmark Local LLM',
                                     subtitle: 'Measure on-device grammar parsing and memory latency',
                                     fgCol: fgCol,
@@ -723,7 +757,7 @@ class _SettingsPanelWidgetState extends ConsumerState<SettingsPanelWidget> {
                                     onTap: () async {
                                       ScaffoldMessenger.of(context).showSnackBar(
                                         const SnackBar(
-                                          content: Text('Benchmarking on-device grammar and memory latency... ⚡'),
+                                          content: Text('Benchmarking on-device grammar and memory latency...'),
                                           duration: Duration(seconds: 1),
                                         ),
                                       );
@@ -779,13 +813,15 @@ class _SettingsPanelWidgetState extends ConsumerState<SettingsPanelWidget> {
                                   Divider(color: divider, height: 1, indent: 20, endIndent: 20),
                                   _row(
                                     label: 'Enable Gemini AI (Cloud Fallback)',
-                                    subtitle: 'Use Google Gemini 1.5 Flash when on-device VLM is disabled',
+                                    subtitle: 'Use Google Gemini when on-device VLM is disabled',
                                     fgCol: fgCol,
                                     muted: muted,
                                     trailing: _FigmaToggle(
                                       value: isEnabled,
-                                      onChanged: (val) {
-                                        box.put('enable_gemini_ai', val);
+                                      onChanged: (val) async {
+                                        await box.put('enable_gemini_ai', val);
+                                        await AiCloudConsent.saveConsent(box, granted: val);
+                                        ref.invalidate(aiServiceProvider);
                                         setState(() {});
                                       },
                                     ),
@@ -1234,7 +1270,7 @@ class _SettingsPanelWidgetState extends ConsumerState<SettingsPanelWidget> {
     try {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Sealing cryptographic audit pack (.zip) with Merkle SHA-256 proofs... 🛡️'),
+          content: Text('Sealing cryptographic audit pack (.zip) with Merkle SHA-256 proofs...'),
           duration: Duration(seconds: 2),
         ),
       );
@@ -1270,7 +1306,7 @@ class _SettingsPanelWidgetState extends ConsumerState<SettingsPanelWidget> {
     try {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Generating zero-knowledge PII-redacted CPA Tax Portal (.html)... 📊'),
+          content: Text('Generating zero-knowledge PII-redacted CPA Tax Portal (.html)...'),
           duration: Duration(seconds: 2),
         ),
       );

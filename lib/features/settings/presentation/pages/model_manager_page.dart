@@ -204,7 +204,7 @@ class _ModelManagerPageState extends ConsumerState<ModelManagerPage> {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('${_selectedModel.name} & Vision Projector Downloaded and SHA-256 Verified! 🧠'),
+            content: Text('${_selectedModel.name} & Vision Projector Downloaded and SHA-256 Verified!'),
             backgroundColor: const Color(0xFF10B981),
           ),
         );
@@ -361,8 +361,8 @@ class _ModelManagerPageState extends ConsumerState<ModelManagerPage> {
                 const SizedBox(height: 4),
                 Text(
                   _isLowMemoryTier
-                      ? '⚡ Low-Memory device. SmolVLM-500M recommended to avoid OOM.'
-                      : '🚀 Standard device. Qwen2-VL 2B fully supported.',
+                      ? 'Low-Memory device. SmolVLM-500M recommended to avoid OOM.'
+                      : 'Standard device. Qwen2-VL 2B fully supported.',
                   style: TextStyle(
                     color: _isLowMemoryTier ? const Color(0xFFF59E0B) : const Color(0xFF10B981),
                     fontSize: 11,

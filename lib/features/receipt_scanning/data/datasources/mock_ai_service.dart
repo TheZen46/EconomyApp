@@ -6,6 +6,7 @@ import 'package:uuid/uuid.dart';
 
 import '../../../../core/error/failures.dart';
 import '../../../../core/services/ai_service.dart';
+import '../../../../core/services/ai_backend_registry.dart';
 import '../../domain/entities/receipt.dart';
 import '../../../../core/constants/taxonomy_constants.dart';
 import '../../../../core/constants/app_constants.dart';
@@ -18,6 +19,20 @@ import '../../../../core/constants/app_constants.dart';
 /// web) or yields nothing usable, it returns [ExtractionUnavailableFailure]
 /// rather than data that was not read from the image.
 class FallbackAIService implements AIService {
+  @override
+  AiBackendDescriptor get descriptor => const AiBackendDescriptor(
+        id: 'local_heuristic',
+        name: 'Local Heuristic / OCR',
+        modelIdentifier: 'mlkit_regex_heuristics',
+        version: '1.0.0',
+        privacyClass: AiPrivacyClass.onDevice,
+        capabilities: {
+          AiCapability.textExtraction,
+          AiCapability.lineItemParsing,
+        },
+        isReady: true,
+        notReadyReason: null,
+      );
   @override
   Future<Either<Failure, Receipt>> extractReceiptData(
     String imagePath, {
@@ -248,6 +263,15 @@ class FallbackAIService implements AIService {
               )
             ],
       imagePath: imagePath,
+      provenance: ExtractionProvenance(
+        backendId: descriptor.id,
+        modelIdentifier: descriptor.modelIdentifier,
+        version: descriptor.version,
+        privacyClass: descriptor.privacyClass,
+        confidence: 0.70,
+        extractedAt: DateTime.now().toUtc(),
+        latencyMs: 50,
+      ),
     );
   }
 }

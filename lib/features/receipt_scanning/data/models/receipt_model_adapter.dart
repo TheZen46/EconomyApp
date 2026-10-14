@@ -20,6 +20,10 @@ class ReceiptModelAdapter extends TypeAdapter<ReceiptModel> {
     final totalAmountMinor = fields[18] != null
         ? (fields[18] as num).toInt()
         : Money.fromDecimal(totalAmount, currency: currency).cents;
+    final provenanceMap = fields[19] as Map?;
+    final provenance = provenanceMap != null
+        ? ExtractionProvenance.fromJson(provenanceMap.cast<String, dynamic>())
+        : null;
 
     return ReceiptModel(
       id: fields[0] as String,
@@ -40,13 +44,14 @@ class ReceiptModelAdapter extends TypeAdapter<ReceiptModel> {
       version: (fields[16] as num?)?.toInt() ?? 1,
       priceBasis: PriceBasis.fromString(fields[17] as String?),
       totalAmountMinor: totalAmountMinor,
+      provenance: provenance,
     );
   }
 
   @override
   void write(BinaryWriter writer, ReceiptModel obj) {
     writer
-      ..writeByte(18)
+      ..writeByte(19)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -82,7 +87,9 @@ class ReceiptModelAdapter extends TypeAdapter<ReceiptModel> {
       ..writeByte(17)
       ..write(obj.priceBasis.name)
       ..writeByte(18)
-      ..write(obj.totalAmountMinor);
+      ..write(obj.totalAmountMinor)
+      ..writeByte(19)
+      ..write(obj.provenance?.toJson());
   }
 
   @override

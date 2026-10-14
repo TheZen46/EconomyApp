@@ -35,6 +35,19 @@ import '../../data/datasources/csv_parser_service.dart';
 import '../../../../core/sync/sync_coordinator.dart';
 import '../../../../core/sync/sync_providers.dart';
 import '../../../../core/providers/storage_providers.dart';
+import '../../../../core/services/ai_backend_registry.dart';
+import '../../../../core/constants/taxonomy_constants.dart';
+
+export '../../../../core/services/ai_backend_registry.dart'
+    show
+        AiSelectionPolicy,
+        AiPrivacyClass,
+        AiCapability,
+        ExtractionProvenance,
+        AiCloudConsent,
+        AiBackendDescriptor,
+        BackendSelectionDecision,
+        AiBackendRegistry;
 
 export '../../../../core/providers/storage_providers.dart'
     show
@@ -152,40 +165,106 @@ final geminiApiKeyProvider = FutureProvider<String>((ref) async {
   return await secureStorage.readSecret(SecretKeys.geminiApiKey) ?? '';
 });
 
-/// Resolves the active [AIService] according to user settings and model readiness:
-/// 1. Native on-device VLM engine (if loaded and ready)
-/// 2. Legacy local LLM (if loaded)
-/// 3. Google Gemini Cloud API (if configured and cloud allowed by [NetworkPolicy])
-/// 4. Local heuristic mock extractor (fallback)
-///
-/// **Lifetime:** App-scoped provider.
-/// **Dependencies:** `isVlmReadyProvider`, `vlmEngineServiceProvider`, `isLlmLoadedProvider`, `llmServiceProvider`, `settingsBoxProvider`, `geminiApiKeyProvider`.
-final aiServiceProvider = Provider<AIService>((ref) {
-  // 1. Check Next-Gen On-Device VLM Engine
+/// Internal wrapper ensuring that live Riverpod readiness flags ([isVlmReadyProvider], [isLlmLoadedProvider])
+/// override static service descriptor state dynamically.
+class _DynamicReadyService implements AIService {
+  final AIService _delegate;
+  final bool _isReady;
+  final String? _notReadyReason;
+
+  const _DynamicReadyService(
+    this._delegate, {
+    required bool isReady,
+    String? notReadyReason,
+  })  : _isReady = isReady,
+        _notReadyReason = notReadyReason;
+
+  @override
+  AiBackendDescriptor get descriptor => _delegate.descriptor.copyWith(
+        isReady: _isReady,
+        notReadyReason: _isReady ? null : (_notReadyReason ?? _delegate.descriptor.notReadyReason),
+      );
+
+  @override
+  Future<Either<Failure, Receipt>> extractReceiptData(
+    String imagePath, {
+    Map<String, Map<String, List<TaxonomyItem>>>? taxonomy,
+  }) =>
+      _delegate.extractReceiptData(imagePath, taxonomy: taxonomy);
+}
+
+/// User configured AI backend selection policy (auto, onDeviceOnly, cloudOnly, localHeuristicOnly).
+final aiSelectionPolicyProvider = Provider<AiSelectionPolicy>((ref) {
+  final box = ref.watch(settingsBoxProvider);
+  final raw = box.get('ai_selection_policy') as String?;
+  return AiSelectionPolicy.fromString(raw);
+});
+
+/// Current recorded cloud AI consent state.
+final aiCloudConsentProvider = Provider<AiCloudConsent>((ref) {
+  final box = ref.watch(settingsBoxProvider);
+  return AiCloudConsent.fromBox(box);
+});
+
+/// Central AI backend registry containing registered on-device, cloud, and heuristic engines.
+final aiBackendRegistryProvider = Provider<AiBackendRegistry>((ref) {
+  final registry = AiBackendRegistry();
+
+  // 1. On-device VLM
   final isVlmReady = ref.watch(isVlmReadyProvider);
-  if (isVlmReady) {
-    return ref.watch(vlmEngineServiceProvider);
-  }
+  final vlm = ref.watch(vlmEngineServiceProvider);
+  registry.register(_DynamicReadyService(
+    vlm,
+    isReady: isVlmReady,
+    notReadyReason: isVlmReady ? null : 'VLM weights not loaded or isolate not warm.',
+  ));
 
-  // 2. Check Legacy Local LLM
+  // 2. Legacy on-device LLM
   final isLlmReady = ref.watch(isLlmLoadedProvider);
-  if (isLlmReady) {
-    return ref.watch(llmServiceProvider);
-  }
+  final llm = ref.watch(llmServiceProvider);
+  registry.register(_DynamicReadyService(
+    llm,
+    isReady: isLlmReady,
+    notReadyReason: isLlmReady ? null : 'LLM model weights not loaded.',
+  ));
 
-  // 3. Check Cloud Gemini — read key from async provider (empty string while loading)
+  // 3. Google Gemini Cloud API
   final box = ref.watch(settingsBoxProvider);
   final isEnabled = box.get('enable_gemini_ai', defaultValue: false) as bool;
   final apiKeyAsync = ref.watch(geminiApiKeyProvider);
   final apiKey = apiKeyAsync.valueOrNull ?? '';
-
-  // Isolation mode keeps receipt images on the device.
-  if (isEnabled && apiKey.isNotEmpty && NetworkPolicy.isCloudAllowed(box)) {
-    return GeminiAIService(apiKey, model: box.get(GeminiAIService.modelSettingKey) as String?);
+  if (isEnabled && apiKey.isNotEmpty) {
+    registry.register(GeminiAIService(apiKey, model: box.get(GeminiAIService.modelSettingKey) as String?));
   }
 
-  // 4. Fallback
-  return MockAIService();
+  // 4. Local heuristic fallback
+  registry.register(FallbackAIService());
+
+  return registry;
+});
+
+/// Active AI backend selection decision including rationale, policy, consent, and descriptor.
+final activeAiDecisionProvider = Provider<BackendSelectionDecision>((ref) {
+  final registry = ref.watch(aiBackendRegistryProvider);
+  final policy = ref.watch(aiSelectionPolicyProvider);
+  final consent = ref.watch(aiCloudConsentProvider);
+  final box = ref.watch(settingsBoxProvider);
+  final isCloudAllowed = NetworkPolicy.isCloudAllowed(box);
+
+  return registry.resolve(
+    policy: policy,
+    isCloudAllowed: isCloudAllowed,
+    cloudConsent: consent,
+  );
+});
+
+/// Resolves the active [AIService] according to capability negotiation, policy, readiness, and cloud privacy consent.
+///
+/// **Lifetime:** App-scoped provider.
+/// **Dependencies:** `activeAiDecisionProvider`.
+final aiServiceProvider = Provider<AIService>((ref) {
+  final decision = ref.watch(activeAiDecisionProvider);
+  return decision.service;
 });
 
 
