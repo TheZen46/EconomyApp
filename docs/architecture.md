@@ -305,14 +305,13 @@ undecryptable. No key-escrow or re-keying mechanism exists.
 ```
 
 `<dir>` is the value of `HiveMigrationService.getHiveDirectory()`: the application documents directory
-on mobile and the application support directory on desktop. Hive itself stores boxes in the documents
-directory on every non-web platform, so on desktop the backup step does not find the file
-(`TAIDY-H07`).
+on all non-web platforms, aligning directly with `Hive.initFlutter()` so backups reliably locate box files across both mobile and desktop platforms.
 
 `runSchemaMigrations(Box settingsBox, {HiveCipher? cipher})` reads `schema_version` (default 1) and
-applies ordered migrations up to `currentSchemaVersion` (2). Migration v1 to v2 writes `activeBoxId =
-'main'` when absent. Migrations must be idempotent because the version is written after the migration
-body completes; an interruption re-executes the body.
+applies ordered migrations up to `currentSchemaVersion` (3). Migration v1 to v2 writes `activeBoxId =
+'main'` when absent; migration v2 to v3 upgrades entities to UUID v4 identifiers. Migrations must be
+idempotent because the version is written after the migration body completes; an interruption re-executes
+the body.
 
 ### 5.5 Stores outside Hive
 
@@ -334,7 +333,7 @@ example `signInWithEmailPassword(String email, String password, {bool rememberMe
 `Future<Either<AuthFailure, User?>>`. On success with remember-me enabled, the refresh token and the
 serialized session are additionally written to secure storage.
 
-`AuthNotifier` (state type `AuthState` with `AuthStatus { unknown, authenticated, unauthenticated,
+`AuthNotifier` (which receives `AuthRepository` and manages `AppAuthState` with `AuthStatus { unknown, authenticated, unauthenticated,
 loading }`) restores the session at construction and then follows `onAuthStateChange`:
 
 ```

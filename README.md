@@ -15,10 +15,10 @@ The system pipeline is structured into three primary layers:
 - **Presentation Layer (UI)**: Manages UI rendering and user interactions adhering to the International Klein Blue (IKB) design system with Space Grotesk typography. Features custom shader-painted kinetic visualizers (`KineticSyncProgressBar`), modular customizable widget grids, and zero embedded calculation logic.
 - **Domain & Application Logic Layer**: Serves as the core computational engine. It processes transactions, executes deterministic data transformations, orchestrates AI-assisted optical character recognition (OCR) pipelines, and runs the mutex-locked `SyncEngine` for delta replication.
 - **Data Persistence & Cross-Device Replication Layer**: Governs storage, retrieval, and multi-device parity via a hybrid persistence strategy:
-  - **Hive (NoSQL)**: Provides local, AES-256 encrypted persistence (via the eVault subsystem) delivering low-latency, offline-first operations.
-  - **Cross-Device Sync Engine (`SyncEngine`)**: Downloads a bit-for-bit replica of user files and database entities upon login with delta parity checking, chunk streaming, and exponential backoff retry.
-  - **Supabase**: Handles remote cloud synchronization, multi-device state consistency, and remote backup persistence.
-- **AI & Machine Learning Subsystem**: Dedicated edge inference engine supporting local on-device language models (`llama.cpp`) for privacy-first receipt ingestion, with optional fallback routing to remote inference APIs (e.g., Gemini) when computational constraints require.
+  - **Hive (NoSQL)**: Provides local, AES-256 encrypted persistence (via the eVault and finance subsystems) delivering low-latency, offline-first operations.
+  - **Post-Login Synchronization (`SyncEngine`)**: Fetches remote database entities and receipt attachments upon user login, rehydrating local encrypted Hive storage with retry resilience.
+  - **Supabase**: Handles remote cloud authentication, PostgreSQL row-level security, and cloud storage persistence.
+- **AI & Machine Learning Subsystem**: Multi-tier extraction engine supporting next-gen on-device Vision-Language Models (VLM), legacy on-device LLMs (`llama.cpp`), and remote cloud APIs (e.g. Gemini), with local heuristic fallback.
 
 The standard execution pipeline follows: `User Input / Login -> Router Guard (/sync_progress) -> Delta Sync -> Persistence -> Aggregation & Analytics -> Reactive UI State`.
 
@@ -90,9 +90,9 @@ Future<void> addTransaction(WidgetRef ref, double amount, String category) async
 ## Advanced Architecture & Subsystems
 tAIdy incorporates specialized subsystems to handle critical privacy, synchronization, and runtime performance requirements:
 
-- **Cross-Device File Replication Engine**: Downloads a bit-for-bit mirror of the user's remote files upon login. Uses delta hashing to download only modified chunks, mutex locks to prevent write races, and provides a full-screen kinetic telemetry visualizer with offline continuation fallback.
+- **Initial Replication Engine**: Synchronizes user receipts, boxes, invoices, and assets upon authentication via `SyncEngine`. Pulls missing records, streams binary receipt images from Supabase storage into local storage, and displays real-time progress via a custom kinetic progress visualizer.
 - **Data Privacy Isolation Mode**: A switch in Settings that keeps all data on the device. While it is on, cloud synchronization, uploads (training contribution and Google Drive backup), webhooks, Gemini cloud inference and over-the-air model update checks are skipped through a single network policy (`lib/core/privacy/network_policy.dart`); changes stay queued in the local encrypted Hive boxes until it is turned off. Signing in is not blocked. The dashboard privacy toggle is separate and only masks figures on screen. Receipts in boxes marked private are never uploaded for model training.
-- **Graceful Degradation for AI Inference**: Edge OCR receipt parsing leverages on-device inference (`llama.cpp`). When battery levels or available host memory reach critical thresholds, the inference subsystem automatically re-routes parsing payloads to cloud endpoints (e.g., Gemini / Groq), preventing out-of-memory terminates and conserving battery life.
+- **Tiered AI Inference Fallbacks**: Edge OCR receipt parsing resolves inference backends dynamically: active native VLM engine, legacy on-device LLM (`llama.cpp`), user-configured Gemini cloud endpoint, and an offline heuristic fallback, ensuring reliable receipt capture under diverse hardware constraints.
 
 ## Troubleshooting & Diagnostics
 

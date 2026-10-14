@@ -38,7 +38,7 @@ When switching devices, signing in on a new phone, or launching the desktop app:
    - **Bandwidth**: Real-time throughput (e.g., `3.5 MB/s`).
    - **Estimated Time**: Live completion countdown.
 3. **Deep Link Retention**: If you opened a specific invoice link (e.g., `/invoices` or `/vault`), tAIdy preserves your destination and seamlessly opens it once synchronization completes.
-4. **On-Demand Replication**: Open **Settings** (⚙️) $\rightarrow$ **Sync Center** $\rightarrow$ tap **Replicate Cloud Data** anytime to pull cross-device updates manually.
+4. **On-Demand Replication**: Open **Settings** $\rightarrow$ **Sync Center** $\rightarrow$ tap **Replicate Cloud Data** anytime to pull cross-device updates manually.
 5. **Offline Mode**: If you are traveling or have no cellular reception, tap **Continue in Offline Mode** on the replication screen to immediately access cached receipts and local records without delay.
 
 ## Step 6: Activity Contexts (Boxes) & Invoices

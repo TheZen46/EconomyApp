@@ -1,4 +1,4 @@
-# 📡 The "Strict Contract" Protocol (Webhook API)
+# The Strict Contract Protocol (Webhook API)
 
 EconomyApp bridges data outwards utilizing robust, authenticated Webwebhook Services allowing you to ping isolated Enterprise Resource Systems (ERPs) or simple external analytics databases. The API logic behaves deterministically across "happy" and "sad" path conditions.
 
@@ -50,7 +50,7 @@ curl -X POST https://api.externalsoftware.com/v1/webhooks/receipts \
 #### 4. Response Codes & Payloads
 *The application monitors specifically for exactly formatted REST responses.*
 
-**✅ 200 OK (Success Flow)**
+**200 OK (Success Flow)**
 *The Webhook ping successfully reached the endpoint and external modifications were registered.*
 ```json
 {
@@ -63,7 +63,7 @@ curl -X POST https://api.externalsoftware.com/v1/webhooks/receipts \
 }
 ```
 
-**❌ 401 Unauthorized (Auth Flow)**
+**401 Unauthorized (Auth Flow)**
 *The `X-Auth-Secret` attached to the POST header pipeline did not mathematically align with expected endpoint parameters.*
 ```json
 {
@@ -73,7 +73,7 @@ curl -X POST https://api.externalsoftware.com/v1/webhooks/receipts \
 }
 ```
 
-**❌ 400 Bad Request (Validation Flow)**
+**400 Bad Request (Validation Flow)**
 *Structural elements in the JSON request schema violated constraints.*
 ```json
 {
@@ -85,22 +85,22 @@ curl -X POST https://api.externalsoftware.com/v1/webhooks/receipts \
 
 ---
 
-# ☁️ Cloud Replication & Multi-Device Parity API Contract
+# Cloud Replication and Multi-Device Parity API Contract
 
-The tAIdy Cross-Device File Synchronization Engine interacts with Supabase Storage and PostgreSQL endpoints to guarantee bit-for-bit parity across devices.
+The tAIdy Synchronization Engine interacts with Supabase Storage and PostgreSQL endpoints to synchronize database records and receipt images across devices.
 
 ## 1. Remote File Directory Layout (Supabase Storage: `receipts` bucket)
 
 ```
 receipts/
-└── training_data/
-    └── <userId>/
-        ├── images/
-        │   ├── <receiptId>.jpg
-        │   └── <receiptId>.png
-        └── labels/
-            ├── <receiptId>.json
-            └── <receiptId>_ocr.json
++-- training_data/
+|   +-- <userId>/
+|       +-- images/
+|       |   +-- <receiptId>.jpg
+|       |   +-- <receiptId>.png
+|       +-- labels/
+|           +-- <receiptId>.json
+|           +-- <receiptId>_ocr.json
 ```
 
 ### Storage Security & Row-Level Security (RLS) Policy
@@ -168,10 +168,10 @@ The client sync engine synchronizes structured entities bidirectionally across f
 
 ---
 
-## 3. Delta Parity Algorithm & Checksums
+## 3. Replication Delta Algorithm
 
-1. **Manifest Query**: Client issues parallel queries to `RemoteReplicaDataSource` fetching entity IDs, timestamps, and storage metadata (`size`, `updated_at`, `id`).
-2. **Local Cache Inspection**: The local Hive boxes and file directories compute existing object checksums.
+1. **Manifest Query**: Client issues parallel queries to `RemoteReplicaDataSource` fetching remote entity IDs, timestamps, and storage file metadata (`name`, `updated_at`, `id`).
+2. **Local Cache Inspection**: The local Hive boxes inspect existing entity primary keys to determine missing records.
 3. **Delta Calculation**:
    $$\Delta = \text{RemoteManifest} \setminus \text{LocalManifest}$$
 4. **Hydration & Asset Streaming**: Only items in $\Delta$ are streamed over the network and rehydrated into encrypted local storage.

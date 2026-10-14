@@ -34,6 +34,7 @@ Version 0.1.3 introduces major platform capabilities across machine learning inf
 
 ### 2. Conflict-Free Replicated Data Types (CRDT) Engine
 * Located in: `lib/core/crdt/`
+* *Integration Status*: Foundation models and convergence algorithms implemented; runtime integration with the application sync queue is tracked in issues #41 and #58.
 
 #### How It Works
 * **Hybrid Logical Clocks (`hlc.dart`)**: Combines physical wall-clock timestamps with logical sequence counters to guarantee strict monotonic causal ordering across distributed nodes without requiring central NTP clock synchronization.
@@ -52,9 +53,10 @@ Version 0.1.3 introduces major platform capabilities across machine learning inf
 
 ### 3. Financial Intelligence, Tax Engine & Bank Reconciliation
 * Located in: `lib/core/financial/`, `lib/core/services/tax_compliance_service.dart`, `lib/features/receipt_scanning/data/datasources/`
+* *Integration Status*: Tax compliance and bank reconciliation algorithms active; migration of persisted entity models from double to fixed-point `Money` is tracked in issue #64.
 
 #### How It Works
-* **Fixed-Point Money Mathematics (`money.dart`, `currency_ratio.dart`)**: Replaces standard floating-point representation with integer minor units (cents/micros) to eliminate rounding errors in financial aggregations and currency conversions.
+* **Fixed-Point Money Mathematics (`money.dart`, `currency_ratio.dart`)**: Provides integer minor unit arithmetic (cents/micros) to eliminate floating-point rounding errors in financial computations and currency conversions.
 * **Tax Compliance Engine (`tax_compliance_service.dart`, `tax_engine.dart`)**: Evaluates transaction line items against configurable tax jurisdiction rule sets (VAT, sales tax, deductibility brackets). Automatically assigns deductible percentages based on merchant taxonomy.
 * **Bank Statement Reconciliation (`bank_reconciliation_service.dart`)**: Employs a multi-pass scoring algorithm comparing imported CSV/OFX bank records against scanned receipts. Matches are scored using fuzzy date proximity windows, amount tolerances, and Levenshtein string distance on merchant descriptions.
 
