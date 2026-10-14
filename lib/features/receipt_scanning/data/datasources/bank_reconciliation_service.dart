@@ -96,6 +96,7 @@ class BankReconciliationService {
     int descCol = -1;
     int amountCol = -1;
     int currencyCol = -1;
+    int refCol = -1;
 
     // Detect header columns
     if (rows.isNotEmpty) {
@@ -104,12 +105,14 @@ class BankReconciliationService {
         final col = header[i];
         if (col.contains('date') || col.contains('data') || col.contains('datum')) {
           dateCol = i;
-        } else if (col.contains('desc') || col.contains('payee') || col.contains('merchant') || col.contains('causale') || col.contains('name')) {
+        } else if (col.contains('desc') || col.contains('payee') || col.contains('merchant') || col.contains('causale') || col.contains('name') || col.contains('memo')) {
           descCol = i;
-        } else if (col.contains('amount') || col.contains('importo') || col.contains('betrag') || col.contains('total') || col.contains('sum')) {
+        } else if (col.contains('amount') || col.contains('importo') || col.contains('betrag') || col.contains('total') || col.contains('sum') || col.contains('debit')) {
           amountCol = i;
         } else if (col.contains('curr') || col.contains('valuta')) {
           currencyCol = i;
+        } else if (col.contains('ref') || col.contains('riferimento') || col.contains('trans_id')) {
+          refCol = i;
         }
       }
     }
@@ -124,6 +127,7 @@ class BankReconciliationService {
       String description = 'Bank Transaction #$i';
       double? amount;
       String currency = 'EUR';
+      String? refNum;
 
       if (dateCol != -1 && dateCol < row.length) {
         date = _parseDate(row[dateCol].toString());
@@ -138,6 +142,10 @@ class BankReconciliationService {
       if (currencyCol != -1 && currencyCol < row.length) {
         final curr = row[currencyCol].toString().trim().toUpperCase();
         if (curr.length == 3) currency = curr;
+      }
+      if (refCol != -1 && refCol < row.length) {
+        final val = row[refCol].toString().trim();
+        if (val.isNotEmpty) refNum = val;
       }
 
       // Fallback sequential heuristic if columns weren't detected
@@ -157,11 +165,12 @@ class BankReconciliationService {
 
       if (date != null && amount != null && amount > 0) {
         transactions.add(BankTransaction(
-          id: 'bank_tx_$i',
+          id: refNum ?? 'bank_tx_$i',
           date: date,
           description: description,
           amount: amount,
           currency: currency,
+          referenceNumber: refNum,
         ));
       }
     }

@@ -11,6 +11,7 @@ import 'sync_error_policy.dart';
 import '../privacy/network_policy.dart';
 import '../crdt/receipt_crdt.dart';
 import '../crdt/hlc.dart';
+import '../crdt/crdt_sync_engine.dart';
 import '../data_contracts/remote_dtos.dart';
 import '../../features/boxes/data/models/box_model.dart';
 import '../../features/invoices/data/models/invoice_model.dart';
@@ -33,6 +34,7 @@ class SyncManager {
   final Box settingsBox;
   final VoidCallback? onSyncCompleted;
   final SyncCoordinator coordinator;
+  final CrdtSyncEngine? crdtEngine;
 
   StreamSubscription<List<ConnectivityResult>>? _connectivitySub;
   bool _isSyncing = false;
@@ -47,6 +49,7 @@ class SyncManager {
     required this.settingsBox,
     this.onSyncCompleted,
     SyncCoordinator? coordinator,
+    this.crdtEngine,
   }) : coordinator = coordinator ?? SyncCoordinator.instance {
     _initAutoSync();
   }
@@ -326,6 +329,11 @@ class SyncManager {
       );
 
       await receiptsBox.put(id, mergedModel);
+    }
+
+    final saved = receiptsBox.get(id);
+    if (saved != null) {
+      crdtEngine?.recordReceipt(saved);
     }
   }
 

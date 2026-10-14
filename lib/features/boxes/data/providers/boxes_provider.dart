@@ -37,7 +37,7 @@ class BoxesNotifier extends StateNotifier<List<BoxModel>> {
         id: 'main',
         name: 'Out of the Box (Main Life)',
         budget: 0,
-        spent: 0,
+        spent: _computeSpentForBox('main'),
         currency: 'USD',
         color: Colors.black.value,
         icon: 'Home',
@@ -45,8 +45,37 @@ class BoxesNotifier extends StateNotifier<List<BoxModel>> {
       _box?.put(main.id, main);
       state = [main];
     } else {
-      state = items;
+      state = items.map((b) {
+        final calculated = _computeSpentForBox(b.id);
+        if ((b.spent - calculated).abs() > 0.001) {
+          final updated = b.copyWith(spent: calculated);
+          _box?.put(b.id, updated);
+          return updated;
+        }
+        return b;
+      }).toList();
     }
+  }
+
+  double _computeSpentForBox(String boxId) {
+    final receipts = _receiptsBox?.values;
+    if (receipts == null) return 0.0;
+    double total = 0.0;
+    for (final r in receipts) {
+      if (r.items.isEmpty) {
+        if ((r.boxId ?? 'main') == boxId) {
+          total += r.totalAmount;
+        }
+      } else {
+        for (final item in r.items) {
+          final itemBox = item.boxId ?? r.boxId ?? 'main';
+          if (itemBox == boxId) {
+            total += item.totalPrice ?? (item.unitPrice * item.quantity);
+          }
+        }
+      }
+    }
+    return total;
   }
 
   /// Reloads state from the persistent Hive box to reflect external updates.
@@ -208,6 +237,24 @@ class BoxesNotifier extends StateNotifier<List<BoxModel>> {
       version: box.version + 1,
     );
     await updateBox(id, updated);
+  }
+
+  /// Recomputes and updates the [spent] property for all active boxes
+  /// based on currently persisted receipts.
+  Future<void> recalculateAllBoxesSpent() async {
+    final receipts = _receiptsBox?.values;
+    if (receipts == null) return;
+    for (final b in state) {
+      final calculated = _computeSpentForBox(b.id);
+      if ((b.spent - calculated).abs() > 0.001) {
+        final updated = b.copyWith(
+          spent: calculated,
+          updatedAt: DateTime.now().toUtc(),
+          version: b.version + 1,
+        );
+        await updateBox(b.id, updated);
+      }
+    }
   }
 
   Future<BoxModel> createNew({

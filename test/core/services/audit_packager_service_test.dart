@@ -51,6 +51,9 @@ void main() {
       expect(fileNames.contains('CPA_Review_Portal_2026.html'), true);
       expect(fileNames.contains('merkle_manifest_2026.json'), true);
       expect(fileNames.contains('receipts_ledger_2026.csv'), true);
+      expect(fileNames.contains('tax_vat_report_2026.csv'), true);
+      expect(fileNames.contains('DATEV_Buchungsstapel_2026.csv'), true);
+      expect(fileNames.contains('XBRL_GL_Ledger_2026.xml'), true);
       expect(fileNames.contains('SIGNATURE.sha256'), true);
 
       // Verify signature content

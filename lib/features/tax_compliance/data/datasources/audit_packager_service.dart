@@ -7,9 +7,12 @@ import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 
 import 'package:t_aidy/features/boxes/data/models/box_model.dart';
+import 'package:t_aidy/features/receipt_scanning/data/datasources/tax_report_service.dart';
+import 'package:t_aidy/features/receipt_scanning/data/models/receipt_model.dart';
 import 'package:t_aidy/features/receipt_scanning/domain/entities/receipt.dart';
 import 'accountant_portal_generator.dart';
 import 'audit_dossier_service.dart';
+import 'tax_compliance_service.dart';
 
 /// Service creating cryptographically signed, complete offline audit defense zip bundles.
 class AuditPackagerService {
@@ -57,11 +60,37 @@ class AuditPackagerService {
     final csvBytes = utf8.encode(csvContent);
     archive.addFile(ArchiveFile('receipts_ledger_$fiscalYear.csv', csvBytes.length, csvBytes));
 
-    // 5. Compute Merkle & Package SHA-256 Checksums
+    // 5. Tax & VAT Compliance Summary Report (CSV) via TaxReportService
+    final taxReport = TaxReportService.generateTaxReport(receipts: receipts);
+    final taxCsvContent = TaxReportService.exportToCsv(taxReport);
+    final taxCsvBytes = utf8.encode(taxCsvContent);
+    archive.addFile(ArchiveFile('tax_vat_report_$fiscalYear.csv', taxCsvBytes.length, taxCsvBytes));
+
+    // 6. German DATEV ASCII (Buchungsstapel) & International XBRL-GL via TaxComplianceService
+    final receiptModels = receipts.map((r) => ReceiptModel.fromEntity(r)).toList();
+    final datevContent = TaxComplianceService.exportDatevAscii(
+      receipts: receiptModels,
+      fiscalYear: fiscalYear,
+    );
+    final datevBytes = utf8.encode(datevContent);
+    archive.addFile(ArchiveFile('DATEV_Buchungsstapel_$fiscalYear.csv', datevBytes.length, datevBytes));
+
+    final xbrlContent = TaxComplianceService.exportXbrlGlXml(
+      receipts: receiptModels,
+      fiscalPeriod: 'FY$fiscalYear',
+      entityName: clientName,
+    );
+    final xbrlBytes = utf8.encode(xbrlContent);
+    archive.addFile(ArchiveFile('XBRL_GL_Ledger_$fiscalYear.xml', xbrlBytes.length, xbrlBytes));
+
+    // 7. Compute Merkle & Package SHA-256 Checksums
     final htmlHash = sha256.convert(htmlBytes).toString();
     final portalHash = sha256.convert(portalBytes).toString();
     final manifestHash = sha256.convert(manifestBytes).toString();
     final csvHash = sha256.convert(csvBytes).toString();
+    final taxCsvHash = sha256.convert(taxCsvBytes).toString();
+    final datevHash = sha256.convert(datevBytes).toString();
+    final xbrlHash = sha256.convert(xbrlBytes).toString();
 
     final signatureFileContent = '''=============================================================================
  tAIdy CRYPTOGRAPHIC AUDIT DEFENSE PACK - SHA-256 MANIFEST SIGNATURE
@@ -72,6 +101,9 @@ $htmlHash  Audit_Dossier_$fiscalYear.html
 $portalHash  CPA_Review_Portal_$fiscalYear.html
 $manifestHash  merkle_manifest_$fiscalYear.json
 $csvHash  receipts_ledger_$fiscalYear.csv
+$taxCsvHash  tax_vat_report_$fiscalYear.csv
+$datevHash  DATEV_Buchungsstapel_$fiscalYear.csv
+$xbrlHash  XBRL_GL_Ledger_$fiscalYear.xml
 
 MERKLE TREE ROOT DIGEST:
 ${manifest['merkle_root']}

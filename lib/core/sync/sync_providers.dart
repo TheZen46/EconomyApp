@@ -4,6 +4,7 @@ import 'sync_coordinator.dart';
 import 'sync_manager.dart';
 import '../providers/supabase_providers.dart';
 import '../providers/storage_providers.dart';
+import '../crdt/crdt_providers.dart';
 
 export '../providers/storage_providers.dart' show outboxHiveBoxProvider;
 
@@ -63,6 +64,7 @@ final syncManagerProvider = Provider<SyncManager?>((ref) {
     settingsBox: settings,
     coordinator: coordinator,
     onSyncCompleted: coordinator.notifySyncCompleted,
+    crdtEngine: ref.watch(crdtSyncEngineProvider),
   );
   ref.onDispose(manager.dispose);
   return manager;

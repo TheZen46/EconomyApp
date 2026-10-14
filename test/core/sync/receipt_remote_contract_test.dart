@@ -6,6 +6,7 @@ import 'package:hive/hive.dart';
 import 'package:t_aidy/core/sync/models/sync_outbox_item.dart';
 import 'package:t_aidy/core/sync/outbox_service.dart';
 import 'package:t_aidy/core/sync/sync_manager.dart';
+import 'package:t_aidy/core/crdt/crdt_sync_engine.dart';
 import 'package:t_aidy/features/boxes/data/models/box_model.dart';
 import 'package:t_aidy/features/evault/data/models/asset_model.dart';
 import 'package:t_aidy/features/invoices/data/models/invoice_model.dart';
@@ -190,6 +191,41 @@ void main() {
       manager.dispose();
 
       expect(receiptsBox.get('rec-1')!.items.map((i) => i.description), ['Milk']);
+    });
+
+    test('pull records merged receipts into crdtEngine when provided', () async {
+      final crdtEngine = CrdtSyncEngine(nodeId: 'test_node');
+      final remoteRow = {
+        'id': 'rec-crdt-1',
+        'merchant_name': 'Cloud Service',
+        'scanned_date': '2026-09-30T12:00:00.000Z',
+        'total_amount': 99.0,
+        'currency': 'USD',
+        'items': [
+          {'description': 'Monthly Sub', 'unit_price': 99.0, 'quantity': 1, 'total_price': 99.0}
+        ],
+        'version': 1,
+        'updated_at': '2026-09-30T12:00:00.000Z',
+      };
+      final client = FakeSupabase(rowsByTable: {'receipts': [remoteRow]});
+
+      final manager = SyncManager(
+        supabase: client,
+        outboxService: outboxService,
+        receiptsBox: receiptsBox,
+        boxesBox: boxesBox,
+        invoicesBox: invoicesBox,
+        assetsBox: assetsBox,
+        settingsBox: settingsBox,
+        crdtEngine: crdtEngine,
+      );
+
+      await manager.syncAll();
+      manager.dispose();
+
+      expect(receiptsBox.containsKey('rec-crdt-1'), isTrue);
+      expect(crdtEngine.getReceipt('rec-crdt-1'), isNotNull);
+      expect(crdtEngine.getReceipt('rec-crdt-1')!.merchantName, 'Cloud Service');
     });
   });
 }

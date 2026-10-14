@@ -126,5 +126,47 @@ void main() {
       expect(queued, containsAll(['receipt:in-travel:upsert', 'receipt:item-only:upsert', 'box:${travel.id}:delete']));
       expect(queued, isNot(contains('receipt:untouched:upsert')));
     });
+
+    test('addSpent increments box spent and updates state', () async {
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+
+      final notifier = container.read(boxesProvider.notifier);
+      final custom = await notifier.createNew(name: 'Office', budget: 500, currency: 'USD', color: Colors.blue);
+
+      expect(custom.spent, 0.0);
+      await notifier.addSpent(custom.id, 45.50);
+
+      final updated = notifier.findById(custom.id)!;
+      expect(updated.spent, 45.50);
+
+      await notifier.addSpent(custom.id, 14.50);
+      expect(notifier.findById(custom.id)!.spent, 60.00);
+    });
+
+    test('recalculateAllBoxesSpent updates box.spent from receipts', () async {
+      final receipts = await Hive.openBox<ReceiptModel>('receipts_spent');
+      final container = ProviderContainer(overrides: [
+        hiveBoxProvider.overrideWithValue(receipts),
+      ]);
+      addTearDown(container.dispose);
+
+      final notifier = container.read(boxesProvider.notifier);
+      final meals = await notifier.createNew(name: 'Meals', budget: 200, currency: 'EUR', color: Colors.amber);
+
+      await receipts.put('rec-1', ReceiptModel(
+        id: 'rec-1',
+        merchantName: 'Bistro',
+        date: DateTime.utc(2026, 9, 2),
+        totalAmount: 25.50,
+        currency: 'EUR',
+        boxId: meals.id,
+        items: const [],
+      ));
+
+      await notifier.recalculateAllBoxesSpent();
+      expect(notifier.findById(meals.id)!.spent, 25.50);
+    });
   });
 }
+

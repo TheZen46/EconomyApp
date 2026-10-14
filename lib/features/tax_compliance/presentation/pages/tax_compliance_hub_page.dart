@@ -23,6 +23,9 @@ import '../../../invoices/data/models/invoice_model.dart';
 import '../../../invoices/data/providers/invoices_provider.dart';
 import '../../../receipt_scanning/domain/entities/receipt.dart';
 import '../../../receipt_scanning/presentation/providers/receipt_provider.dart';
+import 'package:t_aidy/features/receipt_scanning/data/datasources/tax_report_service.dart';
+import 'package:t_aidy/features/receipt_scanning/data/models/receipt_model.dart';
+import 'package:t_aidy/features/tax_compliance/data/datasources/tax_compliance_service.dart';
 import 'package:t_aidy/features/analytics/presentation/widgets/capital_flow_topology_widget.dart';
 
 /// Tax & Compliance Command Center
@@ -192,6 +195,63 @@ class _TaxComplianceHubPageState extends ConsumerState<TaxComplianceHubPage>
               );
               Share.share(html, subject: 'Sanitized CPA Tax Portal ($currentYear)');
             },
+          ),
+          PopupMenuButton<String>(
+            tooltip: 'Export Tax Filings & Reports',
+            icon: const Icon(Icons.file_download_outlined, color: Color(0xFFF59E0B)),
+            onSelected: (value) async {
+              final receiptModels = receipts.map((r) => ReceiptModel.fromEntity(r)).toList();
+              if (value == 'tax_vat_csv') {
+                final report = TaxReportService.generateTaxReport(receipts: receipts);
+                final csv = TaxReportService.exportToCsv(report);
+                await Share.share(csv, subject: 'Tax & VAT Summary ($currentYear)');
+              } else if (value == 'datev_csv') {
+                final datev = TaxComplianceService.exportDatevAscii(
+                  receipts: receiptModels,
+                  fiscalYear: currentYear,
+                );
+                await Share.share(datev, subject: 'DATEV Buchungsstapel ($currentYear)');
+              } else if (value == 'xbrl_gl') {
+                final xbrl = TaxComplianceService.exportXbrlGlXml(
+                  receipts: receiptModels,
+                  fiscalPeriod: 'FY$currentYear',
+                );
+                await Share.share(xbrl, subject: 'XBRL-GL Ledger ($currentYear)');
+              } else if (value == 'fattura_pa' && receiptModels.isNotEmpty) {
+                final xml = TaxComplianceService.exportFatturaPaXml(
+                  receipt: receiptModels.first,
+                  transmitterVat: '01234567890',
+                  senderName: 'tAIdy Verified User',
+                  senderVat: '01234567890',
+                  senderFiscalCode: 'RSSMRA80A01H501U',
+                  senderAddress: 'Via Roma 1',
+                  senderCap: '00100',
+                  senderCity: 'Roma',
+                  senderProvince: 'RM',
+                  buyerName: receiptModels.first.merchantName,
+                );
+                await Share.share(xml, subject: 'FatturaPA Electronic Invoice ($currentYear)');
+              }
+            },
+            itemBuilder: (context) => [
+              const PopupMenuItem(
+                value: 'tax_vat_csv',
+                child: Text('Tax & VAT Summary (CSV)'),
+              ),
+              const PopupMenuItem(
+                value: 'datev_csv',
+                child: Text('DATEV Buchungsstapel (CSV)'),
+              ),
+              const PopupMenuItem(
+                value: 'xbrl_gl',
+                child: Text('XBRL-GL Double-Entry (XML)'),
+              ),
+              if (receipts.isNotEmpty)
+                const PopupMenuItem(
+                  value: 'fattura_pa',
+                  child: Text('Italian FatturaPA (XML)'),
+                ),
+            ],
           ),
         ],
         bottom: TabBar(

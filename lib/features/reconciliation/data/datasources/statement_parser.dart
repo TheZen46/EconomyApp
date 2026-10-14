@@ -1,5 +1,6 @@
 import 'package:csv/csv.dart';
 import 'package:uuid/uuid.dart';
+import '../../../receipt_scanning/data/datasources/bank_reconciliation_service.dart';
 import '../models/statement_transaction.dart';
 
 class StatementParser {
@@ -7,9 +8,21 @@ class StatementParser {
 
   /// Parses raw CSV bank statement data into structured [StatementTransaction] items.
   static List<StatementTransaction> parseCsv(String csvContent) {
-    final transactions = <StatementTransaction>[];
-    if (csvContent.trim().isEmpty) return transactions;
+    if (csvContent.trim().isEmpty) return [];
 
+    final bankTxns = BankReconciliationService.parseBankCsv(csvContent);
+    if (bankTxns.isNotEmpty) {
+      return bankTxns.map((t) => StatementTransaction(
+        id: t.id.isNotEmpty ? t.id : _uuid.v4(),
+        date: t.date,
+        description: t.description,
+        amount: t.amount,
+        currency: t.currency,
+        referenceNumber: t.referenceNumber,
+      )).toList();
+    }
+
+    final transactions = <StatementTransaction>[];
     try {
       final rows = const CsvToListConverter(eol: '\n').convert(csvContent);
       if (rows.length < 2) return transactions;

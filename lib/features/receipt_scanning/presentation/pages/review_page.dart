@@ -411,6 +411,10 @@ class _ReviewPageState extends ConsumerState<ReviewPage> {
       final failure = saved.fold((f) => f, (_) => null);
       if (failure != null) throw failure;
 
+      if (_selectedBoxId.isNotEmpty) {
+        unawaited(ref.read(boxesProvider.notifier).addSpent(_selectedBoxId, total));
+      }
+
       // Persist user corrections to episodic memory for continuous local
       // adaptation: only items whose extracted values the user changed, keyed
       // by the name the extraction produced.
