@@ -1,6 +1,9 @@
 import 'dart:convert';
 import 'package:csv/csv.dart';
 import '../../domain/entities/receipt.dart';
+import '../../../../core/financial/currency_ratio.dart';
+import '../../../../core/financial/money.dart';
+import '../../../../core/financial/tax_engine.dart';
 import '../../../../core/utils/csv_utils.dart';
 
 /// Represents aggregated VAT / Tax metrics for a specific percentage bracket.
@@ -86,31 +89,31 @@ class TaxReport {
 
 /// Service for generating compliance-ready Tax, VAT, and freelance accounting reports.
 class TaxReportService {
-  /// Default European standard VAT rate mapping if no itemized rate is given.
+  /// Default European standard VAT rate mapping delegating to unified [TaxRateResolver].
   static double inferVatRateFromCategory(String? category, [String? subCategory]) {
-    final text = '${category ?? ''} ${subCategory ?? ''}'.toLowerCase();
-    if (text.contains('fresh produce') ||
-        text.contains('bread') ||
-        text.contains('milk') ||
-        text.contains('fruit') ||
-        text.contains('vegetable') ||
-        text.contains('pane')) {
-      return 4.0; // Reduced basic food VAT (4%)
-    } else if (text.contains('protein') ||
-        text.contains('meat') ||
-        text.contains('pantry') ||
-        text.contains('restaurant') ||
-        text.contains('dairy') ||
-        text.contains('personal care') ||
-        text.contains('health') ||
-        text.contains('medicine') ||
-        text.contains('medical') ||
-        text.contains('pharma') ||
-        text.contains('farmacia')) {
-      return 10.0; // Intermediate food / pharma VAT (10%)
-    } else {
-      return 22.0; // Standard European/Italian VAT (22%)
+    return TaxRateResolver.inferVatRatePercentage(category, subCategory);
+  }
+
+  /// Generates a map of [TaxReport] grouped by currency from a collection of receipts.
+  static Map<String, TaxReport> generateTaxReportsByCurrency({
+    required List<Receipt> receipts,
+    DateTime? startDate,
+    DateTime? endDate,
+  }) {
+    final grouped = <String, List<Receipt>>{};
+    for (final r in receipts) {
+      final curr = r.currency.toUpperCase();
+      grouped.putIfAbsent(curr, () => []).add(r);
     }
+    return {
+      for (final entry in grouped.entries)
+        entry.key: generateTaxReport(
+          receipts: entry.value,
+          startDate: startDate,
+          endDate: endDate,
+          targetCurrency: entry.key,
+        ),
+    };
   }
 
   /// Generates an aggregated [TaxReport] from a collection of receipts over a date range.
@@ -118,7 +121,9 @@ class TaxReportService {
     required List<Receipt> receipts,
     DateTime? startDate,
     DateTime? endDate,
+    String? targetCurrency,
     String defaultCurrency = 'EUR',
+    Map<String, CurrencyRatio>? conversionRates,
   }) {
     final now = DateTime.now();
     final DateTime start;
@@ -135,25 +140,62 @@ class TaxReportService {
       end = DateTime(now.year, now.month + 1, 0, 23, 59, 59);
     }
 
-    final filteredReceipts = receipts.where((r) {
+    var filteredReceipts = receipts.where((r) {
       return r.date.isAfter(start.subtract(const Duration(seconds: 1))) &&
           r.date.isBefore(end.add(const Duration(seconds: 1)));
     }).toList();
 
-    final currency = filteredReceipts.isNotEmpty ? filteredReceipts.first.currency : defaultCurrency;
+    // Check currencies across filtered receipts
+    final currencies = filteredReceipts.map((r) => r.currency.toUpperCase()).toSet();
+    final String reportCurrency;
+
+    if (currencies.length > 1) {
+      if (conversionRates != null && targetCurrency != null) {
+        reportCurrency = targetCurrency.toUpperCase();
+      } else if (targetCurrency != null) {
+        // Filter to only receipts matching targetCurrency
+        reportCurrency = targetCurrency.toUpperCase();
+        filteredReceipts = filteredReceipts
+            .where((r) => r.currency.toUpperCase() == reportCurrency)
+            .toList();
+      } else {
+        throw ArgumentError(
+          'TaxReport contains multiple currencies (${currencies.join(", ")}). '
+          'Group reports by currency using generateTaxReportsByCurrency() or specify targetCurrency and conversionRates.',
+        );
+      }
+    } else if (currencies.length == 1) {
+      reportCurrency = targetCurrency?.toUpperCase() ?? currencies.first;
+    } else {
+      reportCurrency = targetCurrency?.toUpperCase() ?? defaultCurrency.toUpperCase();
+    }
 
     final bracketMap = <double, _BracketAccumulator>{};
     final lineItems = <TaxReportLineItem>[];
 
     for (final receipt in filteredReceipts) {
       final dateStr = '${receipt.date.year}-${receipt.date.month.toString().padLeft(2, '0')}-${receipt.date.day.toString().padLeft(2, '0')}';
+      final receiptCurrency = receipt.currency.toUpperCase();
+      final ratio = (conversionRates != null && receiptCurrency != reportCurrency)
+          ? conversionRates[receiptCurrency]
+          : null;
 
       if (receipt.items.isEmpty) {
         // Fallback for receipt with no line items
         final rate = inferVatRateFromCategory(receipt.category);
-        final gross = receipt.totalAmount;
-        final taxable = gross / (1.0 + (rate / 100.0));
-        final vat = gross - taxable;
+        final rateBps = (rate * 100).round();
+
+        var grossMoney = Money.fromDecimal(receipt.totalAmount, currency: receiptCurrency);
+        if (ratio != null) {
+          grossMoney = ratio.convert(grossMoney);
+        }
+
+        final netMoney = TaxEngine.computeNetFromGross(grossMoney, rateBps);
+        final vatMoney = Money(cents: grossMoney.cents - netMoney.cents, currency: grossMoney.currency);
+
+        final gross = grossMoney.toDouble;
+        final taxable = netMoney.toDouble;
+        final vat = vatMoney.toDouble;
 
         final acc = bracketMap.putIfAbsent(rate, () => _BracketAccumulator(rate));
         acc.taxableBase += taxable;
@@ -171,14 +213,24 @@ class TaxReportService {
           taxableBase: taxable,
           vatAmount: vat,
           grossTotal: gross,
-          currency: receipt.currency,
+          currency: grossMoney.currency,
         ));
       } else {
         for (final item in receipt.items) {
           final rate = inferVatRateFromCategory(item.mainCategory, item.subCategory);
-          final gross = item.totalPrice;
-          final taxable = gross / (1.0 + (rate / 100.0));
-          final vat = gross - taxable;
+          final rateBps = (rate * 100).round();
+
+          var grossMoney = Money.fromDecimal(item.totalPrice, currency: receiptCurrency);
+          if (ratio != null) {
+            grossMoney = ratio.convert(grossMoney);
+          }
+
+          final netMoney = TaxEngine.computeNetFromGross(grossMoney, rateBps);
+          final vatMoney = Money(cents: grossMoney.cents - netMoney.cents, currency: grossMoney.currency);
+
+          final gross = grossMoney.toDouble;
+          final taxable = netMoney.toDouble;
+          final vat = vatMoney.toDouble;
 
           final acc = bracketMap.putIfAbsent(rate, () => _BracketAccumulator(rate));
           acc.taxableBase += taxable;
@@ -196,7 +248,7 @@ class TaxReportService {
             taxableBase: taxable,
             vatAmount: vat,
             grossTotal: gross,
-            currency: receipt.currency,
+            currency: grossMoney.currency,
           ));
         }
       }
@@ -221,7 +273,7 @@ class TaxReportService {
     return TaxReport(
       startDate: start,
       endDate: end,
-      currency: currency,
+      currency: reportCurrency,
       totalReceipts: filteredReceipts.length,
       totalTaxableBase: totalTaxable,
       totalVatAmount: totalVat,

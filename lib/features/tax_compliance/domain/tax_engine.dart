@@ -1,13 +1,19 @@
-﻿import 'package:t_aidy/core/financial/money.dart';
+import 'package:t_aidy/core/financial/money.dart';
+import 'package:t_aidy/core/financial/price_basis.dart';
+import 'package:t_aidy/features/tax_compliance/domain/tax_rate_resolver.dart';
+
+export 'package:t_aidy/core/financial/price_basis.dart';
+export 'package:t_aidy/features/tax_compliance/domain/tax_rate_resolver.dart';
 
 /// Represents a single financial line item for tax calculation.
 class TaxableLineItem {
   final String id;
   final String description;
   final int quantity; // Integer unit count (e.g. 1, 2, 5) or scaled decimal
-  final Money unitPrice; // Net unit price in fixed-point cents
+  final Money unitPrice; // Price in fixed-point cents (basis defined by [priceBasis])
   final int taxRateBps; // Tax rate in basis points (e.g. 2200 bps = 22.00%, 400 bps = 4.00%)
   final String? natureCode; // Italian FatturaPA Nature code (N1..N7) if 0% VAT
+  final PriceBasis priceBasis;
 
   const TaxableLineItem({
     required this.id,
@@ -16,10 +22,56 @@ class TaxableLineItem {
     required this.unitPrice,
     required this.taxRateBps,
     this.natureCode,
+    this.priceBasis = PriceBasis.net,
   });
 
-  /// Net line total = unitPrice * quantity (in integer cents).
-  Money get netTotal => unitPrice.multiplyInt(quantity);
+  /// Net line total in fixed-point cents.
+  Money get netTotal {
+    if (priceBasis == PriceBasis.net) {
+      return unitPrice.multiplyInt(quantity);
+    }
+    // Gross basis: compute net = round_to_even(gross * 10000 / (10000 + rateBps))
+    final gross = unitPrice.multiplyInt(quantity);
+    return TaxEngine.computeNetFromGross(gross, taxRateBps);
+  }
+
+  /// Net unit price in fixed-point cents.
+  Money get netUnitPrice {
+    if (priceBasis == PriceBasis.net) {
+      return unitPrice;
+    }
+    if (quantity == 0) return Money.zero(unitPrice.currency);
+    final netCents = Money.roundIntegerDivision(
+      netTotal.cents,
+      quantity,
+      rounding: MidpointRounding.toEven,
+    );
+    return Money(cents: netCents, currency: unitPrice.currency);
+  }
+
+  /// Gross line total in fixed-point cents.
+  Money get grossTotal {
+    if (priceBasis == PriceBasis.gross) {
+      return unitPrice.multiplyInt(quantity);
+    }
+    // Net basis: gross = net + round_to_even(net * rateBps / 10000)
+    final net = netTotal;
+    return TaxEngine.computeGrossFromNet(net, taxRateBps);
+  }
+
+  /// Gross unit price in fixed-point cents.
+  Money get grossUnitPrice {
+    if (priceBasis == PriceBasis.gross) {
+      return unitPrice;
+    }
+    if (quantity == 0) return Money.zero(unitPrice.currency);
+    final grossCents = Money.roundIntegerDivision(
+      grossTotal.cents,
+      quantity,
+      rounding: MidpointRounding.toEven,
+    );
+    return Money(cents: grossCents, currency: unitPrice.currency);
+  }
 
   /// Tax rate as percentage (e.g., 22.0).
   double get taxRatePercentage => taxRateBps / 100.0;
@@ -65,6 +117,7 @@ class InvoiceCalculationResult {
   final Money totalNet;
   final Money totalTax;
   final Money totalGross;
+  final Money? expectedDocumentTotal;
   final bool invariantSatisfied;
   final int residualCents;
 
@@ -75,6 +128,7 @@ class InvoiceCalculationResult {
     required this.totalNet,
     required this.totalTax,
     required this.totalGross,
+    this.expectedDocumentTotal,
     required this.invariantSatisfied,
     required this.residualCents,
   });
@@ -83,21 +137,65 @@ class InvoiceCalculationResult {
 /// Formally verified Financial & Tax Calculation Engine.
 ///
 /// Implements EU Directive 2006/112/EC (Article 226) and European Standard EN 16931:
-/// 1. Line items are multiplied in integer cents: `Net_i = UnitPrice_i * Quantity_i`.
+/// 1. Line items are multiplied in integer cents: `Net_i = UnitPrice_i * Quantity_i` (or backed out from gross).
 /// 2. Line items sharing the same tax rate/nature are aggregated into a single Taxable Base: `B_k = sum(Net_i)`.
 /// 3. Tax is computed once per bracket with Banker's Rounding: `Tax_k = round_to_even(B_k * rate_k / 10000)`.
-/// 4. Proves zero residual difference: `|TotalAmount - (sum(ItemTotal) + sum(TaxAmount))| == 0`.
+/// 4. Verifies reconciliation against stated document total when provided.
 class TaxEngine {
   TaxEngine._();
+
+  /// Computes net amount from gross amount using banker's rounding:
+  /// net = round_to_even(gross * 10000 / (10000 + rateBps)).
+  static Money computeNetFromGross(
+    Money gross,
+    int rateBps, {
+    MidpointRounding rounding = MidpointRounding.toEven,
+  }) {
+    if (rateBps == 0) return gross;
+    final netCents = Money.roundIntegerDivision(
+      gross.cents * 10000,
+      10000 + rateBps,
+      rounding: rounding,
+    );
+    return Money(cents: netCents, currency: gross.currency);
+  }
+
+  /// Computes gross amount from net amount using banker's rounding:
+  /// gross = net + round_to_even(net * rateBps / 10000).
+  static Money computeGrossFromNet(
+    Money net,
+    int rateBps, {
+    MidpointRounding rounding = MidpointRounding.toEven,
+  }) {
+    if (rateBps == 0) return net;
+    final taxCents = Money.roundIntegerDivision(
+      net.cents * rateBps,
+      10000,
+      rounding: rounding,
+    );
+    return Money(cents: net.cents + taxCents, currency: net.currency);
+  }
 
   /// Calculates complete invoice totals, VAT bracket summaries, and validates financial invariants.
   static InvoiceCalculationResult calculateInvoice({
     required List<TaxableLineItem> items,
     String currency = 'EUR',
     MidpointRounding rounding = MidpointRounding.toEven,
+    Money? expectedDocumentTotal,
+    bool strictInvariant = false,
   }) {
     if (items.isEmpty) {
       final zero = Money.zero(currency);
+      final residualCents = expectedDocumentTotal != null
+          ? zero.cents - expectedDocumentTotal.cents
+          : 0;
+      final invariantSatisfied = (residualCents == 0);
+      if (strictInvariant && !invariantSatisfied) {
+        throw StateError(
+          'CRITICAL FINANCIAL INVARIANT VIOLATION: Residual = $residualCents cents '
+          '(Calculated total: 0 != Stated document total: ${expectedDocumentTotal?.cents})',
+        );
+      }
       return InvoiceCalculationResult(
         currency: currency,
         lineNetTotals: {},
@@ -105,8 +203,9 @@ class TaxEngine {
         totalNet: zero,
         totalTax: zero,
         totalGross: zero,
-        invariantSatisfied: true,
-        residualCents: 0,
+        expectedDocumentTotal: expectedDocumentTotal,
+        invariantSatisfied: invariantSatisfied,
+        residualCents: residualCents,
       );
     }
 
@@ -119,7 +218,7 @@ class TaxEngine {
 
     int totalNetCents = 0;
 
-    // 1. Line item calculation (Exact Integer Multiplication)
+    // 1. Line item calculation (Exact Integer Arithmetic with Banker's Rounding)
     for (final item in items) {
       if (item.unitPrice.currency.toUpperCase() != currency.toUpperCase()) {
         throw ArgumentError(
@@ -176,27 +275,19 @@ class TaxEngine {
       ));
     }
 
-    final totalGrossCents = totalNetCents + totalTaxCents;
+    final totalGross = Money(cents: totalNetCents + totalTaxCents, currency: currency);
 
-    // 3. Formal Invariant Verification
-    // | TotalAmount - (sum(ItemTotal_i) + sum(TaxAmount_k)) | == 0
-    int sumLineItemsCents = 0;
-    for (final m in lineNetTotals.values) {
-      sumLineItemsCents += m.cents;
-    }
+    // 3. Document Total Reconciliation (Formal Invariant Check)
+    // Non-tautological: compares calculated gross against stated document total
+    final int residualCents = expectedDocumentTotal != null
+        ? totalGross.cents - expectedDocumentTotal.cents
+        : 0;
+    final bool invariantSatisfied = (residualCents == 0);
 
-    int sumTaxCents = 0;
-    for (final b in bracketSummaries) {
-      sumTaxCents += b.taxAmount.cents;
-    }
-
-    final residualCents = totalGrossCents - (sumLineItemsCents + sumTaxCents);
-    final invariantSatisfied = (residualCents == 0);
-
-    if (!invariantSatisfied) {
+    if (strictInvariant && !invariantSatisfied) {
       throw StateError(
         'CRITICAL FINANCIAL INVARIANT VIOLATION: Residual = $residualCents cents '
-        '(Total: $totalGrossCents != Items: $sumLineItemsCents + Tax: $sumTaxCents)',
+        '(Calculated total: ${totalGross.cents} != Stated document total: ${expectedDocumentTotal?.cents})',
       );
     }
 
@@ -206,9 +297,10 @@ class TaxEngine {
       bracketSummaries: bracketSummaries,
       totalNet: Money(cents: totalNetCents, currency: currency),
       totalTax: Money(cents: totalTaxCents, currency: currency),
-      totalGross: Money(cents: totalGrossCents, currency: currency),
-      invariantSatisfied: true,
-      residualCents: 0,
+      totalGross: totalGross,
+      expectedDocumentTotal: expectedDocumentTotal,
+      invariantSatisfied: invariantSatisfied,
+      residualCents: residualCents,
     );
   }
 
@@ -218,61 +310,11 @@ class TaxEngine {
     String? subCategory,
     String countryCode = 'IT',
   ]) {
-    final text = '${category ?? ''} ${subCategory ?? ''}'.toLowerCase();
-    final isGermany = countryCode.toUpperCase() == 'DE';
-
-    if (text.contains('fresh produce') ||
-        text.contains('bread') ||
-        text.contains('pane') ||
-        text.contains('milk') ||
-        text.contains('latte') ||
-        text.contains('fruit') ||
-        text.contains('vegetable') ||
-        text.contains('verdura')) {
-      return isGermany ? 700 : 400; // 7% in Germany, 4% in Italy
-    } else if (text.contains('protein') ||
-        text.contains('meat') ||
-        text.contains('carne') ||
-        text.contains('fish') ||
-        text.contains('pesce') ||
-        text.contains('pantry') ||
-        text.contains('pasta') ||
-        text.contains('water') ||
-        text.contains('acqua') ||
-        text.contains('restaurant') ||
-        text.contains('dining') ||
-        text.contains('hotel') ||
-        text.contains('pharmacy') ||
-        text.contains('farmaco')) {
-      return isGermany ? 700 : 1000; // 7% in Germany, 10% in Italy
-    } else if (text.contains('medical visit') ||
-        text.contains('visita medica') ||
-        text.contains('dentist') ||
-        text.contains('insurance') ||
-        text.contains('assicurazione') ||
-        text.contains('stamp duty') ||
-        text.contains('marca da bollo')) {
-      return 0; // 0% Exempt (N4 / N1)
-    } else {
-      return isGermany ? 1900 : 2200; // Standard 19% in Germany, 22% in Italy
-    }
+    return TaxRateResolver.inferTaxRateBps(category, subCategory, countryCode);
   }
 
   /// Determines Italian FatturaPA Nature code for 0% VAT line items.
   static String inferNatureCode(String? category, [String? subCategory]) {
-    final text = '${category ?? ''} ${subCategory ?? ''}'.toLowerCase();
-    if (text.contains('stamp duty') || text.contains('bollo') || text.contains('reimbursement')) {
-      return 'N1'; // Escluse ex art. 15
-    } else if (text.contains('forfettario') || text.contains('non soggetta')) {
-      return 'N2.2'; // Non soggette ad IVA
-    } else if (text.contains('export') || text.contains('esportazione')) {
-      return 'N3.1'; // Non imponibili
-    } else if (text.contains('medical') || text.contains('health') || text.contains('esente')) {
-      return 'N4'; // Esenti art. 10
-    } else if (text.contains('reverse charge') || text.contains('subappalto')) {
-      return 'N6.3'; // Reverse charge
-    }
-    return 'N4'; // Default exemption code
+    return TaxRateResolver.inferNatureCode(category, subCategory);
   }
 }
-

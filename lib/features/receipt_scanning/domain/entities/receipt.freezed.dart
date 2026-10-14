@@ -31,6 +31,7 @@ mixin _$Receipt {
       throw _privateConstructorUsedError; // True when the extraction found no valid purchase date and [date] is a
 // placeholder; the review screen asks the user to confirm it. Not stored.
   bool get dateUncertain => throw _privateConstructorUsedError;
+  PriceBasis get priceBasis => throw _privateConstructorUsedError;
 
   @JsonKey(ignore: true)
   $ReceiptCopyWith<Receipt> get copyWith => throw _privateConstructorUsedError;
@@ -53,7 +54,8 @@ abstract class $ReceiptCopyWith<$Res> {
       List<ReceiptItem> items,
       String? imagePath,
       String? boxId,
-      bool dateUncertain});
+      bool dateUncertain,
+      PriceBasis priceBasis});
 }
 
 /// @nodoc
@@ -81,6 +83,7 @@ class _$ReceiptCopyWithImpl<$Res, $Val extends Receipt>
     Object? imagePath = freezed,
     Object? boxId = freezed,
     Object? dateUncertain = null,
+    Object? priceBasis = null,
   }) {
     return _then(_value.copyWith(
       id: null == id
@@ -131,6 +134,10 @@ class _$ReceiptCopyWithImpl<$Res, $Val extends Receipt>
           ? _value.dateUncertain
           : dateUncertain // ignore: cast_nullable_to_non_nullable
               as bool,
+      priceBasis: null == priceBasis
+          ? _value.priceBasis
+          : priceBasis // ignore: cast_nullable_to_non_nullable
+              as PriceBasis,
     ) as $Val);
   }
 }
@@ -154,7 +161,8 @@ abstract class _$$ReceiptImplCopyWith<$Res> implements $ReceiptCopyWith<$Res> {
       List<ReceiptItem> items,
       String? imagePath,
       String? boxId,
-      bool dateUncertain});
+      bool dateUncertain,
+      PriceBasis priceBasis});
 }
 
 /// @nodoc
@@ -180,6 +188,7 @@ class __$$ReceiptImplCopyWithImpl<$Res>
     Object? imagePath = freezed,
     Object? boxId = freezed,
     Object? dateUncertain = null,
+    Object? priceBasis = null,
   }) {
     return _then(_$ReceiptImpl(
       id: null == id
@@ -230,6 +239,10 @@ class __$$ReceiptImplCopyWithImpl<$Res>
           ? _value.dateUncertain
           : dateUncertain // ignore: cast_nullable_to_non_nullable
               as bool,
+      priceBasis: null == priceBasis
+          ? _value.priceBasis
+          : priceBasis // ignore: cast_nullable_to_non_nullable
+              as PriceBasis,
     ));
   }
 }
@@ -249,7 +262,8 @@ class _$ReceiptImpl extends _Receipt {
       final List<ReceiptItem> items = const [],
       this.imagePath,
       this.boxId = 'main',
-      this.dateUncertain = false})
+      this.dateUncertain = false,
+      this.priceBasis = PriceBasis.gross})
       : _items = items,
         super._();
 
@@ -293,10 +307,13 @@ class _$ReceiptImpl extends _Receipt {
   @override
   @JsonKey()
   final bool dateUncertain;
+  @override
+  @JsonKey()
+  final PriceBasis priceBasis;
 
   @override
   String toString() {
-    return 'Receipt(id: $id, merchantName: $merchantName, vatNumber: $vatNumber, merchantAddress: $merchantAddress, date: $date, time: $time, totalAmount: $totalAmount, currency: $currency, items: $items, imagePath: $imagePath, boxId: $boxId, dateUncertain: $dateUncertain)';
+    return 'Receipt(id: $id, merchantName: $merchantName, vatNumber: $vatNumber, merchantAddress: $merchantAddress, date: $date, time: $time, totalAmount: $totalAmount, currency: $currency, items: $items, imagePath: $imagePath, boxId: $boxId, dateUncertain: $dateUncertain, priceBasis: $priceBasis)';
   }
 
   @override
@@ -322,7 +339,9 @@ class _$ReceiptImpl extends _Receipt {
                 other.imagePath == imagePath) &&
             (identical(other.boxId, boxId) || other.boxId == boxId) &&
             (identical(other.dateUncertain, dateUncertain) ||
-                other.dateUncertain == dateUncertain));
+                other.dateUncertain == dateUncertain) &&
+            (identical(other.priceBasis, priceBasis) ||
+                other.priceBasis == priceBasis));
   }
 
   @override
@@ -339,7 +358,8 @@ class _$ReceiptImpl extends _Receipt {
       const DeepCollectionEquality().hash(_items),
       imagePath,
       boxId,
-      dateUncertain);
+      dateUncertain,
+      priceBasis);
 
   @JsonKey(ignore: true)
   @override
@@ -361,7 +381,8 @@ abstract class _Receipt extends Receipt {
       final List<ReceiptItem> items,
       final String? imagePath,
       final String? boxId,
-      final bool dateUncertain}) = _$ReceiptImpl;
+      final bool dateUncertain,
+      final PriceBasis priceBasis}) = _$ReceiptImpl;
   const _Receipt._() : super._();
 
   @override
@@ -390,6 +411,8 @@ abstract class _Receipt extends Receipt {
 // placeholder; the review screen asks the user to confirm it. Not stored.
   bool get dateUncertain;
   @override
+  PriceBasis get priceBasis;
+  @override
   @JsonKey(ignore: true)
   _$$ReceiptImplCopyWith<_$ReceiptImpl> get copyWith =>
       throw _privateConstructorUsedError;
@@ -409,6 +432,7 @@ mixin _$ReceiptItem {
       throw _privateConstructorUsedError; // e.g. "Beverages (Sugary)"
   bool get isAsset => throw _privateConstructorUsedError;
   String? get boxId => throw _privateConstructorUsedError;
+  PriceBasis get priceBasis => throw _privateConstructorUsedError;
   @Deprecated('Use subCategory or mainCategory instead')
   String? get category => throw _privateConstructorUsedError;
 
@@ -433,6 +457,7 @@ abstract class $ReceiptItemCopyWith<$Res> {
       String? subCategory,
       bool isAsset,
       String? boxId,
+      PriceBasis priceBasis,
       @Deprecated('Use subCategory or mainCategory instead') String? category});
 }
 
@@ -458,6 +483,7 @@ class _$ReceiptItemCopyWithImpl<$Res, $Val extends ReceiptItem>
     Object? subCategory = freezed,
     Object? isAsset = null,
     Object? boxId = freezed,
+    Object? priceBasis = null,
     Object? category = freezed,
   }) {
     return _then(_value.copyWith(
@@ -497,6 +523,10 @@ class _$ReceiptItemCopyWithImpl<$Res, $Val extends ReceiptItem>
           ? _value.boxId
           : boxId // ignore: cast_nullable_to_non_nullable
               as String?,
+      priceBasis: null == priceBasis
+          ? _value.priceBasis
+          : priceBasis // ignore: cast_nullable_to_non_nullable
+              as PriceBasis,
       category: freezed == category
           ? _value.category
           : category // ignore: cast_nullable_to_non_nullable
@@ -523,6 +553,7 @@ abstract class _$$ReceiptItemImplCopyWith<$Res>
       String? subCategory,
       bool isAsset,
       String? boxId,
+      PriceBasis priceBasis,
       @Deprecated('Use subCategory or mainCategory instead') String? category});
 }
 
@@ -546,6 +577,7 @@ class __$$ReceiptItemImplCopyWithImpl<$Res>
     Object? subCategory = freezed,
     Object? isAsset = null,
     Object? boxId = freezed,
+    Object? priceBasis = null,
     Object? category = freezed,
   }) {
     return _then(_$ReceiptItemImpl(
@@ -585,6 +617,10 @@ class __$$ReceiptItemImplCopyWithImpl<$Res>
           ? _value.boxId
           : boxId // ignore: cast_nullable_to_non_nullable
               as String?,
+      priceBasis: null == priceBasis
+          ? _value.priceBasis
+          : priceBasis // ignore: cast_nullable_to_non_nullable
+              as PriceBasis,
       category: freezed == category
           ? _value.category
           : category // ignore: cast_nullable_to_non_nullable
@@ -606,6 +642,7 @@ class _$ReceiptItemImpl implements _ReceiptItem {
       this.subCategory,
       this.isAsset = false,
       this.boxId = 'main',
+      this.priceBasis = PriceBasis.gross,
       @Deprecated('Use subCategory or mainCategory instead') this.category});
 
   @override
@@ -634,12 +671,15 @@ class _$ReceiptItemImpl implements _ReceiptItem {
   @JsonKey()
   final String? boxId;
   @override
+  @JsonKey()
+  final PriceBasis priceBasis;
+  @override
   @Deprecated('Use subCategory or mainCategory instead')
   final String? category;
 
   @override
   String toString() {
-    return 'ReceiptItem(description: $description, unitPrice: $unitPrice, quantity: $quantity, totalPrice: $totalPrice, necessity: $necessity, mainCategory: $mainCategory, subCategory: $subCategory, isAsset: $isAsset, boxId: $boxId, category: $category)';
+    return 'ReceiptItem(description: $description, unitPrice: $unitPrice, quantity: $quantity, totalPrice: $totalPrice, necessity: $necessity, mainCategory: $mainCategory, subCategory: $subCategory, isAsset: $isAsset, boxId: $boxId, priceBasis: $priceBasis, category: $category)';
   }
 
   @override
@@ -663,6 +703,8 @@ class _$ReceiptItemImpl implements _ReceiptItem {
                 other.subCategory == subCategory) &&
             (identical(other.isAsset, isAsset) || other.isAsset == isAsset) &&
             (identical(other.boxId, boxId) || other.boxId == boxId) &&
+            (identical(other.priceBasis, priceBasis) ||
+                other.priceBasis == priceBasis) &&
             (identical(other.category, category) ||
                 other.category == category));
   }
@@ -679,6 +721,7 @@ class _$ReceiptItemImpl implements _ReceiptItem {
       subCategory,
       isAsset,
       boxId,
+      priceBasis,
       category);
 
   @JsonKey(ignore: true)
@@ -699,6 +742,7 @@ abstract class _ReceiptItem implements ReceiptItem {
       final String? subCategory,
       final bool isAsset,
       final String? boxId,
+      final PriceBasis priceBasis,
       @Deprecated('Use subCategory or mainCategory instead')
       final String? category}) = _$ReceiptItemImpl;
 
@@ -720,6 +764,8 @@ abstract class _ReceiptItem implements ReceiptItem {
   bool get isAsset;
   @override
   String? get boxId;
+  @override
+  PriceBasis get priceBasis;
   @override
   @Deprecated('Use subCategory or mainCategory instead')
   String? get category;

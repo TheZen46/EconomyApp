@@ -217,4 +217,102 @@ void main() {
       }
     });
   });
+
+  group('Document Total Invariant Reconciliation and PriceBasis Tests', () {
+    test('reconciles calculated total against expected document total correctly', () {
+      final items = [
+        TaxableLineItem(
+          id: 'item1',
+          description: 'Widget A',
+          quantity: 2,
+          unitPrice: Money(cents: 1000, currency: 'EUR'), // 10.00 EUR net
+          taxRateBps: 2200, // 22%
+          priceBasis: PriceBasis.net,
+        ),
+      ];
+
+      // Net = 20.00 EUR, Tax = 4.40 EUR, Gross = 24.40 EUR (2440 cents)
+      final matchingResult = TaxEngine.calculateInvoice(
+        items: items,
+        currency: 'EUR',
+        expectedDocumentTotal: Money(cents: 2440, currency: 'EUR'),
+      );
+      expect(matchingResult.invariantSatisfied, isTrue);
+      expect(matchingResult.residualCents, equals(0));
+      expect(matchingResult.totalGross.cents, equals(2440));
+
+      // Stated document total has discrepancy: 25.00 EUR (60 cents residual)
+      final mismatchResult = TaxEngine.calculateInvoice(
+        items: items,
+        currency: 'EUR',
+        expectedDocumentTotal: Money(cents: 2500, currency: 'EUR'),
+      );
+      expect(mismatchResult.invariantSatisfied, isFalse);
+      expect(mismatchResult.residualCents, equals(-60)); // 2440 - 2500 = -60
+
+      // When strictInvariant is enabled, throws StateError on mismatch
+      expect(
+        () => TaxEngine.calculateInvoice(
+          items: items,
+          currency: 'EUR',
+          expectedDocumentTotal: Money(cents: 2500, currency: 'EUR'),
+          strictInvariant: true,
+        ),
+        throwsA(isA<StateError>()),
+      );
+    });
+
+    test('extracts net prices and taxes correctly from gross (VAT-inclusive) items', () {
+      final grossItems = [
+        TaxableLineItem(
+          id: 'gross1',
+          description: 'Bread 4%',
+          quantity: 1,
+          unitPrice: Money(cents: 200, currency: 'EUR'), // 2.00 EUR gross
+          taxRateBps: 400,
+          priceBasis: PriceBasis.gross,
+        ),
+        TaxableLineItem(
+          id: 'gross2',
+          description: 'Chicken 10%',
+          quantity: 1,
+          unitPrice: Money(cents: 1000, currency: 'EUR'), // 10.00 EUR gross
+          taxRateBps: 1000,
+          priceBasis: PriceBasis.gross,
+        ),
+        TaxableLineItem(
+          id: 'gross3',
+          description: 'Household 22%',
+          quantity: 1,
+          unitPrice: Money(cents: 4000, currency: 'EUR'), // 40.00 EUR gross
+          taxRateBps: 2200,
+          priceBasis: PriceBasis.gross,
+        ),
+      ];
+
+      final result = TaxEngine.calculateInvoice(
+        items: grossItems,
+        currency: 'EUR',
+        expectedDocumentTotal: Money(cents: 5200, currency: 'EUR'), // 52.00 EUR stated
+      );
+
+      expect(result.invariantSatisfied, isTrue);
+      expect(result.residualCents, equals(0));
+      expect(result.totalGross.cents, equals(5200));
+
+      // Net for 2.00 @ 4% -> round_to_even(2000000 / 10400) = 192 cents
+      expect(result.lineNetTotals['gross1']!.cents, equals(192));
+      // Net for 10.00 @ 10% -> round_to_even(10000000 / 11000) = 909 cents
+      expect(result.lineNetTotals['gross2']!.cents, equals(909));
+      // Net for 40.00 @ 22% -> round_to_even(40000000 / 12200) = 3279 cents
+      expect(result.lineNetTotals['gross3']!.cents, equals(3279));
+
+      // Total net: 192 + 909 + 3279 = 4380 cents (43.80 EUR)
+      expect(result.totalNet.cents, equals(4380));
+      // Total tax: 8 + 91 + 721 = 820 cents (8.20 EUR)
+      expect(result.totalTax.cents, equals(820));
+      // Net + Tax == Gross == 5200
+      expect(result.totalNet.cents + result.totalTax.cents, equals(5200));
+    });
+  });
 }

@@ -32,13 +32,14 @@ class ReceiptModelAdapter extends TypeAdapter<ReceiptModel> {
       updatedAt: fields[14] as DateTime?,
       deletedAt: fields[15] as DateTime?,
       version: (fields[16] as num?)?.toInt() ?? 1,
+      priceBasis: PriceBasis.fromString(fields[17] as String?),
     );
   }
 
   @override
   void write(BinaryWriter writer, ReceiptModel obj) {
     writer
-      ..writeByte(16)
+      ..writeByte(17)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -70,7 +71,9 @@ class ReceiptModelAdapter extends TypeAdapter<ReceiptModel> {
       ..writeByte(15)
       ..write(obj.deletedAt)
       ..writeByte(16)
-      ..write(obj.version);
+      ..write(obj.version)
+      ..writeByte(17)
+      ..write(obj.priceBasis.name);
   }
 
   @override
@@ -109,13 +112,14 @@ class ReceiptItemModelAdapter extends TypeAdapter<ReceiptItemModel> {
       confidenceScore: (fields[11] as num?)?.toDouble() ?? 1.0,
       deletedAt: fields[12] as DateTime?,
       version: (fields[13] as num?)?.toInt() ?? 1,
+      priceBasis: PriceBasis.fromString(fields[14] as String?),
     );
   }
 
   @override
   void write(BinaryWriter writer, ReceiptItemModel obj) {
     writer
-      ..writeByte(14)
+      ..writeByte(15)
       ..writeByte(0)
       ..write(obj.description)
       ..writeByte(1)
@@ -143,7 +147,9 @@ class ReceiptItemModelAdapter extends TypeAdapter<ReceiptItemModel> {
       ..writeByte(12)
       ..write(obj.deletedAt)
       ..writeByte(13)
-      ..write(obj.version);
+      ..write(obj.version)
+      ..writeByte(14)
+      ..write(obj.priceBasis.name);
   }
 
   @override

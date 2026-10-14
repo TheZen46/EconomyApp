@@ -1,4 +1,4 @@
-﻿import 'package:t_aidy/core/financial/money.dart';
+import 'package:t_aidy/core/financial/money.dart';
 import 'package:t_aidy/features/tax_compliance/domain/tax_engine.dart';
 import 'package:t_aidy/features/receipt_scanning/data/models/receipt_model.dart';
 
@@ -27,21 +27,26 @@ class TaxComplianceService {
   /// Generates legally compliant Italian FatturaPA FPR12 XML (v1.2.2 / v1.8).
   static String exportFatturaPaXml({
     required ReceiptModel receipt,
+    required String transmitterVat,
     String transmitterCountry = 'IT',
-    String transmitterVat = '01234567890',
     String destinationCode = '0000000', // '0000000' for B2C with PEC or 7-char SDI code
-    String senderName = 'tAIdy User',
-    String senderVat = '01234567890',
-    String senderFiscalCode = '01234567890',
+    required String senderName,
+    required String senderVat,
+    required String senderFiscalCode,
     String senderRegime = 'RF01', // RF01 = Ordinario, RF19 = Forfettario
-    String senderAddress = 'Via Roma 1',
-    String senderCap = '00100',
-    String senderCity = 'Roma',
-    String senderProvince = 'RM',
+    required String senderAddress,
+    required String senderCap,
+    required String senderCity,
+    required String senderProvince,
     String senderCountry = 'IT',
+    required String buyerName,
     String? buyerVat,
     String? buyerFiscalCode,
-    String? buyerName,
+    String buyerAddress = 'Corso Italia 1',
+    String buyerCap = '20121',
+    String buyerCity = 'Milano',
+    String buyerProvince = 'MI',
+    String buyerCountry = 'IT',
     String documentType = 'TD01', // TD01 = Fattura ordinaria
     String documentNumber = '1',
   }) {
@@ -61,6 +66,7 @@ class TaxComplianceService {
         unitPrice: Money.fromDecimal(item.unitPrice, currency: receipt.currency),
         taxRateBps: rateBps,
         natureCode: nature,
+        priceBasis: item.priceBasis,
       ));
     }
 
@@ -68,6 +74,7 @@ class TaxComplianceService {
     final calcResult = TaxEngine.calculateInvoice(
       items: taxableItems,
       currency: receipt.currency,
+      expectedDocumentTotal: Money.fromDecimal(receipt.totalAmount, currency: receipt.currency),
     );
 
     final dateStr = receipt.date.toIso8601String().split('T').first;
@@ -130,15 +137,15 @@ class TaxComplianceService {
       buffer.writeln('        <CodiceFiscale>$buyerFiscalCode</CodiceFiscale>');
     }
     buffer.writeln('        <Anagrafica>');
-    buffer.writeln('          <Denominazione>${_escapeXml(buyerName ?? "Cliente Finale")}</Denominazione>');
+    buffer.writeln('          <Denominazione>${_escapeXml(buyerName)}</Denominazione>');
     buffer.writeln('        </Anagrafica>');
     buffer.writeln('      </DatiAnagrafici>');
     buffer.writeln('      <Sede>');
-    buffer.writeln('        <Indirizzo>Via Roma 1</Indirizzo>');
-    buffer.writeln('        <CAP>00100</CAP>');
-    buffer.writeln('        <Comune>Roma</Comune>');
-    buffer.writeln('        <Provincia>RM</Provincia>');
-    buffer.writeln('        <Nazione>IT</Nazione>');
+    buffer.writeln('        <Indirizzo>${_escapeXml(buyerAddress)}</Indirizzo>');
+    buffer.writeln('        <CAP>$buyerCap</CAP>');
+    buffer.writeln('        <Comune>${_escapeXml(buyerCity)}</Comune>');
+    buffer.writeln('        <Provincia>$buyerProvince</Provincia>');
+    buffer.writeln('        <Nazione>$buyerCountry</Nazione>');
     buffer.writeln('      </Sede>');
     buffer.writeln('    </CessionarioCommittente>');
     buffer.writeln('  </FatturaElettronicaHeader>');
@@ -164,7 +171,7 @@ class TaxComplianceService {
       buffer.writeln('        <NumeroLinea>${i + 1}</NumeroLinea>');
       buffer.writeln('        <Descrizione>${_escapeXml(line.description)}</Descrizione>');
       buffer.writeln('        <Quantita>${line.quantity.toDouble().toStringAsFixed(2)}</Quantita>');
-      buffer.writeln('        <PrezzoUnitario>${line.unitPrice.toDouble.toStringAsFixed(2)}</PrezzoUnitario>');
+      buffer.writeln('        <PrezzoUnitario>${line.netUnitPrice.toDouble.toStringAsFixed(2)}</PrezzoUnitario>');
       buffer.writeln('        <PrezzoTotale>${lineNet.toDouble.toStringAsFixed(2)}</PrezzoTotale>');
       buffer.writeln('        <AliquotaIVA>${line.taxRatePercentage.toStringAsFixed(2)}</AliquotaIVA>');
       if (line.taxRateBps == 0 && line.natureCode != null) {
@@ -242,12 +249,14 @@ class TaxComplianceService {
           quantity: item.quantity,
           unitPrice: Money.fromDecimal(item.unitPrice, currency: receipt.currency),
           taxRateBps: rate,
+          priceBasis: item.priceBasis,
         );
       }).toList();
 
       final calc = TaxEngine.calculateInvoice(
         items: taxableItems,
         currency: receipt.currency,
+        expectedDocumentTotal: Money.fromDecimal(receipt.totalAmount, currency: receipt.currency),
       );
 
       final dateStr = '${receipt.date.day.toString().padLeft(2, '0')}${receipt.date.month.toString().padLeft(2, '0')}';
@@ -324,12 +333,14 @@ class TaxComplianceService {
           quantity: item.quantity,
           unitPrice: Money.fromDecimal(item.unitPrice, currency: receipt.currency),
           taxRateBps: rate,
+          priceBasis: item.priceBasis,
         );
       }).toList();
 
       final calc = TaxEngine.calculateInvoice(
         items: taxableItems,
         currency: receipt.currency,
+        expectedDocumentTotal: Money.fromDecimal(receipt.totalAmount, currency: receipt.currency),
       );
 
       final dateStr = receipt.date.toIso8601String().split('T').first;

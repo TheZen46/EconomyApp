@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:t_aidy/core/financial/tax_engine.dart';
 import 'package:t_aidy/features/receipt_scanning/data/datasources/tax_report_service.dart';
 import 'package:t_aidy/features/receipt_scanning/domain/entities/receipt.dart';
 
@@ -133,6 +134,92 @@ void main() {
       expect(pdfString, startsWith('%PDF-1.4'));
       expect(pdfString, contains('tAIdy Tax & VAT Summary Report'));
       expect(pdfString, contains('%%EOF'));
+    });
+
+    test('groups reports by currency without summing across currencies', () {
+      final multiCurrencyReceipts = [
+        Receipt(
+          id: 'eur-1',
+          merchantName: 'Milano Cafe',
+          date: DateTime(2026, 9, 15),
+          totalAmount: 11.0,
+          currency: 'EUR',
+          items: const [
+            ReceiptItem(description: 'Espresso', unitPrice: 11.0, quantity: 1, totalPrice: 11.0, mainCategory: 'restaurant'),
+          ],
+        ),
+        Receipt(
+          id: 'usd-1',
+          merchantName: 'NYC Diner',
+          date: DateTime(2026, 9, 16),
+          totalAmount: 20.0,
+          currency: 'USD',
+          items: const [
+            ReceiptItem(description: 'Pancakes', unitPrice: 20.0, quantity: 1, totalPrice: 20.0, mainCategory: 'restaurant'),
+          ],
+        ),
+      ];
+
+      final reportsByCurrency = TaxReportService.generateTaxReportsByCurrency(
+        receipts: multiCurrencyReceipts,
+        startDate: DateTime(2026, 9, 1),
+        endDate: DateTime(2026, 9, 30),
+      );
+
+      expect(reportsByCurrency.keys, containsAll(['EUR', 'USD']));
+      expect(reportsByCurrency['EUR']!.currency, equals('EUR'));
+      expect(reportsByCurrency['EUR']!.totalGrossAmount, equals(11.0));
+      expect(reportsByCurrency['USD']!.currency, equals('USD'));
+      expect(reportsByCurrency['USD']!.totalGrossAmount, equals(20.0));
+    });
+
+    test('throws ArgumentError when multiple currencies are mixed without grouping or target currency', () {
+      final multiCurrencyReceipts = [
+        Receipt(
+          id: 'eur-1',
+          merchantName: 'Milano Cafe',
+          date: DateTime(2026, 9, 15),
+          totalAmount: 10.0,
+          currency: 'EUR',
+        ),
+        Receipt(
+          id: 'usd-1',
+          merchantName: 'NYC Diner',
+          date: DateTime(2026, 9, 16),
+          totalAmount: 15.0,
+          currency: 'USD',
+        ),
+      ];
+
+      expect(
+        () => TaxReportService.generateTaxReport(
+          receipts: multiCurrencyReceipts,
+          startDate: DateTime(2026, 9, 1),
+          endDate: DateTime(2026, 9, 30),
+        ),
+        throwsA(isA<ArgumentError>()),
+      );
+    });
+
+    test('reconciles category inferences consistently across TaxRateResolver, TaxEngine, and TaxReportService', () {
+      const categories = [
+        'Bread',
+        'fresh produce',
+        'milk',
+        'dairy',
+        'meat',
+        'Protein',
+        'Pharmacy',
+        'Medical Visit',
+        'Stamp duty',
+        'Electronics',
+      ];
+
+      for (final cat in categories) {
+        final engineBps = TaxEngine.inferTaxRateBps(cat);
+        final reportRate = TaxReportService.inferVatRateFromCategory(cat);
+        expect(engineBps / 100.0, equals(reportRate), reason: 'Mismatch on category: $cat');
+      }
     });
   });
 }

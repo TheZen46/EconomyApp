@@ -1,5 +1,6 @@
 import 'package:hive/hive.dart';
 import 'package:uuid/uuid.dart';
+import 'package:t_aidy/core/financial/price_basis.dart';
 import '../../domain/entities/receipt.dart';
 
 part 'receipt_model_adapter.dart';
@@ -56,6 +57,9 @@ class ReceiptModel extends HiveObject {
   @HiveField(16)
   final int version;
 
+  @HiveField(17)
+  final PriceBasis priceBasis;
+
   ReceiptModel({
     required this.id,
     required this.merchantName,
@@ -73,6 +77,7 @@ class ReceiptModel extends HiveObject {
     this.updatedAt,
     this.deletedAt,
     this.version = 1,
+    this.priceBasis = PriceBasis.gross,
   });
 
   factory ReceiptModel.fromJson(Map<String, dynamic> json) {
@@ -119,6 +124,7 @@ class ReceiptModel extends HiveObject {
       updatedAt: json['updated_at'] != null ? DateTime.tryParse(json['updated_at'] as String) : null,
       deletedAt: json['deleted_at'] != null ? DateTime.tryParse(json['deleted_at'] as String) : null,
       version: (json['version'] as num?)?.toInt() ?? 1,
+      priceBasis: PriceBasis.fromString(json['price_basis'] as String?),
     );
   }
 
@@ -141,6 +147,7 @@ class ReceiptModel extends HiveObject {
       'updated_at': (updatedAt ?? DateTime.now()).toUtc().toIso8601String(),
       'deleted_at': deletedAt?.toUtc().toIso8601String(),
       'version': version,
+      'price_basis': priceBasis.name,
     };
   }
 
@@ -198,6 +205,7 @@ class ReceiptModel extends HiveObject {
       merchantAddress: merchantAddress,
       time: time,
       boxId: boxId ?? 'main',
+      priceBasis: priceBasis,
     );
   }
 
@@ -216,6 +224,7 @@ class ReceiptModel extends HiveObject {
       boxId: receipt.boxId ?? 'main',
       userId: userId,
       version: version,
+      priceBasis: receipt.priceBasis,
     );
   }
 
@@ -236,6 +245,7 @@ class ReceiptModel extends HiveObject {
     DateTime? updatedAt,
     DateTime? deletedAt,
     int? version,
+    PriceBasis? priceBasis,
   }) {
     return ReceiptModel(
       id: id ?? this.id,
@@ -254,6 +264,7 @@ class ReceiptModel extends HiveObject {
       updatedAt: updatedAt ?? this.updatedAt,
       deletedAt: deletedAt ?? this.deletedAt,
       version: version ?? this.version,
+      priceBasis: priceBasis ?? this.priceBasis,
     );
   }
 }
@@ -304,6 +315,9 @@ class ReceiptItemModel {
   @HiveField(13)
   final int version;
 
+  @HiveField(14)
+  final PriceBasis priceBasis;
+
   ReceiptItemModel({
     required this.description,
     required this.unitPrice,
@@ -319,6 +333,7 @@ class ReceiptItemModel {
     this.confidenceScore = 1.0,
     this.deletedAt,
     this.version = 1,
+    this.priceBasis = PriceBasis.gross,
   });
 
   factory ReceiptItemModel.fromJson(Map<String, dynamic> json) {
@@ -337,6 +352,7 @@ class ReceiptItemModel {
       confidenceScore: (json['confidence_score'] as num?)?.toDouble() ?? 1.0,
       deletedAt: json['deleted_at'] != null ? DateTime.tryParse(json['deleted_at'].toString()) : null,
       version: (json['version'] as num?)?.toInt() ?? 1,
+      priceBasis: PriceBasis.fromString(json['price_basis'] as String?),
     );
   }
 
@@ -356,6 +372,7 @@ class ReceiptItemModel {
       'confidence_score': confidenceScore,
       'deleted_at': deletedAt?.toUtc().toIso8601String(),
       'version': version,
+      'price_basis': priceBasis.name,
     };
   }
 
@@ -374,6 +391,7 @@ class ReceiptItemModel {
     double? confidenceScore,
     DateTime? deletedAt,
     int? version,
+    PriceBasis? priceBasis,
   }) {
     return ReceiptItemModel(
       description: description ?? this.description,
@@ -390,6 +408,7 @@ class ReceiptItemModel {
       confidenceScore: confidenceScore ?? this.confidenceScore,
       deletedAt: deletedAt ?? this.deletedAt,
       version: version ?? this.version,
+      priceBasis: priceBasis ?? this.priceBasis,
     );
   }
 
@@ -405,6 +424,7 @@ class ReceiptItemModel {
       subCategory: subCategory,
       isAsset: isAsset ?? false,
       boxId: boxId ?? 'main',
+      priceBasis: priceBasis,
     );
   }
   
@@ -427,5 +447,6 @@ class ReceiptItemModel {
     subCategory: item.subCategory,
     isAsset: item.isAsset,
     boxId: item.boxId ?? 'main',
+    priceBasis: item.priceBasis,
   );
 }

@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:t_aidy/core/financial/price_basis.dart';
 import 'package:t_aidy/core/services/tax_compliance_service.dart';
 import 'package:t_aidy/features/receipt_scanning/data/models/receipt_model.dart';
 
@@ -11,26 +12,30 @@ void main() {
         vatNumber: '12345678901',
         merchantAddress: 'Via Monte Napoleone 8, Milano',
         date: DateTime.utc(2026, 9, 9),
-        totalAmount: 122.00,
+        totalAmount: 174.00,
         currency: 'EUR',
+        priceBasis: PriceBasis.net,
         items: [
           ReceiptItemModel(
             description: 'AI Cloud Subscription Standard 22%',
             unitPrice: 100.00,
             quantity: 1,
             category: 'Software & Cloud',
+            priceBasis: PriceBasis.net,
           ),
           ReceiptItemModel(
             description: 'Medical Exam Consultation (Exempt Art. 10)',
             unitPrice: 50.00,
             quantity: 1,
             category: 'Medical Visit',
+            priceBasis: PriceBasis.net,
           ),
           ReceiptItemModel(
             description: 'Government Stamp Duty (Marca da bollo)',
             unitPrice: 2.00,
             quantity: 1,
             category: 'Stamp Duty',
+            priceBasis: PriceBasis.net,
           ),
         ],
       );
@@ -38,11 +43,20 @@ void main() {
       final xml = TaxComplianceService.exportFatturaPaXml(
         receipt: receipt,
         transmitterVat: '12345678901',
+        senderName: 'tAIdy Cloud Solutions S.r.l.',
         senderVat: '12345678901',
         senderFiscalCode: '12345678901',
+        senderAddress: 'Via Monte Napoleone 8',
+        senderCap: '20121',
+        senderCity: 'Milano',
+        senderProvince: 'MI',
         destinationCode: 'M5UXCR1',
         buyerName: 'Enterprise Client S.p.A.',
         buyerVat: '98765432100',
+        buyerAddress: 'Via Torino 2',
+        buyerCap: '20123',
+        buyerCity: 'Milano',
+        buyerProvince: 'MI',
         documentNumber: '42/2026',
       );
 
@@ -54,6 +68,7 @@ void main() {
       expect(xml, contains('<Denominazione>Enterprise Client S.p.A.</Denominazione>'));
       expect(xml, contains('<Numero>42/2026</Numero>'));
       expect(xml, contains('<Divisa>EUR</Divisa>'));
+      expect(xml, contains('<ImportoTotaleDocumento>174.00</ImportoTotaleDocumento>'));
 
       // Check DettaglioLinee
       expect(xml, contains('<Descrizione>AI Cloud Subscription Standard 22%</Descrizione>'));
@@ -74,6 +89,81 @@ void main() {
       // Check DatiPagamento
       expect(xml, contains('<DatiPagamento>'));
       expect(xml, contains('<ModalitaPagamento>MP05</ModalitaPagamento>'));
+      expect(xml, contains('<ImportoPagamento>174.00</ImportoPagamento>'));
+    });
+
+    test('correctly extracts net unit prices from VAT-inclusive consumer receipts without double taxation', () {
+      final receipt = ReceiptModel(
+        id: 'REC-B2C-100',
+        merchantName: 'Supermercato Milano Centro',
+        vatNumber: 'IT09876543210',
+        merchantAddress: 'Via Dante 15, Milano',
+        date: DateTime.utc(2026, 9, 10),
+        totalAmount: 52.00,
+        currency: 'EUR',
+        priceBasis: PriceBasis.gross,
+        items: [
+          ReceiptItemModel(
+            description: 'Pane Fresco 1kg (4% VAT)',
+            unitPrice: 2.00,
+            quantity: 1,
+            category: 'Bread',
+            priceBasis: PriceBasis.gross,
+          ),
+          ReceiptItemModel(
+            description: 'Petto di Pollo 500g (10% VAT)',
+            unitPrice: 10.00,
+            quantity: 1,
+            category: 'Meat',
+            priceBasis: PriceBasis.gross,
+          ),
+          ReceiptItemModel(
+            description: 'Detersivo Lavatrice (22% VAT)',
+            unitPrice: 40.00,
+            quantity: 1,
+            category: 'Cleaning',
+            priceBasis: PriceBasis.gross,
+          ),
+        ],
+      );
+
+      final xml = TaxComplianceService.exportFatturaPaXml(
+        receipt: receipt,
+        transmitterVat: '09876543210',
+        senderName: 'Supermercato Milano Centro',
+        senderVat: '09876543210',
+        senderFiscalCode: '09876543210',
+        senderAddress: 'Via Dante 15',
+        senderCap: '20121',
+        senderCity: 'Milano',
+        senderProvince: 'MI',
+        buyerName: 'Mario Rossi',
+        buyerFiscalCode: 'RSSMRA80A01H501U',
+        buyerAddress: 'Via Garibaldi 5',
+        buyerCap: '20121',
+        buyerCity: 'Milano',
+        buyerProvince: 'MI',
+        documentNumber: '100/2026',
+      );
+
+      // Verifies net prices are extracted:
+      // Item 1: gross 2.00 / 1.04 = 1.92 net
+      expect(xml, contains('<PrezzoUnitario>1.92</PrezzoUnitario>'));
+      expect(xml, contains('<PrezzoTotale>1.92</PrezzoTotale>'));
+      expect(xml, contains('<AliquotaIVA>4.00</AliquotaIVA>'));
+
+      // Item 2: gross 10.00 / 1.10 = 9.09 net
+      expect(xml, contains('<PrezzoUnitario>9.09</PrezzoUnitario>'));
+      expect(xml, contains('<PrezzoTotale>9.09</PrezzoTotale>'));
+      expect(xml, contains('<AliquotaIVA>10.00</AliquotaIVA>'));
+
+      // Item 3: gross 40.00 / 1.22 = 32.79 net
+      expect(xml, contains('<PrezzoUnitario>32.79</PrezzoUnitario>'));
+      expect(xml, contains('<PrezzoTotale>32.79</PrezzoTotale>'));
+      expect(xml, contains('<AliquotaIVA>22.00</AliquotaIVA>'));
+
+      // Total document matches original gross receipt exactly: 52.00 (not 52 + VAT!)
+      expect(xml, contains('<ImportoTotaleDocumento>52.00</ImportoTotaleDocumento>'));
     });
   });
 
@@ -88,12 +178,14 @@ void main() {
           date: DateTime.utc(2026, 9, 9),
           totalAmount: 119.00,
           currency: 'EUR',
+          priceBasis: PriceBasis.net,
           items: [
             ReceiptItemModel(
               description: 'Office Hardware Standard 19%',
               unitPrice: 100.00,
               quantity: 1,
               category: 'Electronics',
+              priceBasis: PriceBasis.net,
             ),
           ],
         ),
@@ -102,6 +194,7 @@ void main() {
           unitPrice: 50.00,
           quantity: 1,
           category: 'Fresh Produce',
+          priceBasis: PriceBasis.net,
         ).toReceipt('REC-DE-02', 'Bio Markt Berlin', DateTime.utc(2026, 9, 9)),
       ];
     });
@@ -150,12 +243,14 @@ void main() {
           date: DateTime.utc(2026, 9, 9),
           totalAmount: 122.00,
           currency: 'EUR',
+          priceBasis: PriceBasis.net,
           items: [
             ReceiptItemModel(
               description: 'Cloud Server Infrastructure',
               unitPrice: 100.00,
               quantity: 1,
               category: 'IT Services',
+              priceBasis: PriceBasis.net,
             ),
           ],
         ),
@@ -195,12 +290,17 @@ void main() {
 
 extension on ReceiptItemModel {
   ReceiptModel toReceipt(String id, String merchant, DateTime date) {
+    final netAmount = unitPrice * quantity;
+    final grossAmount = (priceBasis == PriceBasis.net)
+        ? (netAmount * 1.07) // 7% reduced VAT
+        : netAmount;
     return ReceiptModel(
       id: id,
       merchantName: merchant,
       date: date,
-      totalAmount: unitPrice * quantity,
+      totalAmount: grossAmount,
       currency: 'EUR',
+      priceBasis: priceBasis,
       items: [this],
     );
   }

@@ -1,4 +1,5 @@
 import 'package:freezed_annotation/freezed_annotation.dart';
+import 'package:t_aidy/core/financial/price_basis.dart';
 
 part 'receipt.freezed.dart';
 
@@ -20,6 +21,7 @@ class Receipt with _$Receipt {
     // True when the extraction found no valid purchase date and [date] is a
     // placeholder; the review screen asks the user to confirm it. Not stored.
     @Default(false) bool dateUncertain,
+    @Default(PriceBasis.gross) PriceBasis priceBasis,
   }) = _Receipt;
 
   const Receipt._();
@@ -73,6 +75,7 @@ class ReceiptItem with _$ReceiptItem {
     String? subCategory,  // e.g. "Beverages (Sugary)"
     @Default(false) bool isAsset,
     @Default('main') String? boxId,
+    @Default(PriceBasis.gross) PriceBasis priceBasis,
     
     @Deprecated('Use subCategory or mainCategory instead')
     String? category, // Keeping for backward compatibility temporarily
