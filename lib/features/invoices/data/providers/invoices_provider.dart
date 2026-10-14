@@ -1,11 +1,13 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hive/hive.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
 import '../models/invoice_model.dart';
 import '../../../../features/receipt_scanning/presentation/providers/receipt_provider.dart';
 import '../../../../core/sync/outbox_service.dart';
 import '../../../../core/sync/sync_providers.dart';
+import '../../../../core/providers/supabase_providers.dart';
 
 final invoicesHiveBoxProvider = Provider<Box<InvoiceModel>>((ref) {
   throw UnimplementedError('invoicesHiveBoxProvider must be overridden in main.dart');
@@ -20,9 +22,17 @@ class InvoicesNotifier extends StateNotifier<List<InvoiceModel>> {
   final Box<InvoiceModel>? _box;
   final Box? _settingsBox;
   final OutboxService? _outboxService;
+  final SupabaseClient? _supabase;
+  final String? _devicePartition;
   static const _uuid = Uuid();
 
-  InvoicesNotifier([this._box, this._settingsBox, this._outboxService]) : super([]) {
+  InvoicesNotifier([
+    this._box,
+    this._settingsBox,
+    this._outboxService,
+    this._supabase,
+    this._devicePartition,
+  ]) : super([]) {
     _load();
   }
 
@@ -30,11 +40,28 @@ class InvoicesNotifier extends StateNotifier<List<InvoiceModel>> {
     final items = _box?.values.toList() ?? [];
     items.sort((a, b) => b.issuedDate.compareTo(a.issuedDate));
 
-    // Auto-mark overdue using copyWith — never mutate in-place.
+    // Auto-mark overdue using copyWith with updatedAt and incremented version,
+    // and synchronize through the outbox to prevent remote pull revert churn.
     final updated = items.map((inv) {
       if (inv.isOverdue && inv.status == InvoiceStatus.sent) {
-        final updatedInv = inv.copyWith(status: InvoiceStatus.overdue);
+        final nowUtc = DateTime.now().toUtc();
+        final updatedInv = inv.copyWith(
+          status: InvoiceStatus.overdue,
+          updatedAt: nowUtc,
+          version: inv.version + 1,
+        );
         _box?.put(inv.id, updatedInv);
+        if (_outboxService != null) {
+          _outboxService.enqueue(
+            entityType: 'invoice',
+            entityId: inv.id,
+            mutationType: 'upsert',
+            payload: updatedInv.toJson(),
+          ).catchError((e) {
+            debugPrint('InvoicesNotifier: Error enqueuing overdue transition: $e');
+            return null as dynamic;
+          });
+        }
         return updatedInv;
       }
       return inv;
@@ -48,13 +75,21 @@ class InvoicesNotifier extends StateNotifier<List<InvoiceModel>> {
     _load();
   }
 
+  String _counterKeyFor(String yearMonth, [String? partition]) {
+    final part = (partition != null && partition.isNotEmpty) ? '_$partition' : '';
+    return 'invoice_counter_$yearMonth$part';
+  }
+
   /// Scans all existing box entries (and in-memory state) to determine the
-  /// absolute highest existing sequence index for the given month/year.
-  int getMaxExistingInvoiceNumber([DateTime? date]) {
+  /// absolute highest existing sequence index for the given month/year and optional device partition.
+  int getMaxExistingInvoiceNumber([DateTime? date, String? partition]) {
     final targetDate = date ?? DateTime.now();
     final year = targetDate.year.toString();
     final month = targetDate.month.toString().padLeft(2, '0');
-    final targetPrefix = 'INV-$year$month-';
+    final yearMonth = '$year$month';
+    final effectivePartition = partition ?? _devicePartition ?? (_settingsBox?.get('invoice_device_partition') as String?);
+    final partitionTag = (effectivePartition != null && effectivePartition.isNotEmpty) ? '-$effectivePartition' : '';
+    final targetPrefix = 'INV-$yearMonth$partitionTag-';
 
     int maxNumber = 0;
 
@@ -67,20 +102,31 @@ class InvoicesNotifier extends StateNotifier<List<InvoiceModel>> {
         if (parsed != null && parsed > maxNumber) {
           maxNumber = parsed;
         }
-      } else {
-        // Also inspect older formats like INV-2026-001 or INV-001
-        final match = RegExp(r'INV-(?:\d{6}|\d{4})?-?(\d+)').firstMatch(numStr) ??
-            RegExp(r'(\d+)$').firstMatch(numStr);
-        if (match != null) {
-          final parsed = int.tryParse(match.group(1)!);
+      } else if (effectivePartition == null || effectivePartition.isEmpty) {
+        if (numStr.startsWith('INV-$yearMonth-')) {
+          final suffix = numStr.substring('INV-$yearMonth-'.length);
+          final parsed = int.tryParse(suffix);
           if (parsed != null && parsed > maxNumber) {
             maxNumber = parsed;
+          }
+        } else {
+          final match = RegExp(r'INV-(?:\d{6}|\d{4})?-?(\d+)').firstMatch(numStr) ??
+              RegExp(r'(\d+)$').firstMatch(numStr);
+          if (match != null) {
+            final parsed = int.tryParse(match.group(1)!);
+            if (parsed != null && parsed > maxNumber) {
+              maxNumber = parsed;
+            }
           }
         }
       }
     }
 
-    final persisted = _settingsBox?.get(_counterKey, defaultValue: 0) as int? ?? 0;
+    final scopedPersisted = _settingsBox?.get(_counterKeyFor(yearMonth, effectivePartition)) as int?;
+    final legacyPersisted = (effectivePartition == null || effectivePartition.isEmpty)
+        ? (_settingsBox?.get(_counterKey, defaultValue: 0) as int? ?? 0)
+        : 0;
+    final persisted = scopedPersisted ?? legacyPersisted;
     if (persisted > maxNumber) {
       maxNumber = persisted;
     }
@@ -97,22 +143,47 @@ class InvoicesNotifier extends StateNotifier<List<InvoiceModel>> {
   }
 
   /// Returns the next invoice number using a monotonic sequence generator:
-  /// `INV-${year}${month}-${(maxExistingInvoiceNumber + 1).padLeft(4, '0')}`.
+  /// `INV-${year}${month}-${(maxExistingInvoiceNumber + 1).padLeft(4, '0')}` (or with device partition).
   ///
   /// Guarantees that deleting prior invoices NEVER causes sequence reuse or collision.
   Future<String> generateNextInvoiceNumber([DateTime? date]) async {
     final now = date ?? DateTime.now();
     final year = now.year.toString();
     final month = now.month.toString().padLeft(2, '0');
-    var nextIndex = getMaxExistingInvoiceNumber(now) + 1;
+    final yearMonth = '$year$month';
+    final effectivePartition = _devicePartition ?? (_settingsBox?.get('invoice_device_partition') as String?);
 
-    var candidate = 'INV-$year$month-${nextIndex.toString().padLeft(4, '0')}';
-    while (isInvoiceNumberTaken(candidate)) {
-      nextIndex++;
-      candidate = 'INV-$year$month-${nextIndex.toString().padLeft(4, '0')}';
+    // 1. If Supabase is connected, attempt server-side sequence allocation (RPC with row locking)
+    if (_supabase != null) {
+      try {
+        final res = await _supabase.rpc('allocate_invoice_number', params: {
+          'p_year_month': yearMonth,
+          'p_partition': effectivePartition,
+        });
+        if (res != null && res is String && res.isNotEmpty) {
+          return res;
+        }
+      } catch (_) {
+        // Fall back to local device-partitioned sequence generator
+      }
     }
 
-    await _settingsBox?.put(_counterKey, nextIndex);
+    // 2. Local partitioned monotonic allocation
+    var nextIndex = getMaxExistingInvoiceNumber(now, effectivePartition) + 1;
+    final partitionTag = (effectivePartition != null && effectivePartition.isNotEmpty)
+        ? '-$effectivePartition'
+        : '';
+
+    var candidate = 'INV-$year$month$partitionTag-${nextIndex.toString().padLeft(4, '0')}';
+    while (isInvoiceNumberTaken(candidate)) {
+      nextIndex++;
+      candidate = 'INV-$year$month$partitionTag-${nextIndex.toString().padLeft(4, '0')}';
+    }
+
+    await _settingsBox?.put(_counterKeyFor(yearMonth, effectivePartition), nextIndex);
+    if (effectivePartition == null || effectivePartition.isEmpty) {
+      await _settingsBox?.put(_counterKey, nextIndex);
+    }
     return candidate;
   }
 
@@ -252,17 +323,17 @@ class InvoicesNotifier extends StateNotifier<List<InvoiceModel>> {
     // Monotonic sequence counter is NEVER decremented upon deletion.
   }
 
-  // Stats
+  // Stats - computed from effectiveStatus for real-time accuracy
   double get totalOutstanding => state
-      .where((i) => i.status == InvoiceStatus.sent || i.status == InvoiceStatus.overdue)
+      .where((i) => i.effectiveStatus == InvoiceStatus.sent || i.effectiveStatus == InvoiceStatus.overdue)
       .fold(0, (sum, i) => sum + i.amount);
 
   double get totalOverdue => state
-      .where((i) => i.status == InvoiceStatus.overdue)
+      .where((i) => i.effectiveStatus == InvoiceStatus.overdue)
       .fold(0, (sum, i) => sum + i.amount);
 
   double get totalDraft => state
-      .where((i) => i.status == InvoiceStatus.draft)
+      .where((i) => i.effectiveStatus == InvoiceStatus.draft)
       .fold(0, (sum, i) => sum + i.amount);
 }
 
@@ -282,5 +353,8 @@ final invoicesProvider = StateNotifierProvider<InvoicesNotifier, List<InvoiceMod
     outbox = ref.watch(outboxServiceProvider);
   } catch (_) {}
 
-  return InvoicesNotifier(box, settingsBox, outbox);
+  final client = ref.watch(supabaseClientProvider);
+  final devicePartition = settingsBox?.get('invoice_device_partition') as String?;
+
+  return InvoicesNotifier(box, settingsBox, outbox, client, devicePartition);
 });

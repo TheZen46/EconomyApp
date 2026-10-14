@@ -1,6 +1,8 @@
 import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hive/hive.dart';
+import 'package:t_aidy/core/sync/models/sync_outbox_item.dart';
+import 'package:t_aidy/core/sync/outbox_service.dart';
 import 'package:t_aidy/features/invoices/data/models/invoice_model.dart';
 import 'package:t_aidy/features/invoices/data/providers/invoices_provider.dart';
 
@@ -18,6 +20,9 @@ void main() {
 
     if (!Hive.isAdapterRegistered(11)) {
       Hive.registerAdapter(InvoiceModelAdapter());
+    }
+    if (!Hive.isAdapterRegistered(12)) {
+      Hive.registerAdapter(SyncOutboxItemAdapter());
     }
 
     invoiceBox = await Hive.openBox<InvoiceModel>('invoices_test_box');
@@ -277,6 +282,105 @@ void main() {
       final reloadedNotifier = InvoicesNotifier(invoiceBox, settingsBox);
       expect(reloadedNotifier.state.first.status, InvoiceStatus.overdue);
       expect(invoiceBox.get('past-due-1')?.status, InvoiceStatus.overdue);
+    });
+
+    test('TAIDY-M21 Issue #43: Partitioned invoice sequences prevent multi-device collision offline', () async {
+      final now = DateTime(2026, 8, 20);
+
+      final notifierDev1 = InvoicesNotifier(invoiceBox, settingsBox, null, null, 'A');
+      final notifierDev2 = InvoicesNotifier(invoiceBox, settingsBox, null, null, 'B');
+
+      final inv1 = await notifierDev1.create(
+        clientName: 'Client Device 1',
+        amount: 150.0,
+        status: InvoiceStatus.sent,
+        issuedDate: now,
+      );
+
+      final inv2 = await notifierDev2.create(
+        clientName: 'Client Device 2',
+        amount: 250.0,
+        status: InvoiceStatus.sent,
+        issuedDate: now,
+      );
+
+      expect(inv1.invoiceNumber, equals('INV-202608-A-0001'));
+      expect(inv2.invoiceNumber, equals('INV-202608-B-0001'));
+      expect(inv1.invoiceNumber, isNot(equals(inv2.invoiceNumber)));
+    });
+
+    test('TAIDY-M21 Issue #43: Overdue auto-transition updates version, updatedAt, and enqueues outbox mutation', () async {
+      final now = DateTime(2026, 8, 20);
+      final outboxBox = await Hive.openBox<SyncOutboxItem>('test_outbox_invoices_${DateTime.now().millisecondsSinceEpoch}');
+      final outboxService = OutboxService(outboxBox);
+
+      final initialUpdatedAt = DateTime.utc(2026, 7, 1);
+      final pastDue = InvoiceModel(
+        id: 'past-due-outbox-sync',
+        invoiceNumber: 'INV-202607-0099',
+        clientName: 'Sync Payer',
+        amount: 800.0,
+        status: InvoiceStatus.sent,
+        issuedDate: DateTime.utc(2026, 7, 1),
+        dueDate: now.subtract(const Duration(days: 5)),
+        createdAt: DateTime.utc(2026, 7, 1),
+        updatedAt: initialUpdatedAt,
+        version: 1,
+      );
+
+      await invoiceBox.put(pastDue.id, pastDue);
+
+      // Loading with outboxService should trigger the synchronized overdue transition
+      final syncNotifier = InvoicesNotifier(invoiceBox, settingsBox, outboxService);
+
+      // State is updated
+      expect(syncNotifier.state.first.status, equals(InvoiceStatus.overdue));
+
+      // Hive has incremented version and newer updatedAt
+      final savedInHive = invoiceBox.get(pastDue.id)!;
+      expect(savedInHive.status, equals(InvoiceStatus.overdue));
+      expect(savedInHive.version, equals(2));
+      expect(savedInHive.updatedAt!.isAfter(initialUpdatedAt), isTrue);
+
+      // Outbox item was enqueued with version 2
+      expect(outboxBox.values.length, equals(1));
+      final outboxItem = outboxBox.values.first;
+      expect(outboxItem.entityType, equals('invoice'));
+      expect(outboxItem.entityId, equals(pastDue.id));
+      expect(outboxItem.mutationType, equals('upsert'));
+      expect(outboxItem.payload['status'], equals('Overdue'));
+      expect(outboxItem.payload['version'], equals(2));
+
+      await outboxBox.close();
+    });
+
+    test('TAIDY-M21 Issue #43: effectiveStatus treats overdue as a derived read-time property', () {
+      final now = DateTime.now();
+      final overdueSent = InvoiceModel(
+        id: 'eff-1',
+        invoiceNumber: 'INV-202608-0001',
+        clientName: 'Client A',
+        amount: 100.0,
+        status: InvoiceStatus.sent,
+        issuedDate: now.subtract(const Duration(days: 30)),
+        dueDate: now.subtract(const Duration(days: 5)),
+      );
+
+      expect(overdueSent.status, equals(InvoiceStatus.sent));
+      expect(overdueSent.effectiveStatus, equals(InvoiceStatus.overdue));
+
+      final overdueSettled = InvoiceModel(
+        id: 'eff-2',
+        invoiceNumber: 'INV-202608-0002',
+        clientName: 'Client B',
+        amount: 100.0,
+        status: InvoiceStatus.settled,
+        issuedDate: now.subtract(const Duration(days: 30)),
+        dueDate: now.subtract(const Duration(days: 5)),
+      );
+
+      expect(overdueSettled.status, equals(InvoiceStatus.settled));
+      expect(overdueSettled.effectiveStatus, equals(InvoiceStatus.settled));
     });
   });
 }

@@ -158,6 +158,15 @@ class InvoiceModel {
     return DateTime.now().isAfter(dueDate!);
   }
 
+  /// The effective status computed at read time: if sent and due date has passed,
+  /// it is dynamically recognized as overdue even before background sync completes.
+  String get effectiveStatus {
+    if (status == InvoiceStatus.sent && isOverdue) {
+      return InvoiceStatus.overdue;
+    }
+    return status;
+  }
+
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
