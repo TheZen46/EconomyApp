@@ -22,27 +22,66 @@ import '../../features/onboarding/presentation/pages/air_gapped_vault_onboarding
 import '../../features/sync/presentation/pages/sync_progress_page.dart';
 import '../../features/sync/presentation/providers/sync_provider.dart';
 
-// ── Route Path Constants ────────────────────────────────────────────────────
+/// Centralized path constants for all declarative GoRouter application routes.
 abstract class AppRoutes {
+  /// Root entry route.
   static const root = '/';
+
+  /// Authentication sign-in screen.
   static const login = '/login';
+
+  /// Account registration screen.
   static const signup = '/signup';
+
+  /// Initial or rehydration synchronization progress screen.
   static const syncProgress = '/sync_progress';
+
+  /// Main financial dashboard and overview page.
   static const home = '/home';
+
+  /// Application settings and cryptographic preferences page.
   static const settings = '/settings';
+
+  /// Line-item price fluctuation tracking and analysis page.
   static const priceWatch = '/price_watch';
+
+  /// Camera/Gallery receipt scanning view.
   static const scan = '/scan';
+
+  /// Receipt extraction review and confirmation view.
   static const review = '/review';
+
+  /// Category taxonomy customization view.
   static const taxonomy = '/taxonomy';
+
+  /// Webhooks and external integrations settings view.
   static const integrations = '/integrations';
+
+  /// Cryptographic vault and proof verification view.
   static const vault = '/vault';
+
+  /// On-device AI model management and weights download view.
   static const modelManager = '/model_manager';
+
+  /// Multi-box budget segregation management view.
   static const boxes = '/boxes';
+
+  /// Invoicing and accounts receivable view.
   static const invoices = '/invoices';
+
+  /// Bank CSV import and reconciliation view.
   static const reconciliation = '/reconciliation';
+
+  /// Business travel mileage deduction tracker.
   static const mileage = '/mileage';
+
+  /// Statutory tax compliance and quarterly deadlines hub.
   static const taxHub = '/tax_hub';
+
+  /// Alias for tax compliance hub.
   static const taxCompliance = '/tax-compliance';
+
+  /// Air-gapped biometric vault setup walkthrough.
   static const onboarding = '/onboarding';
 }
 
@@ -71,6 +110,14 @@ final GoRoute reviewRoute = GoRoute(
   },
 );
 
+/// Root navigation provider configuring the application's [GoRouter].
+///
+/// **Lifetime:** App-scoped singleton.
+/// **Dependencies:**
+/// - `routerNotifierProvider`: Refreshes route guards upon auth changes.
+/// - `authProvider`: Tracks active user authentication state.
+/// - `authRepositoryProvider`: Checks current persistent session.
+/// - `initialSyncCompletedProvider`: Directs new logins to sync progress before dashboard.
 final routerProvider = Provider<GoRouter>((ref) {
   // RouterNotifier is a ChangeNotifier wired to authProvider and Supabase auth stream.
   // GoRouter calls refreshListenable.addListener so it re-runs redirect:

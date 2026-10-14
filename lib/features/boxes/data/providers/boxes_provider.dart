@@ -8,12 +8,21 @@ import '../../../../core/sync/sync_providers.dart';
 import '../../../receipt_scanning/data/models/receipt_model.dart';
 import '../../../receipt_scanning/presentation/providers/receipt_provider.dart';
 
+/// Hive box storing segregated budget envelope [BoxModel] configurations (`boxes`).
+///
+/// **Lifetime:** App-scoped singleton.
+/// **Override:** Required. Must be overridden with an encrypted box instance in `main()`.
+/// **Dependencies:** None.
 final boxesHiveBoxProvider = Provider<Box<BoxModel>>((ref) {
   throw UnimplementedError('boxesHiveBoxProvider must be overridden in main.dart');
 });
 
+/// Currently active budget box identifier used for UI filtering (defaults to `'main'`).
+///
+/// **Lifetime:** App-scoped state provider.
 final activeBoxIdProvider = StateProvider<String>((ref) => 'main');
 
+/// State notifier managing user budget boxes, cascade receipt reassignments, and outbox sync.
 class BoxesNotifier extends StateNotifier<List<BoxModel>> {
   final Box<BoxModel>? _box;
   final Ref? _ref;
@@ -21,6 +30,7 @@ class BoxesNotifier extends StateNotifier<List<BoxModel>> {
   final Box<ReceiptModel>? _receiptsBox;
   static const _uuid = Uuid();
 
+  /// Creates a [BoxesNotifier] and auto-seeds the default `'main'` box if empty.
   BoxesNotifier([this._box, this._ref, this._outboxService, this._receiptsBox]) : super([]) {
     _load();
   }
@@ -236,6 +246,13 @@ class BoxesNotifier extends StateNotifier<List<BoxModel>> {
   }
 }
 
+/// Provides the reactive list of budget envelope boxes.
+///
+/// **Lifetime:** App-scoped state notifier provider.
+/// **Dependencies:**
+/// - `boxesHiveBoxProvider`: Persistent boxes Hive box.
+/// - `outboxServiceProvider`: Offline CRDT outbox queue.
+/// - `hiveBoxProvider`: Receipts Hive box for reassigning deleted boxes.
 final boxesProvider = StateNotifierProvider<BoxesNotifier, List<BoxModel>>((ref) {
   Box<BoxModel>? box;
   try {

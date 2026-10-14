@@ -9,6 +9,11 @@ import '../../../../core/sync/outbox_service.dart';
 import '../../../../core/sync/sync_providers.dart';
 import '../../../../core/providers/supabase_providers.dart';
 
+/// Hive box storing persisted [InvoiceModel] records (`invoices`).
+///
+/// **Lifetime:** App-scoped singleton.
+/// **Override:** Required. Must be overridden with an encrypted box instance in `main()`.
+/// **Dependencies:** None.
 final invoicesHiveBoxProvider = Provider<Box<InvoiceModel>>((ref) {
   throw UnimplementedError('invoicesHiveBoxProvider must be overridden in main.dart');
 });
@@ -18,6 +23,7 @@ final invoicesHiveBoxProvider = Provider<Box<InvoiceModel>>((ref) {
 // derived from the list length, so deleting invoices cannot cause reuse.
 const _counterKey = 'global_invoice_counter';
 
+/// State notifier managing invoice lifecycle, sequential number generation, and outbox sync.
 class InvoicesNotifier extends StateNotifier<List<InvoiceModel>> {
   final Box<InvoiceModel>? _box;
   final Box? _settingsBox;
@@ -26,6 +32,7 @@ class InvoicesNotifier extends StateNotifier<List<InvoiceModel>> {
   final String? _devicePartition;
   static const _uuid = Uuid();
 
+  /// Creates an [InvoicesNotifier] and auto-transitions overdue invoices on load.
   InvoicesNotifier([
     this._box,
     this._settingsBox,
@@ -323,20 +330,32 @@ class InvoicesNotifier extends StateNotifier<List<InvoiceModel>> {
     // Monotonic sequence counter is NEVER decremented upon deletion.
   }
 
-  // Stats - computed from effectiveStatus for real-time accuracy
+  // ── Financial Stats ────────────────────────────────────────────────────────
+
+  /// Aggregated currency total of all invoices currently in `sent` or `overdue` status.
   double get totalOutstanding => state
       .where((i) => i.effectiveStatus == InvoiceStatus.sent || i.effectiveStatus == InvoiceStatus.overdue)
       .fold(0, (sum, i) => sum + i.amount);
 
+  /// Aggregated currency total of all past-due invoices.
   double get totalOverdue => state
       .where((i) => i.effectiveStatus == InvoiceStatus.overdue)
       .fold(0, (sum, i) => sum + i.amount);
 
+  /// Aggregated currency total of all unfinalized draft invoices.
   double get totalDraft => state
       .where((i) => i.effectiveStatus == InvoiceStatus.draft)
       .fold(0, (sum, i) => sum + i.amount);
 }
 
+/// Provides the reactive list of invoices and accounts receivable items.
+///
+/// **Lifetime:** App-scoped state notifier provider.
+/// **Dependencies:**
+/// - `invoicesHiveBoxProvider`: Persistent invoices Hive box.
+/// - `settingsBoxProvider`: Application settings and device partition key.
+/// - `outboxServiceProvider`: Offline CRDT outbox queue.
+/// - `supabaseClientProvider`: Supabase client for remote sequence allocation.
 final invoicesProvider = StateNotifierProvider<InvoicesNotifier, List<InvoiceModel>>((ref) {
   Box<InvoiceModel>? box;
   try {

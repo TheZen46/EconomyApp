@@ -7,10 +7,21 @@ import 'package:uuid/uuid.dart';
 import '../../../../core/sync/outbox_service.dart';
 import '../../../../core/sync/sync_providers.dart';
 
+/// Hive box storing persisted [AssetModel] warrantied physical inventory items (`assets`).
+///
+/// **Lifetime:** App-scoped singleton.
+/// **Override:** Required. Must be overridden with an encrypted box instance in `main()`.
+/// **Dependencies:** None.
 final assetsBoxProvider = Provider<Box<AssetModel>>((ref) {
   throw UnimplementedError('Assets Box must be overridden in main');
 });
 
+/// Provides the reactive list of warrantied physical assets in the user's EVault.
+///
+/// **Lifetime:** App-scoped state notifier provider.
+/// **Dependencies:**
+/// - `assetsBoxProvider`: Persistent assets Hive box.
+/// - `outboxServiceProvider`: Offline CRDT outbox queue.
 final assetListProvider = StateNotifierProvider<AssetNotifier, List<AssetModel>>((ref) {
   Box<AssetModel>? box;
   try {
@@ -25,10 +36,12 @@ final assetListProvider = StateNotifierProvider<AssetNotifier, List<AssetModel>>
   return AssetNotifier(box, outbox);
 });
 
+/// State notifier managing physical asset inventories, warranty tracking, and outbox sync.
 class AssetNotifier extends StateNotifier<List<AssetModel>> {
   final Box<AssetModel>? _box;
   final OutboxService? _outboxService;
 
+  /// Creates an [AssetNotifier] initialized from the optional Hive [Box].
   AssetNotifier([this._box, this._outboxService]) : super(_box?.values.toList() ?? []);
 
   /// Reloads state from Hive box to synchronize with background sync deltas.

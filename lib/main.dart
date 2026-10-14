@@ -33,6 +33,8 @@ import 'core/sync/models/sync_outbox_item.dart';
 import 'core/sync/sync_providers.dart';
 import 'features/settings/data/models/user_profile_model.dart';
 
+/// Application entrypoint initializing telemetry, secure storage, AES-encrypted Hive boxes,
+/// and Riverpod provider overrides before launching [TAIdyApp].
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
@@ -239,9 +241,9 @@ const List<String> _encryptedBoxNames = [
   'sync_outbox',
 ];
 
-// ── App Shell ────────────────────────────────────────────────────────────────
-
+/// Root widget configuring the application theme, router, localizations, and biometric guards.
 class TAIdyApp extends ConsumerStatefulWidget {
+  /// Creates the root [TAIdyApp] instance.
   const TAIdyApp({super.key});
 
   @override
@@ -336,8 +338,12 @@ class _TAIdyAppState extends ConsumerState<TAIdyApp> {
   }
 }
 
+/// Listens for over-the-air model update notifications and displays floating SnackBars.
 class UpgradeListenerWrapper extends ConsumerWidget {
+  /// The child widget subtree to wrap.
   final Widget? child;
+
+  /// Creates an [UpgradeListenerWrapper].
   const UpgradeListenerWrapper({super.key, this.child});
 
   @override

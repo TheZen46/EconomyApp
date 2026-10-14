@@ -13,15 +13,37 @@ import '../../features/invoices/data/models/invoice_model.dart';
 import '../../features/evault/presentation/providers/asset_provider.dart';
 import '../../features/evault/data/models/asset_model.dart';
 
+/// Hive box storing persistent outgoing [SyncOutboxItem] mutations.
+///
+/// **Lifetime:** App-scoped singleton.
+/// **Override:** Required. Must be overridden with an opened encrypted box in `main()`.
+/// **Dependencies:** None.
 final outboxHiveBoxProvider = Provider<Box<SyncOutboxItem>>((ref) {
   throw UnimplementedError('Outbox Hive box must be overridden in main');
 });
 
+/// Service responsible for queueing, executing, and deduplicating offline mutations.
+///
+/// **Lifetime:** App-scoped singleton.
+/// **Override:** Inherits from [outboxHiveBoxProvider].
+/// **Dependencies:** `outboxHiveBoxProvider`.
 final outboxServiceProvider = Provider<OutboxService>((ref) {
   final box = ref.watch(outboxHiveBoxProvider);
   return OutboxService(box);
 });
 
+/// Bidirectional synchronization orchestrator connecting local Hive storage to Supabase.
+///
+/// **Lifetime:** App-scoped singleton with registered disposal cleanup via `ref.onDispose`.
+/// **Override:** None required. Returns `null` if Supabase credentials are missing or the app runs offline.
+/// **Dependencies:**
+/// - `supabaseClientProvider`: Supabase client or null if offline.
+/// - `outboxServiceProvider`: Outbox queue service.
+/// - `hiveBoxProvider`: Receipts local box.
+/// - `boxesHiveBoxProvider`: Budget boxes local box.
+/// - `invoicesHiveBoxProvider`: Invoices local box.
+/// - `assetsBoxProvider`: EVault asset inventory local box.
+/// - `settingsBoxProvider`: General settings and encryption metadata box.
 final syncManagerProvider = Provider<SyncManager?>((ref) {
   // Without an initialized client the app runs local-only.
   final client = ref.watch(supabaseClientProvider);
@@ -90,8 +112,12 @@ final syncManagerProvider = Provider<SyncManager?>((ref) {
   return manager;
 });
 
-/// Number of dead-lettered outbox mutations (no longer retried automatically),
-/// updated whenever the outbox changes.
+/// Streams the count of dead-lettered outbox mutations (status `permanently_failed`),
+/// updating reactively whenever the local outbox Hive box changes.
+///
+/// **Lifetime:** Auto-updating stream provider.
+/// **Dependencies:** `outboxHiveBoxProvider`.
+/// **Override:** Inherits from [outboxHiveBoxProvider].
 final deadLetteredMutationCountProvider = StreamProvider<int>((ref) async* {
   final box = ref.watch(outboxHiveBoxProvider);
   int count() => box.values.where((item) => item.status == 'permanently_failed').length;
