@@ -1,6 +1,7 @@
 import 'package:hive/hive.dart';
 import 'package:uuid/uuid.dart';
 import 'package:t_aidy/core/entities/syncable_entity.dart';
+import 'package:t_aidy/core/data_contracts/remote_dtos.dart';
 
 part 'box_model_adapter.dart';
 
@@ -117,6 +118,9 @@ class BoxModel extends HiveObject implements SyncableEntity {
       'version': version,
     };
   }
+
+  /// Strictly serializes to schema-contracted columns defined in [BoxRemoteDto].
+  Map<String, dynamic> toRemoteJson() => BoxRemoteDto.fromModel(this).toRemoteJson();
 
   BoxModel copyWith({
     String? name,

@@ -1,6 +1,7 @@
 import 'package:hive/hive.dart';
 import 'package:uuid/uuid.dart';
 import 'package:t_aidy/core/entities/syncable_entity.dart';
+import 'package:t_aidy/core/data_contracts/remote_dtos.dart';
 
 part 'asset_model_adapter.dart';
 
@@ -111,6 +112,9 @@ class AssetModel implements SyncableEntity {
       'version': version,
     };
   }
+
+  /// Strictly serializes to schema-contracted columns defined in [VaultAssetRemoteDto].
+  Map<String, dynamic> toRemoteJson() => VaultAssetRemoteDto.fromModel(this).toRemoteJson();
 
   DateTime get warrantyExpiryDate =>
       DateTime(purchaseDate.year, purchaseDate.month + warrantyMonths, purchaseDate.day, purchaseDate.hour, purchaseDate.minute);

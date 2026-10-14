@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:hive/hive.dart';
 import 'package:uuid/uuid.dart';
 import 'package:t_aidy/core/entities/syncable_entity.dart';
+import 'package:t_aidy/core/data_contracts/remote_dtos.dart';
 
 part 'invoice_model_adapter.dart';
 
@@ -123,6 +124,9 @@ class InvoiceModel implements SyncableEntity {
       'version': version,
     };
   }
+
+  /// Strictly serializes to schema-contracted columns defined in [InvoiceRemoteDto].
+  Map<String, dynamic> toRemoteJson() => InvoiceRemoteDto.fromModel(this).toRemoteJson();
 
   InvoiceModel copyWith({
     String? id,

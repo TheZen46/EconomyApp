@@ -4,12 +4,12 @@ import 'dart:io';
 import 'package:dartz/dartz.dart';
 import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
-import 'package:uuid/uuid.dart';
 
 import '../../../features/receipt_scanning/data/models/receipt_model.dart';
 import '../../../features/receipt_scanning/domain/entities/receipt.dart';
 import '../../constants/taxonomy_constants.dart';
 import '../../error/failures.dart';
+import '../../data_contracts/ai_receipt_parser.dart';
 import '../ai_service.dart';
 import '../telemetry_service.dart';
 import 'episodic_memory_service.dart';
@@ -268,62 +268,7 @@ class VlmEngineService implements AIService {
   /// Maps native grammar-compliant JSON map into the tAIdy [ReceiptModel].
   ReceiptModel _mapJsonToReceiptModel(
       Map<String, dynamic> json, String imagePath) {
-    final merchant = json['merchant_name']?.toString() ?? 'Store Receipt';
-    final address = json['merchant_address']?.toString() ?? '';
-    final vat = json['vat_number']?.toString() ?? '';
-    final dateStr = json['date']?.toString() ?? '';
-    final timeStr = json['time']?.toString() ?? '';
-    final currency = json['currency']?.toString() ?? 'USD';
-    final totalAmount = (json['total_amount'] as num?)?.toDouble() ?? 0.0;
-
-    DateTime parsedDate;
-    try {
-      parsedDate = DateTime.parse(dateStr);
-    } catch (_) {
-      parsedDate = DateTime.now();
-    }
-
-    final rawItems = json['items'] as List<dynamic>? ?? [];
-    final items = rawItems.map((raw) {
-      final itemMap = raw as Map<String, dynamic>;
-      final rawName = itemMap['raw_name']?.toString() ??
-          itemMap['description']?.toString() ??
-          'Item';
-      final normName = itemMap['normalized_name']?.toString() ?? rawName;
-      final unitPrice = (itemMap['unit_price'] as num?)?.toDouble() ?? 0.0;
-      final quantity = (itemMap['quantity'] as num?)?.toInt() ?? 1;
-      final totalPrice = (itemMap['total_price'] as num?)?.toDouble() ??
-          (unitPrice * quantity);
-      final mainCat = itemMap['main_category']?.toString();
-      final subCat = itemMap['sub_category']?.toString();
-      final necStr = itemMap['necessity']?.toString() ?? 'unknown';
-      final isAsset = itemMap['is_asset'] == true;
-
-      return ReceiptItemModel(
-        description: normName,
-        unitPrice: unitPrice,
-        quantity: quantity,
-        totalPrice: totalPrice,
-        necessity: necStr,
-        mainCategory: mainCat,
-        subCategory: subCat,
-        isAsset: isAsset,
-      );
-    }).toList();
-
-    return ReceiptModel(
-      id: const Uuid().v4(),
-      merchantName: merchant,
-      merchantAddress: address,
-      vatNumber: vat,
-      date: parsedDate,
-      time: timeStr,
-      totalAmount: totalAmount,
-      currency: currency,
-      items: items,
-      imagePath: imagePath,
-      boxId: 'main',
-    );
+    return AiReceiptParser.parseToModel(json, imagePath: imagePath);
   }
 
   /// Records a user correction into episodic memory.

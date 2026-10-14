@@ -11,6 +11,7 @@ import 'sync_error_policy.dart';
 import '../privacy/network_policy.dart';
 import '../crdt/receipt_crdt.dart';
 import '../crdt/hlc.dart';
+import '../data_contracts/remote_dtos.dart';
 import '../../features/boxes/data/models/box_model.dart';
 import '../../features/invoices/data/models/invoice_model.dart';
 import '../../features/evault/data/models/asset_model.dart';
@@ -157,9 +158,7 @@ class SyncManager {
         if (item.entityType != 'profile') {
           payload['user_id'] = userId;
         }
-        if (item.entityType == 'receipt') {
-          payload = ReceiptModel.sanitizeRemotePayload(payload);
-        }
+        payload = RemoteSchemaSerializer.sanitizeForTable(table, payload);
 
         if (item.mutationType == 'delete') {
           // Soft-delete tombstone
@@ -282,7 +281,7 @@ class SyncManager {
       return;
     }
 
-    var remoteModel = ReceiptModel.fromJson(row);
+    var remoteModel = ReceiptRemoteDto.fromRemoteJson(row).toModel();
     final localModel = receiptsBox.get(id);
 
     // A row without an items array (written before the column existed, or by
@@ -339,7 +338,7 @@ class SyncManager {
       return;
     }
 
-    final remoteModel = BoxModel.fromJson(row);
+    final remoteModel = BoxRemoteDto.fromRemoteJson(row).toModel();
     final localModel = boxesBox.get(id);
 
     if (localModel == null || _shouldRemoteOverwrite(localModel.updatedAt, localModel.version, remoteModel.updatedAt, remoteModel.version)) {
@@ -356,7 +355,7 @@ class SyncManager {
       return;
     }
 
-    final remoteModel = InvoiceModel.fromJson(row);
+    final remoteModel = InvoiceRemoteDto.fromRemoteJson(row).toModel();
     final localModel = invoicesBox.get(id);
 
     if (localModel == null || _shouldRemoteOverwrite(localModel.updatedAt, localModel.version, remoteModel.updatedAt, remoteModel.version)) {
@@ -373,7 +372,7 @@ class SyncManager {
       return;
     }
 
-    final remoteModel = AssetModel.fromJson(row);
+    final remoteModel = VaultAssetRemoteDto.fromRemoteJson(row).toModel();
     final localModel = assetsBox.get(id);
 
     if (localModel == null || _shouldRemoteOverwrite(localModel.updatedAt, localModel.version, remoteModel.updatedAt, remoteModel.version)) {

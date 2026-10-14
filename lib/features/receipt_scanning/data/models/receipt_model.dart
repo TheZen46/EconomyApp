@@ -2,6 +2,7 @@ import 'package:hive/hive.dart';
 import 'package:uuid/uuid.dart';
 import 'package:t_aidy/core/entities/syncable_entity.dart';
 import 'package:t_aidy/core/financial/price_basis.dart';
+import 'package:t_aidy/core/data_contracts/remote_dtos.dart';
 import '../../domain/entities/receipt.dart';
 
 part 'receipt_model_adapter.dart';
@@ -183,19 +184,15 @@ class ReceiptModel extends HiveObject implements SyncableEntity {
 
   /// Row representation for `public.receipts`.
   ///
-  /// Unlike [toJson], which also serves webhook consumers, this omits keys that
-  /// have no column, such as `date` (carried by `scanned_date`).
-  Map<String, dynamic> toRemoteJson() => sanitizeRemotePayload(toJson());
+  /// Strictly serializes to schema-contracted columns defined in [ReceiptRemoteDto].
+  Map<String, dynamic> toRemoteJson() => ReceiptRemoteDto.fromModel(this).toRemoteJson();
 
   /// Returns a copy of [payload] restricted to [remoteColumns].
   ///
   /// Applied at push time as well, so that outbox items enqueued before the
   /// payload was restricted are still accepted by the server.
   static Map<String, dynamic> sanitizeRemotePayload(Map<String, dynamic> payload) {
-    return {
-      for (final entry in payload.entries)
-        if (remoteColumns.contains(entry.key)) entry.key: entry.value,
-    };
+    return RemoteSchemaSerializer.sanitizeForTable('receipts', payload);
   }
 
   bool get isUserCorrected => items.any((e) => e.isUserCorrected);

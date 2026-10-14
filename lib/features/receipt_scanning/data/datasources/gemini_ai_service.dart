@@ -5,10 +5,9 @@ import 'package:image_picker/image_picker.dart' show XFile;
 
 import '../../../../core/error/failures.dart';
 import '../../../../core/services/ai_service.dart';
-import '../../../../core/utils/currency_codes.dart';
 import '../../../../core/utils/json_parser_utils.dart';
 import '../../domain/entities/receipt.dart';
-import '../models/receipt_model.dart';
+import '../../../../core/data_contracts/ai_receipt_parser.dart';
 import '../../../../core/constants/taxonomy_constants.dart';
 
 class GeminiAIService implements AIService {
@@ -145,15 +144,12 @@ ${taxonomyBuffer.toString()}
       }
 
       try {
-        // Use ReceiptModel.fromJson logic to parse
-        final receipt = ReceiptModel.fromJson(jsonMap).toEntity();
-
-        return Right(receipt.copyWith(
+        final receipt = AiReceiptParser.parseToEntity(
+          jsonMap,
           imagePath: imagePath,
-          // Symbols such as "€" are mapped to their ISO 4217 code.
-          currency: CurrencyCodes.normalize(receipt.currency),
-        ));
+        );
 
+        return Right(receipt);
       } catch (e) {
         debugPrint("Gemini JSON Parse Error: $e");
         if (kDebugMode) debugPrint("Raw Response: ${response.text}");
