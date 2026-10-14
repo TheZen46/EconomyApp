@@ -1,5 +1,7 @@
 import 'dart:async';
+import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -48,7 +50,35 @@ void main() async {
   try {
     await dotenv.load(fileName: '.env');
   } catch (_) {
-    // Expected in release builds where .env is omitted from asset manifests for security.
+    // If rootBundle asset loading fails (e.g. desktop dev or .env omitted from assets),
+    // attempt to load from local file system if available.
+  }
+
+  if (!dotenv.isInitialized && !kIsWeb) {
+    try {
+      final cwdEnv = File('.env');
+      if (await cwdEnv.exists()) {
+        final content = await cwdEnv.readAsString();
+        dotenv.testLoad(fileInput: content);
+      } else {
+        Directory? dir = File(Platform.resolvedExecutable).parent;
+        for (int i = 0; i < 7 && dir != null; i++) {
+          final candidate = File('${dir.path}/.env');
+          if (await candidate.exists()) {
+            final content = await candidate.readAsString();
+            dotenv.testLoad(fileInput: content);
+            break;
+          }
+          final assetCandidate = File('${dir.path}/data/flutter_assets/.env');
+          if (await assetCandidate.exists()) {
+            final content = await assetCandidate.readAsString();
+            dotenv.testLoad(fileInput: content);
+            break;
+          }
+          dir = dir.parent;
+        }
+      }
+    } catch (_) {}
   }
 
   final supabaseUrl = defineSupabaseUrl.isNotEmpty
