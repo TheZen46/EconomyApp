@@ -115,5 +115,5 @@ tool/vlm_training/**/*.png
 tool/vlm_training/**/*.jpeg
 tool/vlm_training/**/*.json
 tool/vlm_training/**/*.jsonl
-
-
+# Node.js dependencies
+node_modules/
