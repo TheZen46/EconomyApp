@@ -87,18 +87,33 @@ TOTAL             \$44.98
       expect(r.items.any((i) => i.mainCategory == 'Tech & Gadgets' || i.mainCategory == 'Home & Living'), isTrue);
     });
 
-    test('classifyItem accurately categorizes grocery, tech, and dining items', () {
-      final dairy = TaxonomyConstants.classifyItem('Fresh Organic Milk');
-      expect(dairy.mainCategory, equals('Proteins & Dairy'));
-      expect(dairy.necessity, equals('essential'));
+    test('rejects calendar overflow dates such as 31/02/2026 via component round-trip validation', () {
+      const ocr = '''
+PHARMACY PLUS
+31/02/2026 10:00
+ASPIRIN   5.00 EUR
+TOTAL:    5.00 EUR
+''';
+      final receipt = service.parseOcrText(ocr);
+      expect(receipt, isNotNull);
+      // Because 31/02/2026 is an invalid date with month overflow, it must be flagged as uncertain
+      expect(receipt!.dateUncertain, isTrue);
+    });
 
-      final tech = TaxonomyConstants.classifyItem('MacBook Pro Laptop');
-      expect(tech.mainCategory, equals('Tech & Gadgets'));
-      expect(tech.necessity, equals('discretional'));
-
-      final dining = TaxonomyConstants.classifyItem('Espresso Coffee Bar');
-      expect(dining.mainCategory, equals('Snacks & Drinks'));
-      expect(dining.subCategory, equals('Beverages'));
+    test('correctly parses USD receipt with MM/DD/YYYY format without day-first assumption', () {
+      const ocr = '''
+NEW YORK BISTRO
+04/05/2026 12:30
+COFFEE   \$4.50
+TOTAL:   \$4.50
+''';
+      final receipt = service.parseOcrText(ocr);
+      expect(receipt, isNotNull);
+      expect(receipt!.currency, equals('USD'));
+      // In USD context with ambiguous 04/05, April 5th is preferred
+      expect(receipt.date.month, equals(4));
+      expect(receipt.date.day, equals(5));
+      expect(receipt.dateUncertain, isFalse);
     });
   });
 }

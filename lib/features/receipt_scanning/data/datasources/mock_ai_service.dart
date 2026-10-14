@@ -80,8 +80,21 @@ class FallbackAIService implements AIService {
       }
     }
 
-    // Date extraction
+    // Currency detection (detect prior to dates to inform locale date order)
+    String currency = 'EUR';
+    if (text.contains('\$') || text.contains('USD')) {
+      currency = 'USD';
+    } else if (text.contains('£') || text.contains('GBP')) {
+      currency = 'GBP';
+    } else if (text.contains('CHF')) {
+      currency = 'CHF';
+    } else if (text.contains('€') || text.contains('EUR')) {
+      currency = 'EUR';
+    }
+
+    // Date extraction with strict component round-trip validation against overflow
     DateTime date = DateTime.now();
+    bool dateFound = false;
     final dateRegex = RegExp(r'\b(20\d{2}[-/.]\d{1,2}[-/.]\d{1,2}|\d{1,2}[-/.]\d{1,2}[-/.](?:20)?\d{2})\b');
     for (final line in lines) {
       final match = dateRegex.firstMatch(line);
@@ -95,41 +108,54 @@ class FallbackAIService implements AIService {
               year = int.parse(parts[0]);
               month = int.parse(parts[1]);
               day = int.parse(parts[2]);
+              if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+                final candidate = DateTime(year, month, day);
+                if (candidate.year == year && candidate.month == month && candidate.day == day) {
+                  date = candidate;
+                  dateFound = true;
+                  break;
+                }
+              }
             } else {
               int p0 = int.parse(parts[0]);
               int p1 = int.parse(parts[1]);
               year = int.parse(parts[2]);
               if (year < 100) year += 2000;
-              if (p0 > 12) {
-                day = p0;
-                month = p1;
-              } else if (p1 > 12) {
-                month = p0;
-                day = p1;
-              } else {
-                day = p0;
-                month = p1;
+
+              final candidateOrders = <List<int>>[];
+              if (p0 > 12 && p1 <= 12) {
+                candidateOrders.add([p1, p0]); // p0 is day, p1 is month -> [month, day]
+              } else if (p1 > 12 && p0 <= 12) {
+                candidateOrders.add([p0, p1]); // p0 is month, p1 is day -> [month, day]
+              } else if (p0 <= 12 && p1 <= 12) {
+                // Heuristic: USD uses MM/DD/YYYY, others default to DD/MM/YYYY
+                if (currency == 'USD') {
+                  candidateOrders.add([p0, p1]);
+                  candidateOrders.add([p1, p0]);
+                } else {
+                  candidateOrders.add([p1, p0]);
+                  candidateOrders.add([p0, p1]);
+                }
               }
-            }
-            if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
-              date = DateTime(year, month, day);
-              break;
+
+              for (final order in candidateOrders) {
+                final m = order[0];
+                final d = order[1];
+                if (m >= 1 && m <= 12 && d >= 1 && d <= 31) {
+                  final candidate = DateTime(year, m, d);
+                  // Strict component round-trip validation prevents rollover (e.g. Feb 31 -> Mar 2)
+                  if (candidate.year == year && candidate.month == m && candidate.day == d) {
+                    date = candidate;
+                    dateFound = true;
+                    break;
+                  }
+                }
+              }
+              if (dateFound) break;
             }
           } catch (_) {}
         }
       }
-    }
-
-    // Currency detection
-    String currency = 'EUR';
-    if (text.contains('\$') || text.contains('USD')) {
-      currency = 'USD';
-    } else if (text.contains('£') || text.contains('GBP')) {
-      currency = 'GBP';
-    } else if (text.contains('CHF')) {
-      currency = 'CHF';
-    } else if (text.contains('€') || text.contains('EUR')) {
-      currency = 'EUR';
     }
 
     // Items & Total parsing
@@ -209,6 +235,7 @@ class FallbackAIService implements AIService {
       time: '${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}',
       totalAmount: double.parse(computedTotal.toStringAsFixed(2)),
       currency: currency,
+      dateUncertain: !dateFound,
       items: items.isNotEmpty
           ? items
           : [

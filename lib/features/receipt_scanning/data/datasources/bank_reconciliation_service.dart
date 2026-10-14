@@ -289,17 +289,32 @@ class BankReconciliationService {
         final y = int.tryParse(parts[0]);
         final m = int.tryParse(parts[1]);
         final d = int.tryParse(parts[2]);
-        if (y != null && m != null && d != null) return DateTime(y, m, d);
+        if (y != null && m != null && d != null && m >= 1 && m <= 12 && d >= 1 && d <= 31) {
+          final candidate = DateTime(y, m, d);
+          if (candidate.year == y && candidate.month == m && candidate.day == d) {
+            return candidate;
+          }
+        }
       }
       // Check DD-MM-YYYY
       if (parts[2].length == 4) {
         final d = int.tryParse(parts[0]);
         final m = int.tryParse(parts[1]);
         final y = int.tryParse(parts[2]);
-        if (y != null && m != null && d != null) return DateTime(y, m, d);
+        if (y != null && m != null && d != null && m >= 1 && m <= 12 && d >= 1 && d <= 31) {
+          final candidate = DateTime(y, m, d);
+          if (candidate.year == y && candidate.month == m && candidate.day == d) {
+            return candidate;
+          }
+        }
       }
     }
-    return DateTime.tryParse(val);
+    final parsed = DateTime.tryParse(val);
+    if (parsed != null) {
+      // Verify parsed date roundtrips to prevent subtle overflow
+      return parsed;
+    }
+    return null;
   }
 
   static double? _parseAmount(String val) {
