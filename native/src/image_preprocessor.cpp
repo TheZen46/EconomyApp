@@ -79,10 +79,36 @@ bool ImagePreprocessor::decodeImage(
         return false;
     }
 
-    int width = 0;
-    int height = 0;
-    int channels = 0;
+    // Inference budget limit (4096 x 4096) to prevent malicious or runaway allocation attacks
+    constexpr int MAX_DIMENSION = 4096;
 
+    // Check for Netpbm PPM (P6) header (supported for raw uncompressed image streams/tests)
+    if (compressed_len >= 10 && compressed_data[0] == 'P' && compressed_data[1] == '6') {
+        const char* p = reinterpret_cast<const char*>(compressed_data);
+        const char* end = p + compressed_len;
+        p += 2; // skip P6
+        while (p < end && (*p == ' ' || *p == '\t' || *p == '\r' || *p == '\n')) p++;
+        if (p < end && *p == '#') {
+            while (p < end && *p != '\n') p++;
+            while (p < end && (*p == ' ' || *p == '\t' || *p == '\r' || *p == '\n')) p++;
+        }
+        int w = 0, h = 0, maxval = 0;
+        if (p < end && sscanf(p, "%d %d %d", &w, &h, &maxval) == 3 && maxval == 255 && w > 0 && h > 0) {
+            while (p < end && *p != '\n') p++;
+            if (p < end && *p == '\n') p++;
+            size_t header_len = p - reinterpret_cast<const char*>(compressed_data);
+            size_t expected_bytes = static_cast<size_t>(w) * h * 3;
+            if (compressed_len >= header_len + expected_bytes && w <= MAX_DIMENSION && h <= MAX_DIMENSION) {
+                out_image.width = w;
+                out_image.height = h;
+                out_image.channels = 3;
+                out_image.data.assign(compressed_data + header_len, compressed_data + header_len + expected_bytes);
+                return true;
+            }
+        }
+    }
+
+    // Attempt decoding via vendored stb_image (JPEG, PNG, BMP)
     unsigned char* decoded = stbi_load_from_memory(
         compressed_data,
         static_cast<int>(compressed_len),
@@ -93,6 +119,12 @@ bool ImagePreprocessor::decodeImage(
     );
 
     if (decoded && width > 0 && height > 0) {
+        // Enforce maximum dimension bounds
+        if (width > MAX_DIMENSION || height > MAX_DIMENSION) {
+            stbi_image_free(decoded);
+            return false;
+        }
+
         out_image.width = width;
         out_image.height = height;
         out_image.channels = 3;
@@ -102,60 +134,8 @@ bool ImagePreprocessor::decodeImage(
         return true;
     }
 
-    // Header inspection fallback
-    bool is_jpeg = (compressed_len >= 2 && compressed_data[0] == 0xFF && compressed_data[1] == 0xD8);
-    bool is_png = (compressed_len >= 8 && compressed_data[0] == 0x89 && compressed_data[1] == 0x50 &&
-                   compressed_data[2] == 0x4E && compressed_data[3] == 0x47);
-
-    width = 448;
-    height = 448;
-
-    if (is_jpeg && compressed_len > 10) {
-        size_t idx = 2;
-        while (idx + 8 < compressed_len) {
-            if (compressed_data[idx] == 0xFF) {
-                uint8_t marker = compressed_data[idx + 1];
-                if (marker == 0xC0 || marker == 0xC2) {
-                    height = (compressed_data[idx + 5] << 8) | compressed_data[idx + 6];
-                    width = (compressed_data[idx + 7] << 8) | compressed_data[idx + 8];
-                    break;
-                }
-                uint16_t length = (compressed_data[idx + 2] << 8) | compressed_data[idx + 3];
-                idx += 2 + length;
-            } else {
-                idx++;
-            }
-        }
-    } else if (is_png && compressed_len >= 24) {
-        width = (compressed_data[16] << 24) | (compressed_data[17] << 16) |
-                (compressed_data[18] << 8) | compressed_data[19];
-        height = (compressed_data[20] << 24) | (compressed_data[21] << 16) |
-                 (compressed_data[22] << 8) | compressed_data[23];
-    }
-
-    if (width <= 0 || height <= 0 || width > 16384 || height > 16384) {
-        width = 448;
-        height = 448;
-    }
-
-    out_image.width = width;
-    out_image.height = height;
-    out_image.channels = 3;
-    size_t total_bytes = static_cast<size_t>(width) * height * 3;
-    out_image.data.resize(total_bytes);
-
-    if (compressed_len >= total_bytes) {
-        std::memcpy(out_image.data.data(), compressed_data, total_bytes);
-    } else {
-        size_t written = 0;
-        while (written < total_bytes) {
-            size_t to_copy = std::min(compressed_len, total_bytes - written);
-            std::memcpy(out_image.data.data() + written, compressed_data, to_copy);
-            written += to_copy;
-        }
-    }
-
-    return true;
+    // Fail decoding instead of fabricating synthetic pixels
+    return false;
 }
 
 // ══════════════════════════════════════════════════════════════════════════════

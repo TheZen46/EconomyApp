@@ -30,20 +30,17 @@ target_compile_options(receipt_engine PRIVATE -O3 -ffast-math)
 
 if(ANDROID_ABI STREQUAL "arm64-v8a")
     target_compile_options(receipt_engine PRIVATE -march=armv8-a+simd)
-    target_compile_definitions(receipt_engine PRIVATE __ARM_NEON=1)
 elseif(ANDROID_ABI STREQUAL "armeabi-v7a")
     target_compile_options(receipt_engine PRIVATE -march=armv7-a -mfloat-abi=softfp -mfpu=neon)
-    target_compile_definitions(receipt_engine PRIVATE __ARM_NEON=1)
 elseif(ANDROID_ABI STREQUAL "x86_64")
-    target_compile_options(receipt_engine PRIVATE -mavx2 -mfma)
-    target_compile_definitions(receipt_engine PRIVATE __AVX2__=1)
+    # Android x86_64 baseline is SSE4.2; avoid unconditional AVX2 to prevent SIGILL on emulators and non-AVX2 devices
+    target_compile_options(receipt_engine PRIVATE -msse4.2 -mpopcnt)
 endif()
 
 # Find OpenMP in NDK if available
 find_package(OpenMP)
 if(OpenMP_CXX_FOUND)
     target_link_libraries(receipt_engine PRIVATE OpenMP::OpenMP_CXX)
-    target_compile_definitions(receipt_engine PRIVATE _OPENMP=1)
 else()
     target_compile_options(receipt_engine PRIVATE -fopenmp)
     target_link_libraries(receipt_engine PRIVATE -fopenmp)

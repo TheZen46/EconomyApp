@@ -221,6 +221,35 @@ void test_simd_clahe() {
     std::cout << "  -> Passed!" << std::endl;
 }
 
+void test_image_preprocessor_decoding() {
+    std::cout << "[Test 3.3] Image Preprocessor: Fail-closed decoding and dimension bounds..." << std::endl;
+
+    receipt::DecodedImage out;
+    TEST_ASSERT(!receipt::ImagePreprocessor::decodeImage(nullptr, 0, out), "Null/empty image must fail decoding");
+
+    // Random non-image bytes must fail decoding rather than fabricating pixels
+    const uint8_t garbage[64] = {0x01, 0x02, 0x03, 0x04};
+    TEST_ASSERT(!receipt::ImagePreprocessor::decodeImage(garbage, sizeof(garbage), out), "Garbage bytes must fail decoding");
+
+    // Valid PPM P6 decoding
+    std::string ppm = "P6\n8 8\n255\n";
+    ppm.append(8 * 8 * 3, static_cast<char>(128));
+    bool ppm_ok = receipt::ImagePreprocessor::decodeImage(
+        reinterpret_cast<const uint8_t*>(ppm.data()), ppm.size(), out);
+    TEST_ASSERT(ppm_ok, "Valid PPM P6 image must decode successfully");
+    TEST_ASSERT(out.width == 8 && out.height == 8 && out.channels == 3, "PPM dimensions mismatch");
+    TEST_ASSERT(out.data.size() == 8 * 8 * 3, "PPM buffer size mismatch");
+    TEST_ASSERT(out.data[0] == 128, "PPM pixel data mismatch");
+
+    // Malicious oversized dimension header (> 4096) must be rejected
+    std::string huge_ppm = "P6\n16384 16384\n255\n";
+    TEST_ASSERT(!receipt::ImagePreprocessor::decodeImage(
+        reinterpret_cast<const uint8_t*>(huge_ppm.data()), huge_ppm.size(), out),
+        "Oversized image dimension (>4096) must be rejected to prevent memory exhaustion");
+
+    std::cout << "  -> Passed!" << std::endl;
+}
+
 // ------------------------------------------------------------------------------
 // TEST 4: RECEIPT ENGINE C FFI EXPORTS
 // ------------------------------------------------------------------------------
@@ -359,6 +388,7 @@ int main() {
     test_token_ring_multithreaded();
     test_paged_kv_cache();
     test_simd_clahe();
+    test_image_preprocessor_decoding();
     test_receipt_engine_ffi();
     test_hnsw_vector_index();
 

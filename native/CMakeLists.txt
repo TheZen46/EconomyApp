@@ -37,11 +37,20 @@ target_include_directories(receipt_engine PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/sr
 # ══════════════════════════════════════════════════════════════════════════════
 # SIMD & COMPILER OPTIMIZATIONS (AVX2, FMA, NEON, OpenMP)
 # ══════════════════════════════════════════════════════════════════════════════
+option(RECEIPT_USE_AVX2 "Enable AVX2 vectorization for x86_64" OFF)
+
 if(MSVC)
-    target_compile_options(receipt_engine PRIVATE 
-        $<$<NOT:$<CONFIG:Debug>>:/O2>
-        /arch:AVX2 /fp:fast
-    )
+    if(RECEIPT_USE_AVX2)
+        target_compile_options(receipt_engine PRIVATE 
+            $<$<NOT:$<CONFIG:Debug>>:/O2>
+            /arch:AVX2 /fp:fast
+        )
+    else()
+        target_compile_options(receipt_engine PRIVATE 
+            $<$<NOT:$<CONFIG:Debug>>:/O2>
+            /fp:fast
+        )
+    endif()
     if(GGML_USE_OPENMP)
         find_package(OpenMP)
         if(OpenMP_CXX_FOUND)
@@ -55,18 +64,20 @@ else()
     
     # Check Architecture for SIMD Vectorization
     if(CMAKE_SYSTEM_PROCESSOR MATCHES "(x86_64|AMD64|i686)")
-        target_compile_options(receipt_engine PRIVATE -mavx2 -mfma -mpopcnt)
-        target_compile_definitions(receipt_engine PRIVATE __AVX2__=1)
+        if(RECEIPT_USE_AVX2)
+            target_compile_options(receipt_engine PRIVATE -mavx2 -mfma -mpopcnt)
+        else()
+            # Baseline x86_64: use SSE4.2 and popcnt without forcing AVX2
+            target_compile_options(receipt_engine PRIVATE -msse4.2 -mpopcnt)
+        endif()
     elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "(arm64|aarch64|ARM64)")
         target_compile_options(receipt_engine PRIVATE -march=armv8-a+simd)
-        target_compile_definitions(receipt_engine PRIVATE __ARM_NEON=1)
     endif()
 
     if(GGML_USE_OPENMP)
         find_package(OpenMP)
         if(OpenMP_CXX_FOUND)
             target_link_libraries(receipt_engine PRIVATE OpenMP::OpenMP_CXX)
-            target_compile_definitions(receipt_engine PRIVATE _OPENMP=1)
         else()
             target_compile_options(receipt_engine PRIVATE -fopenmp)
             target_link_libraries(receipt_engine PRIVATE -fopenmp)
@@ -137,10 +148,17 @@ add_executable(native_engine_test
 )
 target_include_directories(native_engine_test PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
 if(MSVC)
-    target_compile_options(native_engine_test PRIVATE 
-        $<$<NOT:$<CONFIG:Debug>>:/O2>
-        /arch:AVX2 /fp:fast
-    )
+    if(RECEIPT_USE_AVX2)
+        target_compile_options(native_engine_test PRIVATE 
+            $<$<NOT:$<CONFIG:Debug>>:/O2>
+            /arch:AVX2 /fp:fast
+        )
+    else()
+        target_compile_options(native_engine_test PRIVATE 
+            $<$<NOT:$<CONFIG:Debug>>:/O2>
+            /fp:fast
+        )
+    endif()
     if(GGML_USE_OPENMP)
         find_package(OpenMP)
         if(OpenMP_CXX_FOUND)
@@ -152,7 +170,11 @@ if(MSVC)
 else()
     target_compile_options(native_engine_test PRIVATE -O3 -ffast-math)
     if(CMAKE_SYSTEM_PROCESSOR MATCHES "(x86_64|AMD64|i686)")
-        target_compile_options(native_engine_test PRIVATE -mavx2 -mfma -mpopcnt)
+        if(RECEIPT_USE_AVX2)
+            target_compile_options(native_engine_test PRIVATE -mavx2 -mfma -mpopcnt)
+        else()
+            target_compile_options(native_engine_test PRIVATE -msse4.2 -mpopcnt)
+        endif()
     elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "(arm64|aarch64|ARM64)")
         target_compile_options(native_engine_test PRIVATE -march=armv8-a+simd)
     endif()
