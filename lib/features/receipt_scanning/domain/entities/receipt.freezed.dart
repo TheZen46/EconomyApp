@@ -420,6 +420,7 @@ abstract class _Receipt extends Receipt {
 
 /// @nodoc
 mixin _$ReceiptItem {
+  String get id => throw _privateConstructorUsedError;
   String get description => throw _privateConstructorUsedError;
   double get unitPrice => throw _privateConstructorUsedError;
   int get quantity => throw _privateConstructorUsedError;
@@ -448,7 +449,8 @@ abstract class $ReceiptItemCopyWith<$Res> {
       _$ReceiptItemCopyWithImpl<$Res, ReceiptItem>;
   @useResult
   $Res call(
-      {String description,
+      {String id,
+      String description,
       double unitPrice,
       int quantity,
       double totalPrice,
@@ -474,6 +476,7 @@ class _$ReceiptItemCopyWithImpl<$Res, $Val extends ReceiptItem>
   @pragma('vm:prefer-inline')
   @override
   $Res call({
+    Object? id = null,
     Object? description = null,
     Object? unitPrice = null,
     Object? quantity = null,
@@ -487,6 +490,10 @@ class _$ReceiptItemCopyWithImpl<$Res, $Val extends ReceiptItem>
     Object? category = freezed,
   }) {
     return _then(_value.copyWith(
+      id: null == id
+          ? _value.id
+          : id // ignore: cast_nullable_to_non_nullable
+              as String,
       description: null == description
           ? _value.description
           : description // ignore: cast_nullable_to_non_nullable
@@ -544,7 +551,8 @@ abstract class _$$ReceiptItemImplCopyWith<$Res>
   @override
   @useResult
   $Res call(
-      {String description,
+      {String id,
+      String description,
       double unitPrice,
       int quantity,
       double totalPrice,
@@ -568,6 +576,7 @@ class __$$ReceiptItemImplCopyWithImpl<$Res>
   @pragma('vm:prefer-inline')
   @override
   $Res call({
+    Object? id = null,
     Object? description = null,
     Object? unitPrice = null,
     Object? quantity = null,
@@ -581,6 +590,10 @@ class __$$ReceiptItemImplCopyWithImpl<$Res>
     Object? category = freezed,
   }) {
     return _then(_$ReceiptItemImpl(
+      id: null == id
+          ? _value.id
+          : id // ignore: cast_nullable_to_non_nullable
+              as String,
       description: null == description
           ? _value.description
           : description // ignore: cast_nullable_to_non_nullable
@@ -633,7 +646,8 @@ class __$$ReceiptItemImplCopyWithImpl<$Res>
 
 class _$ReceiptItemImpl implements _ReceiptItem {
   const _$ReceiptItemImpl(
-      {required this.description,
+      {this.id = '',
+      required this.description,
       required this.unitPrice,
       this.quantity = 1,
       required this.totalPrice,
@@ -645,6 +659,9 @@ class _$ReceiptItemImpl implements _ReceiptItem {
       this.priceBasis = PriceBasis.gross,
       @Deprecated('Use subCategory or mainCategory instead') this.category});
 
+  @override
+  @JsonKey()
+  final String id;
   @override
   final String description;
   @override
@@ -679,7 +696,7 @@ class _$ReceiptItemImpl implements _ReceiptItem {
 
   @override
   String toString() {
-    return 'ReceiptItem(description: $description, unitPrice: $unitPrice, quantity: $quantity, totalPrice: $totalPrice, necessity: $necessity, mainCategory: $mainCategory, subCategory: $subCategory, isAsset: $isAsset, boxId: $boxId, priceBasis: $priceBasis, category: $category)';
+    return 'ReceiptItem(id: $id, description: $description, unitPrice: $unitPrice, quantity: $quantity, totalPrice: $totalPrice, necessity: $necessity, mainCategory: $mainCategory, subCategory: $subCategory, isAsset: $isAsset, boxId: $boxId, priceBasis: $priceBasis, category: $category)';
   }
 
   @override
@@ -687,6 +704,7 @@ class _$ReceiptItemImpl implements _ReceiptItem {
     return identical(this, other) ||
         (other.runtimeType == runtimeType &&
             other is _$ReceiptItemImpl &&
+            (identical(other.id, id) || other.id == id) &&
             (identical(other.description, description) ||
                 other.description == description) &&
             (identical(other.unitPrice, unitPrice) ||
@@ -712,6 +730,7 @@ class _$ReceiptItemImpl implements _ReceiptItem {
   @override
   int get hashCode => Object.hash(
       runtimeType,
+      id,
       description,
       unitPrice,
       quantity,
@@ -733,7 +752,8 @@ class _$ReceiptItemImpl implements _ReceiptItem {
 
 abstract class _ReceiptItem implements ReceiptItem {
   const factory _ReceiptItem(
-      {required final String description,
+      {final String id,
+      required final String description,
       required final double unitPrice,
       final int quantity,
       required final double totalPrice,
@@ -746,6 +766,8 @@ abstract class _ReceiptItem implements ReceiptItem {
       @Deprecated('Use subCategory or mainCategory instead')
       final String? category}) = _$ReceiptItemImpl;
 
+  @override
+  String get id;
   @override
   String get description;
   @override

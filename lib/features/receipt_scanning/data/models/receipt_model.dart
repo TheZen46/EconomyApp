@@ -318,7 +318,11 @@ class ReceiptItemModel {
   @HiveField(14)
   final PriceBasis priceBasis;
 
+  @HiveField(15)
+  final String id;
+
   ReceiptItemModel({
+    String? id,
     required this.description,
     required this.unitPrice,
     required this.quantity,
@@ -334,10 +338,11 @@ class ReceiptItemModel {
     this.deletedAt,
     this.version = 1,
     this.priceBasis = PriceBasis.gross,
-  });
+  }) : id = (id != null && id.isNotEmpty) ? id : const Uuid().v4();
 
   factory ReceiptItemModel.fromJson(Map<String, dynamic> json) {
     return ReceiptItemModel(
+      id: json['id'] as String?,
       description: json['description'] as String? ?? 'Item',
       unitPrice: (json['unit_price'] as num?)?.toDouble() ?? 0.0,
       quantity: (json['quantity'] as num?)?.toInt() ?? 1,
@@ -358,6 +363,7 @@ class ReceiptItemModel {
 
   Map<String, dynamic> toJson() {
     return {
+      'id': id,
       'description': description,
       'unit_price': unitPrice,
       'quantity': quantity,
@@ -377,6 +383,7 @@ class ReceiptItemModel {
   }
 
   ReceiptItemModel copyWith({
+    String? id,
     String? description,
     double? unitPrice,
     int? quantity,
@@ -394,6 +401,7 @@ class ReceiptItemModel {
     PriceBasis? priceBasis,
   }) {
     return ReceiptItemModel(
+      id: id ?? this.id,
       description: description ?? this.description,
       unitPrice: unitPrice ?? this.unitPrice,
       quantity: quantity ?? this.quantity,
@@ -414,6 +422,7 @@ class ReceiptItemModel {
 
   ReceiptItem toEntity() {
     return ReceiptItem(
+      id: id,
       description: description, 
       unitPrice: unitPrice, 
       quantity: quantity,
@@ -437,6 +446,7 @@ class ReceiptItemModel {
   }
   
   factory ReceiptItemModel.fromEntity(ReceiptItem item) => ReceiptItemModel(
+    id: item.id.isNotEmpty ? item.id : const Uuid().v4(),
     description: item.description,
     unitPrice: item.unitPrice,
     quantity: item.quantity,

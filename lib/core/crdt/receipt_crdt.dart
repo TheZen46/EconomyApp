@@ -1,3 +1,4 @@
+import 'package:uuid/uuid.dart';
 import 'hlc.dart';
 import 'lww_register.dart';
 import '../../features/receipt_scanning/data/models/receipt_model.dart';
@@ -25,24 +26,38 @@ class LineItemCrdt {
     required this.isDeleted,
   });
 
-  /// Factory from standard model.
+  /// Factory from standard model with stable item identity.
   factory LineItemCrdt.fromModel(
     ReceiptItemModel model,
-    String itemId,
-    Hlc hlc,
-  ) {
+    Hlc hlc, [
+    String? itemId,
+  ]) {
     final int cents = (model.unitPrice * 100).round();
+    final effectiveId = (itemId != null && itemId.isNotEmpty)
+        ? itemId
+        : (model.id.isNotEmpty ? model.id : const Uuid().v4());
     return LineItemCrdt(
-      id: itemId,
+      id: effectiveId,
       description: LwwRegister(model.description, hlc),
       unitPriceCents: LwwRegister(cents, hlc),
       quantity: LwwRegister(model.quantity, hlc),
       category: LwwRegister(model.category ?? 'General', hlc),
       necessity: LwwRegister(model.necessity ?? 'essential', hlc),
       taxRateBps: LwwRegister(2200, hlc),
-      isDeleted: LwwRegister(false, hlc),
+      isDeleted: LwwRegister(model.deletedAt != null, hlc),
     );
   }
+
+  /// All HLC timestamps carried by this line item's registers.
+  Iterable<Hlc> get allHlcs => [
+        description.hlc,
+        unitPriceCents.hlc,
+        quantity.hlc,
+        category.hlc,
+        necessity.hlc,
+        taxRateBps.hlc,
+        isDeleted.hlc,
+      ];
 
   /// Merges another replica of this line item using field-level LWW resolution.
   LineItemCrdt merge(LineItemCrdt other) {
@@ -61,12 +76,16 @@ class LineItemCrdt {
 
   ReceiptItemModel toModel() {
     return ReceiptItemModel(
+      id: id,
       description: description.value,
       unitPrice: unitPriceCents.value / 100.0,
       quantity: quantity.value,
       totalPrice: (unitPriceCents.value * quantity.value) / 100.0,
       category: category.value,
       necessity: necessity.value,
+      deletedAt: isDeleted.value
+          ? DateTime.fromMillisecondsSinceEpoch(isDeleted.hlc.millis, isUtc: true)
+          : null,
     );
   }
 
@@ -119,14 +138,14 @@ class ReceiptCrdt {
     required this.items,
   });
 
-  /// Factory from standard `ReceiptModel`.
+  /// Factory from standard `ReceiptModel` with stable line item identity.
   factory ReceiptCrdt.fromModel(ReceiptModel model, Hlc hlc) {
     final int totalCents = (model.totalAmount * 100).round();
     final itemsMap = <String, LineItemCrdt>{};
 
-    for (int i = 0; i < model.items.length; i++) {
-      final itemId = '${model.id}_item_$i';
-      itemsMap[itemId] = LineItemCrdt.fromModel(model.items[i], itemId, hlc);
+    for (final item in model.items) {
+      final itemId = item.id.isNotEmpty ? item.id : const Uuid().v4();
+      itemsMap[itemId] = LineItemCrdt.fromModel(item, hlc, itemId);
     }
 
     return ReceiptCrdt(
@@ -142,6 +161,19 @@ class ReceiptCrdt {
       items: itemsMap,
     );
   }
+
+  /// All HLC timestamps carried by this receipt's top-level registers and line items.
+  Iterable<Hlc> get allHlcs => [
+        merchantName.hlc,
+        totalAmountCents.hlc,
+        currency.hlc,
+        receiptDateMillis.hlc,
+        vatNumber.hlc,
+        merchantAddress.hlc,
+        boxId.hlc,
+        isDeleted.hlc,
+        ...items.values.expand((item) => item.allHlcs),
+      ];
 
   /// Merges another replica of this receipt using state-based join-semilattice operator ($\sqcup$).
   ReceiptCrdt merge(ReceiptCrdt other) {
@@ -171,17 +203,27 @@ class ReceiptCrdt {
   }
 
   /// Materializes active (non-tombstoned) state into standard domain Receipt.
+  /// Totals are derived from active line items to prevent concurrent edit divergence.
   Receipt toEntity() {
-    final activeItems = items.values
+    final activeLineItems = items.values
         .where((item) => !item.isDeleted.value)
+        .toList();
+    final activeItems = activeLineItems
         .map((item) => item.toModel().toEntity())
         .toList();
+
+    final int calculatedTotalCents = items.isNotEmpty
+        ? activeLineItems.fold<int>(
+            0,
+            (sum, item) => sum + (item.unitPriceCents.value * item.quantity.value),
+          )
+        : totalAmountCents.value;
 
     return Receipt(
       id: id,
       merchantName: merchantName.value,
       date: DateTime.fromMillisecondsSinceEpoch(receiptDateMillis.value, isUtc: true),
-      totalAmount: totalAmountCents.value / 100.0,
+      totalAmount: calculatedTotalCents / 100.0,
       currency: currency.value,
       items: activeItems,
       vatNumber: vatNumber.value,
@@ -191,23 +233,35 @@ class ReceiptCrdt {
   }
 
   /// Materializes into standard `ReceiptModel`.
+  /// Totals are derived from active line items and deletedAt is grounded in tombstone HLC.
   ReceiptModel toModel() {
-    final activeItems = items.values
+    final activeLineItems = items.values
         .where((item) => !item.isDeleted.value)
+        .toList();
+    final activeItems = activeLineItems
         .map((item) => item.toModel())
         .toList();
+
+    final int calculatedTotalCents = items.isNotEmpty
+        ? activeLineItems.fold<int>(
+            0,
+            (sum, item) => sum + (item.unitPriceCents.value * item.quantity.value),
+          )
+        : totalAmountCents.value;
 
     return ReceiptModel(
       id: id,
       merchantName: merchantName.value,
       date: DateTime.fromMillisecondsSinceEpoch(receiptDateMillis.value, isUtc: true),
-      totalAmount: totalAmountCents.value / 100.0,
+      totalAmount: calculatedTotalCents / 100.0,
       currency: currency.value,
       items: activeItems,
       vatNumber: vatNumber.value,
       merchantAddress: merchantAddress.value,
       boxId: boxId.value,
-      deletedAt: isDeleted.value ? DateTime.now().toUtc() : null,
+      deletedAt: isDeleted.value
+          ? DateTime.fromMillisecondsSinceEpoch(isDeleted.hlc.millis, isUtc: true)
+          : null,
     );
   }
 

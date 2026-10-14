@@ -66,7 +66,9 @@ class _ReviewPageState extends ConsumerState<ReviewPage> {
     });
     _currentDate = widget.receipt.date;
     _dateUncertain = widget.receipt.dateUncertain;
-    _items = widget.receipt.items.map((i) => _UiReceiptItem(const Uuid().v4(), i, original: i)).toList();
+    _items = widget.receipt.items
+        .map((i) => _UiReceiptItem(i.id.isNotEmpty ? i.id : const Uuid().v4(), i, original: i))
+        .toList();
     _selectedCurrency = widget.receipt.currency;
     if (_selectedCurrency.isEmpty) _selectedCurrency = 'USD';
     _selectedBoxId = widget.receipt.boxId ?? ref.read(activeBoxIdProvider);
@@ -378,7 +380,7 @@ class _ReviewPageState extends ConsumerState<ReviewPage> {
         totalAmount: total,
         date: _currentDate,
         currency: _selectedCurrency,
-        items: _items.map((w) => w.item.copyWith(boxId: w.item.boxId ?? _selectedBoxId)).toList(),
+        items: _items.map((w) => w.item.copyWith(id: w.id, boxId: w.item.boxId ?? _selectedBoxId)).toList(),
         boxId: _selectedBoxId,
       );
 

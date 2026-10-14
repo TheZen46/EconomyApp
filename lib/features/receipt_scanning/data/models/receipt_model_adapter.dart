@@ -113,13 +113,14 @@ class ReceiptItemModelAdapter extends TypeAdapter<ReceiptItemModel> {
       deletedAt: fields[12] as DateTime?,
       version: (fields[13] as num?)?.toInt() ?? 1,
       priceBasis: PriceBasis.fromString(fields[14] as String?),
+      id: fields[15] as String?,
     );
   }
 
   @override
   void write(BinaryWriter writer, ReceiptItemModel obj) {
     writer
-      ..writeByte(15)
+      ..writeByte(16)
       ..writeByte(0)
       ..write(obj.description)
       ..writeByte(1)
@@ -149,7 +150,9 @@ class ReceiptItemModelAdapter extends TypeAdapter<ReceiptItemModel> {
       ..writeByte(13)
       ..write(obj.version)
       ..writeByte(14)
-      ..write(obj.priceBasis.name);
+      ..write(obj.priceBasis.name)
+      ..writeByte(15)
+      ..write(obj.id);
   }
 
   @override

@@ -64,6 +64,7 @@ enum ItemNecessity {
 @freezed
 class ReceiptItem with _$ReceiptItem {
   const factory ReceiptItem({
+    @Default('') String id,
     required String description,
     required double unitPrice,
     @Default(1) int quantity,

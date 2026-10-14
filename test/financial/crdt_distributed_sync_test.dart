@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:t_aidy/core/crdt/crdt_sync_engine.dart';
 import 'package:t_aidy/core/crdt/hlc.dart';
 import 'package:t_aidy/core/crdt/lww_register.dart';
+import 'package:t_aidy/core/crdt/receipt_crdt.dart';
 import 'package:t_aidy/core/crdt/vector_clock.dart';
 import 'package:t_aidy/features/receipt_scanning/data/models/receipt_model.dart';
 
@@ -242,6 +243,224 @@ void main() {
       deviceA.pruneTombstones(DateTime.now().toUtc().millisecondsSinceEpoch + 5000);
 
       expect(deviceA.getReceipt('rec_prune_1', includeDeleted: true), isNull);
+    });
+
+    test('TAIDY-M19 Issue #41 (1): Line items have stable identity and middle deletion does not shift indices', () {
+      final item1Id = 'item_uuid_1';
+      final item2Id = 'item_uuid_2';
+      final item3Id = 'item_uuid_3';
+
+      final initialReceipt = ReceiptModel(
+        id: 'rec_uuid_test',
+        merchantName: 'Multi-Item Grocery',
+        date: DateTime.utc(2026, 9, 10),
+        totalAmount: 30.00,
+        currency: 'EUR',
+        items: [
+          ReceiptItemModel(id: item1Id, description: 'Apples', unitPrice: 10.00, quantity: 1),
+          ReceiptItemModel(id: item2Id, description: 'Bananas', unitPrice: 10.00, quantity: 1),
+          ReceiptItemModel(id: item3Id, description: 'Cherries', unitPrice: 10.00, quantity: 1),
+        ],
+      );
+
+      deviceA.recordReceipt(initialReceipt);
+      deviceB.mergeDeltaPayload(deviceA.generateDeltaPayload());
+
+      // Device A deletes the middle item (Bananas)
+      deviceA.updateLineItem(
+        receiptId: 'rec_uuid_test',
+        itemId: item2Id,
+        isDeleted: true,
+      );
+
+      // Device B edits Cherries (item 3)
+      deviceB.updateLineItem(
+        receiptId: 'rec_uuid_test',
+        itemId: item3Id,
+        unitPriceCents: 1500, // €15.00
+      );
+
+      // Exchange deltas
+      deviceA.mergeDeltaPayload(deviceB.generateDeltaPayload());
+      deviceB.mergeDeltaPayload(deviceA.generateDeltaPayload());
+
+      final rA = deviceA.getReceipt('rec_uuid_test')!;
+      final rB = deviceB.getReceipt('rec_uuid_test')!;
+
+      // Both replicas must only have Apples and Cherries; Bananas must not reappear
+      expect(rA.items.length, equals(2));
+      expect(rB.items.length, equals(2));
+
+      expect(rA.items.map((i) => i.description), containsAllInOrder(['Apples', 'Cherries']));
+      expect(rB.items.map((i) => i.description), containsAllInOrder(['Apples', 'Cherries']));
+
+      // Cherries price must be €15 on both
+      expect(rA.items.firstWhere((i) => i.description == 'Cherries').unitPrice, equals(15.00));
+      expect(rB.items.firstWhere((i) => i.description == 'Cherries').unitPrice, equals(15.00));
+    });
+
+    test('TAIDY-M19 Issue #41 (2): Derived totals correctly compute sum of active items during concurrent edits', () {
+      final item1Id = 'item_conc_1';
+      final item2Id = 'item_conc_2';
+
+      final initialReceipt = ReceiptModel(
+        id: 'rec_totals_test',
+        merchantName: 'Supermarket',
+        date: DateTime.utc(2026, 9, 10),
+        totalAmount: 20.00,
+        currency: 'EUR',
+        items: [
+          ReceiptItemModel(id: item1Id, description: 'Milk', unitPrice: 10.00, quantity: 1),
+          ReceiptItemModel(id: item2Id, description: 'Bread', unitPrice: 10.00, quantity: 1),
+        ],
+      );
+
+      deviceA.recordReceipt(initialReceipt);
+      deviceB.mergeDeltaPayload(deviceA.generateDeltaPayload());
+
+      // Device A edits Milk: 10 -> 12 EUR
+      deviceA.updateLineItem(
+        receiptId: 'rec_totals_test',
+        itemId: item1Id,
+        unitPriceCents: 1200,
+      );
+
+      // Device B concurrently edits Bread: 10 -> 15 EUR
+      deviceB.updateLineItem(
+        receiptId: 'rec_totals_test',
+        itemId: item2Id,
+        unitPriceCents: 1500,
+      );
+
+      // Merge both ways
+      deviceA.mergeDeltaPayload(deviceB.generateDeltaPayload());
+      deviceB.mergeDeltaPayload(deviceA.generateDeltaPayload());
+
+      final rA = deviceA.getReceipt('rec_totals_test')!;
+      final rB = deviceB.getReceipt('rec_totals_test')!;
+
+      // Total must be 12 + 15 = 27 EUR on both replicas, not whichever LWW total won
+      expect(rA.totalAmount, equals(27.00));
+      expect(rB.totalAmount, equals(27.00));
+    });
+
+    test('TAIDY-M19 Issue #41 (3): Local HLC advances to maximum observed register HLC preventing regression', () {
+      final highHlc = Hlc(millis: 500000, counter: 42, nodeId: 'high_node');
+      final remoteReceipt = ReceiptCrdt(
+        id: 'future_receipt',
+        merchantName: LwwRegister('Future Store', highHlc),
+        totalAmountCents: LwwRegister(1000, highHlc),
+        currency: LwwRegister('EUR', highHlc),
+        receiptDateMillis: LwwRegister(10000, highHlc),
+        vatNumber: LwwRegister('', highHlc),
+        merchantAddress: LwwRegister('', highHlc),
+        boxId: LwwRegister('main', highHlc),
+        isDeleted: LwwRegister(false, highHlc),
+        items: {},
+      );
+
+      final payload = SyncDeltaPayload(
+        senderNodeId: 'high_node',
+        generatedAtMillis: 1000, // payload generatedAtMillis is low
+        vectorClock: VectorClock({'high_node': 1}),
+        modifiedReceipts: [remoteReceipt],
+      );
+
+      // Merge into device A (which had local HLC around 1000)
+      deviceA.mergeDeltaPayload(payload);
+
+      // Device A's HLC must now be >= 500000
+      expect(deviceA.currentHlc.millis, greaterThanOrEqualTo(500000));
+
+      // A new local mutation on device A must receive an HLC causally after the merged remote state
+      final localReceipt = deviceA.recordReceipt(
+        ReceiptModel(
+          id: 'next_local',
+          merchantName: 'Local Store',
+          date: DateTime.utc(2026, 9, 10),
+          totalAmount: 5.0,
+          currency: 'EUR',
+          items: [],
+        ),
+      );
+
+      expect(localReceipt.merchantName.hlc.isAfter(highHlc), isTrue);
+    });
+
+    test('TAIDY-M19 Issue #41 (4): Tombstones require causal stability before pruning to avoid resurrection', () {
+      // Register deviceB as a known replica of deviceA
+      deviceA.registerPeer('device_b');
+
+      final r = ReceiptModel(
+        id: 'rec_causal_prune',
+        merchantName: 'Doomed Store',
+        date: DateTime.utc(2026, 9, 10),
+        totalAmount: 10.0,
+        currency: 'EUR',
+        items: [],
+      );
+
+      deviceA.recordReceipt(r);
+      // Sync initial state to B
+      deviceB.mergeDeltaPayload(deviceA.generateDeltaPayload());
+
+      // Device A deletes the receipt
+      deviceA.deleteReceipt('rec_causal_prune');
+
+      // Attempt pruning with cutoff in the future:
+      // Device B has NOT acknowledged the deletion yet, so it must NOT prune!
+      final prunedEarly = deviceA.pruneTombstones(DateTime.now().toUtc().millisecondsSinceEpoch + 100000);
+      expect(prunedEarly, equals(0));
+      expect(deviceA.getReceipt('rec_causal_prune', includeDeleted: true), isNotNull);
+
+      // Now Device B syncs and receives the deletion from Device A
+      deviceB.mergeDeltaPayload(deviceA.generateDeltaPayload());
+      // Device B sends its sync acknowledgment delta back to Device A
+      deviceA.mergeDeltaPayload(deviceB.generateDeltaPayload());
+
+      // Now that Device B is causally stable, pruning must succeed!
+      final prunedLate = deviceA.pruneTombstones(DateTime.now().toUtc().millisecondsSinceEpoch + 100000);
+      expect(prunedLate, equals(1));
+      expect(deviceA.getReceipt('rec_causal_prune', includeDeleted: true), isNull);
+    });
+
+    test('TAIDY-M19 Issue #41 (5): Engine state persists to and restores from CrdtStorage', () async {
+      final storage = InMemoryCrdtStorage();
+      final engine = CrdtSyncEngine(nodeId: 'persistent_node', storage: storage);
+
+      engine.recordReceipt(
+        ReceiptModel(
+          id: 'persisted_rec',
+          merchantName: 'Persisted Merchant',
+          date: DateTime.utc(2026, 9, 10),
+          totalAmount: 42.00,
+          currency: 'EUR',
+          items: [
+            ReceiptItemModel(
+              id: 'persisted_item',
+              description: 'Persisted Widget',
+              unitPrice: 42.00,
+              quantity: 1,
+            ),
+          ],
+        ),
+      );
+
+      await engine.persist();
+
+      // Restore a brand new engine from the same storage
+      final restoredEngine = await CrdtSyncEngine.createWithStorage(
+        nodeId: 'persistent_node',
+        storage: storage,
+      );
+
+      expect(restoredEngine.count, equals(1));
+      final receipt = restoredEngine.getReceipt('persisted_rec')!;
+      expect(receipt.merchantName, equals('Persisted Merchant'));
+      expect(receipt.totalAmount, equals(42.00));
+      expect(receipt.items.first.description, equals('Persisted Widget'));
+      expect(restoredEngine.currentHlc, equals(engine.currentHlc));
+      expect(restoredEngine.currentVectorClock, equals(engine.currentVectorClock));
     });
   });
 }
