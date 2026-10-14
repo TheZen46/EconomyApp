@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 import 'package:crypto/crypto.dart';
+import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:t_aidy/features/receipt_scanning/domain/entities/receipt.dart';
@@ -369,6 +370,8 @@ async function verifyLedger() {
     required List<Receipt> receipts,
     String? boxName,
     int fiscalYear = 2026,
+    Directory? exportDirectory,
+    bool cleanupAfterShare = true,
   }) async {
     if (receipts.isEmpty) return null;
 
@@ -378,17 +381,27 @@ async function verifyLedger() {
       fiscalYear: fiscalYear,
     );
 
-    final directory = await getApplicationDocumentsDirectory();
+    final directory = exportDirectory ?? await getTemporaryDirectory();
     final timestamp = DateTime.now().millisecondsSinceEpoch;
     final filePath = '${directory.path}/tAIdy_Audit_Dossier_${fiscalYear}_$timestamp.html';
     final file = File(filePath);
     await file.writeAsString(htmlContent, encoding: utf8);
 
-    await Share.shareXFiles(
-      [XFile(filePath)],
-      subject: 'tAIdy Cryptographic Tax Audit Dossier - FY $fiscalYear',
-      text: 'Attached is the official cryptographically sealed Tax Audit Defense Dossier for FY $fiscalYear ($boxName).',
-    );
+    try {
+      await Share.shareXFiles(
+        [XFile(filePath)],
+        subject: 'tAIdy Cryptographic Tax Audit Dossier - FY $fiscalYear',
+        text: 'Attached is the official cryptographically sealed Tax Audit Defense Dossier for FY $fiscalYear ($boxName).',
+      );
+    } finally {
+      if (cleanupAfterShare && await file.exists()) {
+        try {
+          await file.delete();
+        } catch (e) {
+          debugPrint('AuditDossierService: Cleanup notice: $e');
+        }
+      }
+    }
 
     return file;
   }

@@ -21,6 +21,7 @@ import 'features/receipt_scanning/data/models/sync_item_model.dart';
 import 'features/evault/data/models/asset_model.dart';
 import 'features/evault/presentation/providers/asset_provider.dart';
 import 'features/settings/presentation/providers/llm_provider.dart';
+import 'features/settings/presentation/providers/taxonomy_provider.dart';
 import 'features/boxes/data/models/box_model.dart';
 import 'features/boxes/data/providers/boxes_provider.dart';
 import 'features/invoices/data/models/invoice_model.dart';
@@ -120,7 +121,11 @@ void main() async {
   //     log to diagnostics, and throw SchemaCorruptionException — zero data wipe occurs.
   late final Box settingsBox;
   try {
-    settingsBox = await HiveMigrationService.openBoxSafe('settings');
+    settingsBox = await HiveMigrationService.openBoxSafe(
+      'settings',
+      encryptionCipher: cipher,
+      migrateFromPlaintext: true,
+    );
     // Execute structured schema migrations (e.g. schema_version = 2)
     await HiveMigrationService.runSchemaMigrations(settingsBox, cipher: cipher);
   } on SchemaCorruptionException catch (e) {
@@ -136,6 +141,7 @@ void main() async {
   late final Box<BoxModel> boxesBox;
   late final Box<InvoiceModel> invoicesBox;
   late final Box<SyncOutboxItem> outboxBox;
+  late final Box<TaxonomyConfigModel> taxonomyBox;
 
   try {
     receiptsBox = await HiveMigrationService.openBoxSafe<ReceiptModel>(
@@ -162,6 +168,11 @@ void main() async {
       'sync_outbox',
       encryptionCipher: cipher,
     );
+    taxonomyBox = await HiveMigrationService.openBoxSafe<TaxonomyConfigModel>(
+      'taxonomy_config',
+      encryptionCipher: cipher,
+      migrateFromPlaintext: true,
+    );
   } on SchemaCorruptionException catch (e) {
     // A box failed to open. A backup was automatically created in hive_backups/.
     // Surface this to the user via the Data Recovery dialog — no data is lost.
@@ -184,6 +195,7 @@ void main() async {
         boxesHiveBoxProvider.overrideWithValue(boxesBox),
         invoicesHiveBoxProvider.overrideWithValue(invoicesBox),
         outboxHiveBoxProvider.overrideWithValue(outboxBox),
+        taxonomyBoxProvider.overrideWithValue(taxonomyBox),
         themeProvider.overrideWith((ref) => ThemeNotifier(settingsBox)),
       ],
       child: const TAIdyApp(),
@@ -215,8 +227,10 @@ Future<void> _migrateSecretsToSecureStorage(Box settingsBox) async {
 
 // ── Startup Recovery ──────────────────────────────────────────────────────────
 
-/// Boxes opened with the Hive encryption key (see step 5 of [main]).
+/// Boxes opened with the Hive encryption key (see steps 4 and 5 of [main]).
 const List<String> _encryptedBoxNames = [
+  'settings',
+  'taxonomy_config',
   'receipts_v3',
   'sync_queue',
   'assets',

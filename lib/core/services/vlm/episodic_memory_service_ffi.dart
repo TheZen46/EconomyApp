@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:sqlite3/sqlite3.dart';
+import '../secure_storage_service.dart';
 import 'subword_semantic_embedder.dart';
 import 'hnsw_index.dart';
 
@@ -74,7 +75,11 @@ class EpisodicMemoryService {
   bool get isInitialized => _initialized;
   HNSWIndex get hnswIndex => _hnswIndex;
 
-  Future<void> initialize({Directory? baseDirectory, bool inMemory = false}) async {
+  Future<void> initialize({
+    Directory? baseDirectory,
+    bool inMemory = false,
+    String? encryptionKey,
+  }) async {
     if (_initialized) return;
 
     try {
@@ -97,6 +102,13 @@ class EpisodicMemoryService {
         final dbPath = '${dbDir.path}/episodic_memory.db';
         _db = sqlite3.open(dbPath);
         _hnswFile = File('${dbDir.path}/hnsw_rag.bin');
+
+        try {
+          final key = encryptionKey ?? await SecureStorageService.getSqliteEncryptionKey();
+          _db!.execute("PRAGMA key = '$key';");
+        } catch (e) {
+          debugPrint('EpisodicMemoryService: SQLite PRAGMA key notice: $e');
+        }
       }
 
       _db!.execute('''

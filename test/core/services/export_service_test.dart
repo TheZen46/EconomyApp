@@ -1,5 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:t_aidy/core/services/export_service.dart';
+import 'package:t_aidy/features/receipt_scanning/domain/entities/receipt.dart';
+import 'package:t_aidy/features/invoices/data/models/invoice_model.dart';
 
 void main() {
   group('ExportService Tests', () {
@@ -38,6 +40,45 @@ void main() {
 
       // Empty string
       expect(ExportService.sanitizeCsvCell(''), '');
+    });
+
+    test('receiptsToCsv sanitizes cells to protect against spreadsheet formula injection', () {
+      final receipt = Receipt(
+        id: 'r-1',
+        merchantName: '=cmd|\' /C calc\'!A0',
+        date: DateTime(2026, 1, 15),
+        totalAmount: 120.0,
+        currency: 'EUR',
+        items: [
+          const ReceiptItem(
+            description: '+123 Malicious Item',
+            unitPrice: 120.0,
+            quantity: 1,
+            totalPrice: 120.0,
+          ),
+        ],
+      );
+
+      final csv = ExportService.receiptsToCsv([receipt]);
+      expect(csv.contains("'+123 Malicious Item"), isTrue);
+    });
+
+    test('invoicesToCsv serializes invoice rows and sanitizes dangerous text', () {
+      final invoice = InvoiceModel(
+        id: 'inv-1',
+        invoiceNumber: '@SUM(A1:B10)',
+        clientName: 'ACME Corp',
+        amount: 5000.0,
+        status: InvoiceStatus.sent,
+        issuedDate: DateTime(2026, 2, 1),
+        notes: '-2+3+cmd|...',
+      );
+
+      final csv = ExportService.invoicesToCsv([invoice]);
+      expect(csv.contains("'@SUM(A1:B10)"), isTrue);
+      expect(csv.contains("ACME Corp"), isTrue);
+      expect(csv.contains("5000"), isTrue);
+      expect(csv.contains("'-2+3+cmd|..."), isTrue);
     });
   });
 }

@@ -366,10 +366,9 @@ Amount and date parsing are locale-dependent (`TAIDY-H14`, issue #19).
 ### 10.3 Export
 
 `ExportService.exportReceiptsToCsv`, `exportReceiptsToJson` and `exportInvoicesToCsv` write a file to the
-application documents directory (`<prefix>_<milliseconds>.csv` or `.json`) and open the platform share
-sheet through `Share.shareXFiles`. CSV rows are flattened to one row per receipt item. Files are not
-removed after sharing (`TAIDY-M13`, issue #35); cells are not neutralized against spreadsheet formulas
-(`TAIDY-L02`, issue #47).
+temporary directory (`<prefix>_<milliseconds>.csv` or `.json`), open the platform share sheet through
+`Share.shareXFiles`, and delete the file in a `finally` block after sharing (`TAIDY-M13`, issue #35). CSV
+cells are neutralized against spreadsheet formulas with single-quote escaping (`TAIDY-L02`, issue #47).
 
 ### 10.4 Invoices and boxes
 

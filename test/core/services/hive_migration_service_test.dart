@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:flutter/services.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hive/hive.dart';
 import 'package:t_aidy/core/services/hive_migration_service.dart';
@@ -13,6 +14,7 @@ void main() {
   late Directory tempDir;
 
   setUp(() async {
+    FlutterSecureStorage.setMockInitialValues({});
     tempDir = await Directory.systemTemp.createTemp('hive_test_dir_');
     Hive.init(tempDir.path);
 
@@ -265,6 +267,33 @@ void main() {
     test('boxFilesExist and quarantineBoxes ignore boxes without files', () async {
       expect(await HiveMigrationService.boxFilesExist(['never_created']), isFalse);
       expect(await HiveMigrationService.quarantineBoxes(['never_created']), isNull);
+    });
+
+    test('ensureBoxEncrypted migrates legacy plaintext box to AES cipher box without loss', () async {
+      // 1. Create a plaintext box and write sensitive data
+      final plainBox = await Hive.openBox<dynamic>('settings_legacy');
+      await plainBox.put('balance', 12500.50);
+      await plainBox.put('tax_rate', 0.22);
+      await plainBox.close();
+
+      // 2. Open via openBoxSafe with encryptionCipher and migrateFromPlaintext: true
+      final cipher = HiveAesCipher(List.filled(32, 7));
+      final secureBox = await HiveMigrationService.openBoxSafe<dynamic>(
+        'settings_legacy',
+        encryptionCipher: cipher,
+        migrateFromPlaintext: true,
+      );
+
+      // 3. Verify all data was migrated and accessible
+      expect(secureBox.get('balance'), 12500.50);
+      expect(secureBox.get('tax_rate'), 0.22);
+      await secureBox.close();
+
+      // 4. Verify box is physically encrypted on disk (opening without cipher fails with corruption exception)
+      await expectLater(
+        HiveMigrationService.openBoxSafe<dynamic>('settings_legacy'),
+        throwsA(isA<SchemaCorruptionException>()),
+      );
     });
   });
 }

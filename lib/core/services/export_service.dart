@@ -21,21 +21,33 @@ class ExportService {
     List<Receipt> receipts, {
     String filePrefix = 'expenses_export',
     String shareSubject = 'tAIdy Expense Export (CSV)',
+    Directory? exportDirectory,
+    bool cleanupAfterShare = true,
   }) async {
     if (receipts.isEmpty) return null;
 
     final csvString = receiptsToCsv(receipts);
 
-    final directory = await getApplicationDocumentsDirectory();
+    final directory = exportDirectory ?? await getTemporaryDirectory();
     final path = '${directory.path}/${filePrefix}_${DateTime.now().millisecondsSinceEpoch}.csv';
     final file = File(path);
     await file.writeAsString(csvString);
 
-    await Share.shareXFiles(
-      [XFile(path)],
-      subject: shareSubject,
-      text: 'Exported ${receipts.length} receipts from tAIdy.',
-    );
+    try {
+      await Share.shareXFiles(
+        [XFile(path)],
+        subject: shareSubject,
+        text: 'Exported ${receipts.length} receipts from tAIdy.',
+      );
+    } finally {
+      if (cleanupAfterShare && await file.exists()) {
+        try {
+          await file.delete();
+        } catch (e) {
+          debugPrint('ExportService: Cleanup notice: $e');
+        }
+      }
+    }
 
     return file;
   }
@@ -108,6 +120,8 @@ class ExportService {
     List<Receipt> receipts, {
     String filePrefix = 'expenses_export',
     String shareSubject = 'tAIdy Expense Export (JSON)',
+    Directory? exportDirectory,
+    bool cleanupAfterShare = true,
   }) async {
     if (receipts.isEmpty) return null;
 
@@ -141,16 +155,26 @@ class ExportService {
       'receipts': dataList,
     });
 
-    final directory = await getApplicationDocumentsDirectory();
+    final directory = exportDirectory ?? await getTemporaryDirectory();
     final path = '${directory.path}/${filePrefix}_${DateTime.now().millisecondsSinceEpoch}.json';
     final file = File(path);
     await file.writeAsString(jsonString);
 
-    await Share.shareXFiles(
-      [XFile(path)],
-      subject: shareSubject,
-      text: 'Exported ${receipts.length} receipts (JSON) from tAIdy.',
-    );
+    try {
+      await Share.shareXFiles(
+        [XFile(path)],
+        subject: shareSubject,
+        text: 'Exported ${receipts.length} receipts (JSON) from tAIdy.',
+      );
+    } finally {
+      if (cleanupAfterShare && await file.exists()) {
+        try {
+          await file.delete();
+        } catch (e) {
+          debugPrint('ExportService: Cleanup notice: $e');
+        }
+      }
+    }
 
     return file;
   }
@@ -160,21 +184,33 @@ class ExportService {
     List<InvoiceModel> invoices, {
     String filePrefix = 'invoices_export',
     String shareSubject = 'tAIdy Invoices Export (CSV)',
+    Directory? exportDirectory,
+    bool cleanupAfterShare = true,
   }) async {
     if (invoices.isEmpty) return null;
 
     final csvString = invoicesToCsv(invoices);
 
-    final directory = await getApplicationDocumentsDirectory();
+    final directory = exportDirectory ?? await getTemporaryDirectory();
     final path = '${directory.path}/${filePrefix}_${DateTime.now().millisecondsSinceEpoch}.csv';
     final file = File(path);
     await file.writeAsString(csvString);
 
-    await Share.shareXFiles(
-      [XFile(path)],
-      subject: shareSubject,
-      text: 'Exported ${invoices.length} invoices from tAIdy.',
-    );
+    try {
+      await Share.shareXFiles(
+        [XFile(path)],
+        subject: shareSubject,
+        text: 'Exported ${invoices.length} invoices from tAIdy.',
+      );
+    } finally {
+      if (cleanupAfterShare && await file.exists()) {
+        try {
+          await file.delete();
+        } catch (e) {
+          debugPrint('ExportService: Cleanup notice: $e');
+        }
+      }
+    }
 
     return file;
   }
@@ -235,11 +271,15 @@ class ExportService {
     List<Receipt> receipts, {
     String? boxName,
     int fiscalYear = 2026,
+    Directory? exportDirectory,
+    bool cleanupAfterShare = true,
   }) async {
     return await AuditDossierService.exportAndShareDossier(
       receipts: receipts,
       boxName: boxName,
       fiscalYear: fiscalYear,
+      exportDirectory: exportDirectory,
+      cleanupAfterShare: cleanupAfterShare,
     );
   }
 
@@ -250,6 +290,8 @@ class ExportService {
     String clientName = 'tAIdy Freelancer',
     String fiscalYear = '2026',
     String filePrefix = 'tAIdy_CPA_Portal',
+    Directory? exportDirectory,
+    bool cleanupAfterShare = true,
   }) async {
     if (receipts.isEmpty) return null;
 
@@ -260,16 +302,26 @@ class ExportService {
       fiscalYear: fiscalYear,
     );
 
-    final directory = await getApplicationDocumentsDirectory();
+    final directory = exportDirectory ?? await getTemporaryDirectory();
     final path = '${directory.path}/${filePrefix}_${fiscalYear}_${DateTime.now().millisecondsSinceEpoch}.html';
     final file = File(path);
     await file.writeAsString(htmlContent);
 
-    await Share.shareXFiles(
-      [XFile(path)],
-      subject: 'tAIdy Zero-Knowledge CPA Audit Portal (FY$fiscalYear)',
-      text: 'Exported PII-sanitized CPA Audit Portal containing ${receipts.length} receipts.',
-    );
+    try {
+      await Share.shareXFiles(
+        [XFile(path)],
+        subject: 'tAIdy Zero-Knowledge CPA Audit Portal (FY$fiscalYear)',
+        text: 'Exported PII-sanitized CPA Audit Portal containing ${receipts.length} receipts.',
+      );
+    } finally {
+      if (cleanupAfterShare && await file.exists()) {
+        try {
+          await file.delete();
+        } catch (e) {
+          debugPrint('ExportService: Cleanup notice: $e');
+        }
+      }
+    }
 
     return file;
   }

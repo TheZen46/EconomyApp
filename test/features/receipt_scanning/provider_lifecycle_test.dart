@@ -1,12 +1,10 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hive/hive.dart';
-import 'package:t_aidy/core/services/ai_service.dart';
 import 'package:t_aidy/features/receipt_scanning/data/datasources/sync_service.dart';
 import 'package:t_aidy/core/sync/sync_manager.dart';
 import 'package:t_aidy/features/receipt_scanning/data/models/receipt_model.dart';
 import 'package:t_aidy/features/receipt_scanning/data/models/sync_item_model.dart';
-import 'package:t_aidy/features/receipt_scanning/domain/entities/receipt.dart';
 import 'package:t_aidy/features/receipt_scanning/presentation/providers/receipt_provider.dart';
 import 'package:t_aidy/features/receipt_scanning/domain/repositories/receipt_repository.dart';
 import 'package:t_aidy/features/settings/presentation/providers/llm_provider.dart';
@@ -31,10 +29,7 @@ class FakeSyncManager extends Fake implements SyncManager {
   }
 }
 
-class FakeReceiptRepository extends Fake implements ReceiptRepository {
-  @override
-  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
-}
+class FakeReceiptRepository extends Fake implements ReceiptRepository {}
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -83,7 +78,7 @@ void main() {
       });
 
       final container = ProviderContainer();
-      final syncService = container.read(testSyncServiceProvider);
+      container.read(testSyncServiceProvider);
       final syncManager = container.read(testSyncManagerProvider) as FakeSyncManager;
 
       expect(fakeSyncService.disposed, isFalse);

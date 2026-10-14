@@ -3,20 +3,38 @@ import 'package:hive_flutter/hive_flutter.dart';
 import '../../../../core/constants/taxonomy_constants.dart';
 import '../../data/models/taxonomy_model.dart';
 
+final taxonomyBoxProvider = Provider<Box<TaxonomyConfigModel>>((ref) {
+  throw UnimplementedError('Taxonomy Hive box must be overridden in main');
+});
+
 final taxonomyProvider = StateNotifierProvider<TaxonomyNotifier, Map<String, Map<String, List<TaxonomyItem>>>>((ref) {
-  return TaxonomyNotifier();
+  Box<TaxonomyConfigModel>? box;
+  try {
+    box = ref.watch(taxonomyBoxProvider);
+  } catch (_) {}
+  return TaxonomyNotifier(box);
 });
 
 class TaxonomyNotifier extends StateNotifier<Map<String, Map<String, List<TaxonomyItem>>>> {
-  TaxonomyNotifier() : super({}) {
+  final Box<TaxonomyConfigModel>? _injectedBox;
+
+  TaxonomyNotifier([this._injectedBox]) : super({}) {
     _loadTaxonomy();
   }
 
   static const String _boxName = 'taxonomy_config';
   static const String _key = 'current_hierarchy';
 
+  Future<Box<TaxonomyConfigModel>> _getBox() async {
+    if (_injectedBox != null) return _injectedBox;
+    if (Hive.isBoxOpen(_boxName)) {
+      return Hive.box<TaxonomyConfigModel>(_boxName);
+    }
+    return await Hive.openBox<TaxonomyConfigModel>(_boxName);
+  }
+
   Future<void> _loadTaxonomy() async {
-    final box = await Hive.openBox<TaxonomyConfigModel>(_boxName);
+    final box = await _getBox();
     final saved = box.get(_key);
 
     if (saved != null) {
@@ -29,16 +47,16 @@ class TaxonomyNotifier extends StateNotifier<Map<String, Map<String, List<Taxono
           loaded[main]![sub] = items.map((m) => m.toEntity()).toList();
         });
       });
-      state = loaded;
+      if (mounted) state = loaded;
     } else {
       // First run: Use defaults
-      state = TaxonomyConstants.hierarchy;
+      if (mounted) state = TaxonomyConstants.hierarchy;
       await _saveToHive();
     }
   }
 
   Future<void> _saveToHive() async {
-    final box = await Hive.openBox<TaxonomyConfigModel>(_boxName);
+    final box = await _getBox();
     
     // Convert Entity to Model
     final Map<String, Map<String, List<TaxonomyItemModel>>> modelHierarchy = {};

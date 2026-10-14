@@ -36,6 +36,22 @@ class SecureStorageService {
     return Uint8List.fromList(key);
   }
 
+  static const _sqliteEncryptionKeyName = 'taidy_sqlite_encryption_key';
+
+  /// Returns a 256-bit hexadecimal encryption key for SQLCipher/SQLite.
+  /// Generates and persists one on first call.
+  static Future<String> getSqliteEncryptionKey() async {
+    final existing = await _storage.read(key: _sqliteEncryptionKeyName);
+    if (existing != null && existing.isNotEmpty) {
+      return existing;
+    }
+    final keyBytes = Hive.generateSecureKey();
+    final hexKey = keyBytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
+    await _storage.write(key: _sqliteEncryptionKeyName, value: hexKey);
+    debugPrint('SecureStorage: Generated new SQLite encryption key.');
+    return hexKey;
+  }
+
   // ── Secret String Operations ────────────────────────────────────────────
 
   /// Read a secret value (API key, webhook secret, etc.).

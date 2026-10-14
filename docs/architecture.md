@@ -244,16 +244,16 @@ service per request rather than at repository construction.
 
 | Box name | Value type | Cipher | Opened by | Purpose |
 |---|---|---|---|---|
-| `settings` | dynamic | none | `main.dart` | preferences, counters, flags, dashboard layout, sync watermark |
+| `settings` | dynamic | AES | `main.dart` | preferences, counters, flags, dashboard layout, sync watermark |
 | `receipts_v3` | `ReceiptModel` | AES | `main.dart` | receipts with embedded `ReceiptItemModel` list |
 | `sync_queue` | `SyncItemModel` | AES | `main.dart` | legacy image and label upload queue (`SyncService`) |
 | `assets` | `AssetModel` | AES | `main.dart` | eVault assets |
 | `boxes` | `BoxModel` | AES | `main.dart` | spending contexts |
 | `invoices` | `InvoiceModel` | AES | `main.dart` | invoices |
 | `sync_outbox` | `SyncOutboxItem` | AES | `main.dart` | pending remote mutations (`SyncManager`) |
-| `taxonomy_config` | `TaxonomyConfigModel` | none | `TaxonomyNotifier` | category hierarchy (key `current_hierarchy`) |
+| `taxonomy_config` | `TaxonomyConfigModel` | AES | `main.dart` | category hierarchy (key `current_hierarchy`) |
 
-Unencrypted stores are recorded in `TAIDY-M13` (issue #35).
+All financial stores are encrypted at rest with AES ciphers or SQLCipher (issue #35).
 
 ### 5.2 Hive type identifier registry
 
@@ -638,7 +638,7 @@ The following invariants are intended by the design. The status column records w
 | I-4 | Every row committed on the server is eventually observed by every device. | Not maintained (`TAIDY-H03`, `TAIDY-H05`). |
 | I-5 | The serialized payload of an entity matches the column set of its remote table. | Not maintained (`TAIDY-C03`, `TAIDY-M03`). |
 | I-6 | Hive type identifiers are unique and stable. | Maintained at runtime; violated in annotations (`TAIDY-H06`). |
-| I-7 | Financial data at rest is encrypted. | Partially maintained (`TAIDY-M13`). |
+| I-7 | Financial data at rest is encrypted. | Maintained (AES-256 for all Hive boxes, SQLCipher for SQLite episodic memory; issue #35). |
 | I-8 | Personal data leaves the device only for the user's own tier unless the user has consented. | Not maintained (`TAIDY-C01`, `TAIDY-H17`). |
 | I-9 | AI results presented to the user originate from an extraction backend. | Not maintained (`TAIDY-H12`). |
 | I-10 | Opening encrypted storage never destroys data without explicit user action. | Maintained; recovery is incomplete (`TAIDY-H07`). |

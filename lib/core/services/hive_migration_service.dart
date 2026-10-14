@@ -8,6 +8,7 @@ import 'package:uuid/uuid.dart';
 import '../../features/boxes/data/models/box_model.dart';
 import '../../features/evault/data/models/asset_model.dart';
 import '../../features/receipt_scanning/data/models/receipt_model.dart';
+import 'secure_storage_service.dart';
 
 // ── Exception Types ──────────────────────────────────────────────────────────
 
@@ -55,6 +56,51 @@ class HiveMigrationService {
   /// Hive settings key used to persist the active schema version.
   static const String schemaVersionKey = 'schema_version';
 
+  /// Safely migrates an existing unencrypted Hive box to encrypted storage.
+  ///
+  /// If the box file does not exist, nothing needs to be migrated.
+  /// If the box file exists as unencrypted plaintext from a previous version,
+  /// its entries are copied, the unencrypted box file deleted, and rewritten
+  /// into an encrypted box with [cipher].
+  static Future<void> ensureBoxEncrypted(
+    String boxName,
+    HiveCipher cipher,
+  ) async {
+    if (Hive.isBoxOpen(boxName)) return;
+
+    if (!await boxFilesExist([boxName])) return;
+
+    final markerKey = 'migrated_enc_$boxName';
+    try {
+      final alreadyMigrated = await SecureStorageService.readSecret(markerKey);
+      if (alreadyMigrated == 'true') return;
+    } catch (_) {}
+
+    try {
+      debugPrint('HiveMigrationService: Checking if "$boxName" requires plaintext-to-cipher migration...');
+      final plainBox = await Hive.openBox<dynamic>(boxName, crashRecovery: false);
+      final entries = Map<dynamic, dynamic>.from(plainBox.toMap());
+      await plainBox.close();
+
+      await backupBoxFile(boxName);
+      await Hive.deleteBoxFromDisk(boxName);
+
+      final encBox = await Hive.openBox<dynamic>(boxName, encryptionCipher: cipher);
+      if (entries.isNotEmpty) {
+        await encBox.putAll(entries);
+      }
+      await encBox.close();
+
+      await SecureStorageService.writeSecret(markerKey, 'true');
+      debugPrint('HiveMigrationService: Successfully migrated "$boxName" from plaintext to AES cipher (${entries.length} entries).');
+    } catch (e) {
+      debugPrint('HiveMigrationService: Box "$boxName" was already encrypted or non-plaintext ($e).');
+      try {
+        await SecureStorageService.writeSecret(markerKey, 'true');
+      } catch (_) {}
+    }
+  }
+
   /// Attempts to open a Hive box safely.
   ///
   /// On success, returns the opened box.
@@ -67,7 +113,12 @@ class HiveMigrationService {
     String boxName, {
     HiveCipher? encryptionCipher,
     bool crashRecovery = false,
+    bool migrateFromPlaintext = false,
   }) async {
+    if (encryptionCipher != null && migrateFromPlaintext) {
+      await ensureBoxEncrypted(boxName, encryptionCipher);
+    }
+
     final completer = Completer<Box<T>>();
 
     // Hive can report one failure twice: as the exception of openBox and again
