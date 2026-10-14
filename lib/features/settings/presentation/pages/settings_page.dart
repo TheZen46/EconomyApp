@@ -7,10 +7,12 @@ import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 
+import '../../../../core/privacy/network_policy.dart';
 import '../../../../core/theme/theme_notifier.dart';
 import '../../../../core/services/secure_storage_service.dart';
 import '../../../receipt_scanning/presentation/providers/receipt_provider.dart';
 import '../../../receipt_scanning/data/datasources/csv_parser_service.dart';
+import '../../../receipt_scanning/data/datasources/sync_service.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../../receipt_scanning/data/models/sync_item_model.dart';
 import '../../../../core/services/google_drive_service.dart';
@@ -18,6 +20,7 @@ import '../../../../core/services/biometric_service.dart';
 import '../../../../core/utils/error_handler.dart';
 import '../../../../core/routes/app_router.dart';
 import '../../../sync/presentation/providers/sync_provider.dart';
+import '../../../../core/sync/sync_providers.dart';
 import '../providers/llm_provider.dart';
 import '../widgets/dataset_export_dialog.dart';
 import '../../../../core/services/audit_dossier_service.dart';
@@ -269,6 +272,22 @@ class _SettingsPanelWidgetState extends ConsumerState<SettingsPanelWidget> {
                                             }
                                             return;
                                           }
+                                          // The lock fails closed, so only enable it once the user
+                                          // has shown that they can pass it on this device.
+                                          final verified = await ref
+                                              .read(biometricServiceProvider)
+                                              .authenticate('Confirm to enable the tAIdy lock');
+                                          if (!verified) {
+                                            if (context.mounted) {
+                                              ScaffoldMessenger.of(context).showSnackBar(
+                                                const SnackBar(
+                                                  content: Text('Verification failed. The lock was not enabled.'),
+                                                  backgroundColor: Color(0xFFD4183D),
+                                                ),
+                                              );
+                                            }
+                                            return;
+                                          }
                                         }
                                         await ref.read(biometricEnabledProvider.notifier).setEnabled(val);
                                       },
@@ -300,7 +319,6 @@ class _SettingsPanelWidgetState extends ConsumerState<SettingsPanelWidget> {
                             }),
 
                             Divider(color: divider, height: 1, indent: 20, endIndent: 20),
-
                             // 2. Sealed Cryptographic Audit Pack (.zip)
                             _row(
                               label: 'Sealed Cryptographic Audit Pack (.zip)',
@@ -361,10 +379,57 @@ class _SettingsPanelWidgetState extends ConsumerState<SettingsPanelWidget> {
 
                             Divider(color: divider, height: 1, indent: 20, endIndent: 20),
 
-                            // 6. AI Model Training Contribution
+                            // Isolation mode: keeps all data on this device (NetworkPolicy).
                             Consumer(builder: (context, ref, _) {
                               final box = ref.watch(settingsBoxProvider);
-                              final isContributionEnabled = box.get('ai_dataset_contribution_enabled', defaultValue: true) as bool;
+                              final isIsolated = NetworkPolicy.isIsolated(box);
+                              return _row(
+                                label: 'Isolation Mode (no cloud access)',
+                                fgCol: fgCol,
+                                muted: muted,
+                                trailing: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    IconButton(
+                                      icon: Icon(Icons.info_outline, size: 16, color: muted),
+                                      onPressed: () {
+                                        showDialog(
+                                          context: context,
+                                          builder: (ctx) => AlertDialog(
+                                            backgroundColor: colorScheme.surface,
+                                            title: Text('Isolation Mode', style: GoogleFonts.spaceGrotesk(color: fgCol, fontWeight: FontWeight.bold)),
+                                            content: Text(
+                                              'When this is on, tAIdy keeps all data on this device: cloud synchronization, uploads (training contribution and Google Drive backup), webhooks, Gemini cloud AI and model update checks are skipped. Changes made meanwhile stay queued on the device and are synchronized after you turn it off.\n\n'
+                                              'The eye icon on the dashboard is separate: it only hides figures on screen.',
+                                              style: GoogleFonts.spaceGrotesk(color: muted, fontSize: 13),
+                                            ),
+                                            actions: [
+                                              TextButton(
+                                                onPressed: () => Navigator.pop(ctx),
+                                                child: Text('Understood', style: GoogleFonts.spaceGrotesk(color: _accent, fontWeight: FontWeight.bold)),
+                                              ),
+                                            ],
+                                          ),
+                                        );
+                                      },
+                                    ),
+                                    _FigmaToggle(
+                                      value: isIsolated,
+                                      onChanged: (val) async {
+                                        await box.put(NetworkPolicy.isolationModeKey, val);
+                                        // The AI service is chosen from settings; re-evaluate it.
+                                        ref.invalidate(aiServiceProvider);
+                                        setState(() {});
+                                      },
+                                    ),
+                                  ],
+                                ),
+                              );
+                            }),
+                            Divider(color: divider, height: 1, indent: 20, endIndent: 20),
+                            Consumer(builder: (context, ref, _) {
+                              final box = ref.watch(settingsBoxProvider);
+                              final isContributionEnabled = SyncService.isTrainingContributionEnabled(box);
                               return _row(
                                 label: 'AI Model Training Contribution',
                                 subtitle: 'Anonymized tokenized line items contribute to local procedural fine-tuning',
@@ -380,9 +445,10 @@ class _SettingsPanelWidgetState extends ConsumerState<SettingsPanelWidget> {
                                           context: context,
                                           builder: (ctx) => AlertDialog(
                                             backgroundColor: colorScheme.surface,
-                                            title: Text('Privacy Governance & PII Scrubbing', style: GoogleFonts.spaceGrotesk(color: fgCol, fontWeight: FontWeight.bold)),
+                                            title: Text('AI Model Training Contribution', style: GoogleFonts.spaceGrotesk(color: fgCol, fontWeight: FontWeight.bold)),
                                             content: Text(
-                                              'All personal identifying information (PII) including customer names, credit card numbers, and physical street addresses are strictly stripped on-device before any receipt taxonomy is shared. Only tokenized line-item categories and price structures are utilized for procedural fine-tuning.',
+                                              'When this is on, every receipt you save is uploaded to a private folder in your tAIdy cloud account: the receipt photo, unaltered, and the extracted data (merchant, date, total, currency and line items). The tAIdy team may use these files to improve receipt recognition. They are not publicly accessible.\n\n'
+                                              'When this is off, nothing is uploaded and receipt photos stay on this device. Turning it off does not delete files that were already uploaded.',
                                               style: GoogleFonts.spaceGrotesk(color: muted, fontSize: 13),
                                             ),
                                             actions: [
@@ -398,7 +464,7 @@ class _SettingsPanelWidgetState extends ConsumerState<SettingsPanelWidget> {
                                     _FigmaToggle(
                                       value: isContributionEnabled,
                                       onChanged: (val) {
-                                        box.put('ai_dataset_contribution_enabled', val);
+                                        box.put(SyncService.trainingContributionKey, val);
                                         setState(() {});
                                       },
                                     ),
@@ -729,6 +795,27 @@ class _SettingsPanelWidgetState extends ConsumerState<SettingsPanelWidget> {
                                         ? Icon(Icons.edit_outlined, size: 16, color: muted)
                                         : null,
                                   ),
+                                  Consumer(builder: (context, ref, _) {
+                                    final deadLettered = ref.watch(deadLetteredMutationCountProvider).valueOrNull ?? 0;
+                                    if (deadLettered == 0) return const SizedBox.shrink();
+                                    return Column(
+                                      children: [
+                                        Divider(color: divider, height: 1, indent: 20, endIndent: 20),
+                                        _row(
+                                          label: '$deadLettered unsynced ${deadLettered == 1 ? 'change' : 'changes'} rejected by the server',
+                                          fgCol: const Color(0xFFD4183D),
+                                          muted: muted,
+                                          trailing: _chip('Retry', _accent, divider),
+                                          onTap: () {
+                                            ref.read(syncManagerProvider)?.retryDeadLettered();
+                                            ScaffoldMessenger.of(context).showSnackBar(
+                                              const SnackBar(content: Text('Retrying rejected changes…')),
+                                            );
+                                          },
+                                        ),
+                                      ],
+                                    );
+                                  }),
                                 ],
                               );
                             }),
@@ -1554,7 +1641,11 @@ class _SettingsPanelWidgetState extends ConsumerState<SettingsPanelWidget> {
         title: Text('Clear All Data',
             style: GoogleFonts.spaceGrotesk(
                 color: textCol, fontWeight: FontWeight.w500)),
-        content: Text('This cannot be undone. Choose what to delete.',
+        content: Text(
+            'Device Only removes receipts from this device. Copies stored in your '
+            'cloud account are kept and can be restored with Replicate Cloud Data.\n\n'
+            'Everywhere also deletes them from your cloud account and other '
+            'devices. This cannot be undone.',
             style: GoogleFonts.spaceGrotesk(
                 color: textCol.withAlpha(160), fontSize: 14)),
         actions: [
@@ -1715,8 +1806,10 @@ class _SettingsPanelWidgetState extends ConsumerState<SettingsPanelWidget> {
                   children: [
                     _buildStatItem('Processed', report.totalRows.toString(), fgCol, muted),
                     _buildStatItem('Imported', report.successCount.toString(), const Color(0xFF16A34A), muted),
+                    // Credits, refunds and rows imported before.
+                    _buildStatItem('Skipped', report.skippedCount.toString(), muted, muted),
                     _buildStatItem(
-                      'Skipped',
+                      'Failed',
                       report.failureCount.toString(),
                       report.failureCount > 0 ? const Color(0xFFD4183D) : muted,
                       muted,

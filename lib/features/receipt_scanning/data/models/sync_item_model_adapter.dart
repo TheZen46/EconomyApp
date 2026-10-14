@@ -1,4 +1,7 @@
-// GENERATED CODE - DO NOT MODIFY BY HAND
+// Hand-written Hive adapter(s). Not generated: the classes in sync_item_model.dart carry no @HiveType
+// annotation, so build_runner leaves this file alone. The readers tolerate records written by
+// earlier versions (fields that did not exist yet, numbers stored as int or double); keep that
+// when adding fields, and never reuse or change a typeId or field number.
 
 part of 'sync_item_model.dart';
 

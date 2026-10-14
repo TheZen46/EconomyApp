@@ -7,6 +7,7 @@ import 'package:hive/hive.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:synchronized/synchronized.dart';
 
+import '../../../../core/sync/conflict_policy.dart';
 import '../../../boxes/data/models/box_model.dart';
 import '../../../evault/data/models/asset_model.dart';
 import '../../../invoices/data/models/invoice_model.dart';
@@ -31,6 +32,9 @@ class SyncEngine {
   final Box<TaxonomyConfigModel>? taxonomyBox;
   final SyncService? uploadSyncService;
 
+  /// Whether cloud requests are allowed (isolation mode is off).
+  final bool Function() isCloudAllowed;
+
   final Lock _engineLock = Lock();
   final math.Random _random = math.Random();
 
@@ -53,9 +57,12 @@ class SyncEngine {
     this.invoicesBox,
     this.taxonomyBox,
     this.uploadSyncService,
-  }) {
+    bool Function()? isCloudAllowed,
+  }) : isCloudAllowed = isCloudAllowed ?? _alwaysAllowed {
     _initConnectivityListener();
   }
+
+  static bool _alwaysAllowed() => true;
 
   void _initConnectivityListener() {
     try {
@@ -103,6 +110,16 @@ class SyncEngine {
     bool isInitial = true,
   }) async {
     return await _engineLock.synchronized(() async {
+      if (!isCloudAllowed()) {
+        _emit(SyncProgressState(
+          stage: SyncStage.failed,
+          isInitialSync: isInitial,
+          message: 'Isolation mode is on. Cloud synchronization is disabled.',
+          errorMessage: 'Turn off isolation mode in Settings to synchronize.',
+          canContinueOffline: true,
+        ));
+        return false;
+      }
       _shouldCancel = false;
       int attempt = 0;
       const maxAttempts = 5;
@@ -143,10 +160,10 @@ class SyncEngine {
           final localReceipts = await localDataSource.getReceipts();
           final localReceiptIds = localReceipts.map((r) => r.id).toSet();
 
-          // Identify missing/updated receipts from DB
+          // Identify receipts missing locally; soft-deleted rows are tombstones, not data
           final deltaReceiptsToImport = remoteReceiptRows.where((row) {
             final id = row['id'] as String?;
-            return id != null && !localReceiptIds.contains(id);
+            return id != null && !_isTombstone(row) && !localReceiptIds.contains(id);
           }).toList();
 
           // Identify remote image files to download
@@ -178,7 +195,7 @@ class SyncEngine {
           for (final row in deltaReceiptsToImport) {
             if (_shouldCancel) return false;
             try {
-              final receiptModel = _parseReceiptFromRow(row);
+              final receiptModel = _parseRow(row, ReceiptModel.fromJson, 'receipt');
               if (receiptModel != null) {
                 await localDataSource.saveReceipt(receiptModel);
               }
@@ -194,8 +211,16 @@ class SyncEngine {
             for (final row in remoteBoxes) {
               if (_shouldCancel) return false;
               try {
-                final box = _parseBoxFromRow(row);
-                if (box != null) {
+                final box = _isTombstone(row) ? null : _parseRow(row, BoxModel.fromJson, 'box');
+                final local = box == null ? null : boxesBox!.get(box.id);
+                if (box != null &&
+                    (local == null ||
+                        shouldRemoteOverwrite(
+                          localUpdatedAt: local.updatedAt,
+                          localVersion: local.version,
+                          remoteUpdatedAt: box.updatedAt,
+                          remoteVersion: box.version,
+                        ))) {
                   await boxesBox!.put(box.id, box);
                 }
               } catch (e) {
@@ -211,8 +236,16 @@ class SyncEngine {
             for (final row in remoteAssets) {
               if (_shouldCancel) return false;
               try {
-                final asset = _parseAssetFromRow(row);
-                if (asset != null) {
+                final asset = _isTombstone(row) ? null : _parseRow(row, AssetModel.fromJson, 'asset');
+                final local = asset == null ? null : assetsBox!.get(asset.id);
+                if (asset != null &&
+                    (local == null ||
+                        shouldRemoteOverwrite(
+                          localUpdatedAt: local.updatedAt,
+                          localVersion: local.version,
+                          remoteUpdatedAt: asset.updatedAt,
+                          remoteVersion: asset.version,
+                        ))) {
                   await assetsBox!.put(asset.id, asset);
                 }
               } catch (e) {
@@ -228,8 +261,16 @@ class SyncEngine {
             for (final row in remoteInvoices) {
               if (_shouldCancel) return false;
               try {
-                final invoice = _parseInvoiceFromRow(row);
-                if (invoice != null) {
+                final invoice = _isTombstone(row) ? null : _parseRow(row, InvoiceModel.fromJson, 'invoice');
+                final local = invoice == null ? null : invoicesBox!.get(invoice.id);
+                if (invoice != null &&
+                    (local == null ||
+                        shouldRemoteOverwrite(
+                          localUpdatedAt: local.updatedAt,
+                          localVersion: local.version,
+                          remoteUpdatedAt: invoice.updatedAt,
+                          remoteVersion: invoice.version,
+                        ))) {
                   await invoicesBox!.put(invoice.id, invoice);
                 }
               } catch (e) {
@@ -306,15 +347,9 @@ class SyncEngine {
             }
           }
 
-          // ── Step 7: Parity Verification & Finalization ──────────────────────
-          _emit(_currentState.copyWith(
-            stage: SyncStage.verifyingParity,
-            progress: 0.95,
-            message: 'Verifying bit-for-bit directory integrity...',
-          ));
-
-          await Future.delayed(const Duration(milliseconds: 300));
-
+          // ── Step 7: Finalization ─────────────────────────────────────────────
+          // No integrity comparison is performed, so no verification stage is
+          // reported.
           _emit(_currentState.copyWith(
             stage: SyncStage.completed,
             progress: 1.0,
@@ -394,140 +429,21 @@ class SyncEngine {
 
   // ── Entity Parsing Helpers ─────────────────────────────────────────────────
 
-  ReceiptModel? _parseReceiptFromRow(Map<String, dynamic> row) {
+  /// Whether [row] is a soft-deleted record.
+  static bool _isTombstone(Map<String, dynamic> row) => row['deleted_at'] != null;
+
+  /// Maps [row] with the model's own `fromJson`, the same mapping the delta pull
+  /// in `SyncManager` uses, so both paths read identical columns.
+  T? _parseRow<T>(
+    Map<String, dynamic> row,
+    T Function(Map<String, dynamic>) fromJson,
+    String entity,
+  ) {
+    if (row['id'] == null) return null;
     try {
-      final id = row['id']?.toString();
-      if (id == null) return null;
-
-      final itemsRaw = row['items'];
-      final items = <ReceiptItemModel>[];
-      if (itemsRaw is List) {
-        for (final it in itemsRaw) {
-          if (it is Map<String, dynamic>) {
-            items.add(ReceiptItemModel(
-              description: it['description']?.toString() ?? 'Item',
-              unitPrice: (it['unit_price'] as num?)?.toDouble() ?? 0.0,
-              quantity: (it['quantity'] as num?)?.toInt() ?? 1,
-              totalPrice: (it['total_price'] as num?)?.toDouble(),
-              category: it['category']?.toString(),
-              necessity: it['necessity']?.toString() ?? 'essential',
-              mainCategory: it['main_category']?.toString() ?? it['category']?.toString(),
-              subCategory: it['sub_category']?.toString(),
-              isAsset: it['is_asset'] == true,
-              boxId: it['box_id']?.toString() ?? row['box_id']?.toString() ?? 'main',
-              isUserCorrected: it['is_user_corrected'] == true,
-              confidenceScore: (it['confidence_score'] as num?)?.toDouble() ?? 1.0,
-              deletedAt: it['deleted_at'] != null ? DateTime.tryParse(it['deleted_at'].toString()) : null,
-              version: (it['version'] as num?)?.toInt() ?? 1,
-            ));
-          }
-        }
-      }
-
-      final dateStr = (row['scanned_date'] ?? row['date'])?.toString() ?? '';
-      final parsedDate = DateTime.tryParse(dateStr) ?? DateTime.now();
-
-      return ReceiptModel(
-        id: id,
-        merchantName: row['merchant_name']?.toString() ?? 'Unknown Merchant',
-        totalAmount: (row['total_amount'] as num?)?.toDouble() ?? 0.0,
-        currency: row['currency']?.toString() ?? 'USD',
-        date: parsedDate,
-        items: items,
-        imagePath: row['image_path']?.toString(),
-        vatNumber: row['vat_number']?.toString() ?? '',
-        merchantAddress: row['merchant_address']?.toString() ?? '',
-        time: (row['transaction_time'] ?? row['time'])?.toString() ?? '00:00',
-        boxId: row['box_id']?.toString() ?? 'main',
-        userId: row['user_id']?.toString(),
-        createdAt: row['created_at'] != null ? DateTime.tryParse(row['created_at'].toString()) : null,
-        updatedAt: row['updated_at'] != null ? DateTime.tryParse(row['updated_at'].toString()) : null,
-        deletedAt: row['deleted_at'] != null ? DateTime.tryParse(row['deleted_at'].toString()) : null,
-        version: (row['version'] as num?)?.toInt() ?? 1,
-      );
+      return fromJson(row);
     } catch (e) {
-      debugPrint('SyncEngine: Error parsing receipt row: $e');
-      return null;
-    }
-  }
-
-  BoxModel? _parseBoxFromRow(Map<String, dynamic> row) {
-    try {
-      final id = row['id']?.toString();
-      if (id == null) return null;
-      final colorVal = row['color_hex'] ?? row['color'];
-      final iconVal = row['icon_identifier'] ?? row['icon'];
-      return BoxModel(
-        id: id,
-        name: row['name']?.toString() ?? 'Box',
-        budget: (row['budget'] as num?)?.toDouble() ?? 0.0,
-        spent: (row['spent'] as num?)?.toDouble() ?? 0.0,
-        currency: row['currency']?.toString() ?? 'USD',
-        color: (colorVal as num?)?.toInt() ?? 0xFF002FA7,
-        icon: iconVal?.toString(),
-        autoCategorize: row['auto_categorize'] as bool? ?? false,
-        keywords: row['keywords']?.toString() ?? '',
-        isPrivate: row['is_private'] as bool? ?? false,
-        userId: row['user_id']?.toString(),
-        createdAt: row['created_at'] != null ? DateTime.tryParse(row['created_at'].toString()) : null,
-        updatedAt: row['updated_at'] != null ? DateTime.tryParse(row['updated_at'].toString()) : null,
-        deletedAt: row['deleted_at'] != null ? DateTime.tryParse(row['deleted_at'].toString()) : null,
-        version: (row['version'] as num?)?.toInt() ?? 1,
-      );
-    } catch (e) {
-      debugPrint('SyncEngine: Error parsing box row: $e');
-      return null;
-    }
-  }
-
-  AssetModel? _parseAssetFromRow(Map<String, dynamic> row) {
-    try {
-      final id = row['id']?.toString();
-      if (id == null) return null;
-      return AssetModel(
-        id: id,
-        name: row['name']?.toString() ?? 'Asset',
-        purchaseDate: DateTime.tryParse(row['purchase_date']?.toString() ?? '') ?? DateTime.now(),
-        warrantyMonths: (row['warranty_months'] as num?)?.toInt() ?? 24,
-        price: (row['price'] as num?)?.toDouble() ?? 0.0,
-        receiptImagePath: row['receipt_image_path']?.toString() ?? '',
-        merchantName: row['merchant_name']?.toString() ?? '',
-        receiptId: row['receipt_id']?.toString(),
-        userId: row['user_id']?.toString(),
-        documentPath: row['document_path']?.toString() ?? '',
-        createdAt: row['created_at'] != null ? DateTime.tryParse(row['created_at'].toString()) : null,
-        updatedAt: row['updated_at'] != null ? DateTime.tryParse(row['updated_at'].toString()) : null,
-        deletedAt: row['deleted_at'] != null ? DateTime.tryParse(row['deleted_at'].toString()) : null,
-        version: (row['version'] as num?)?.toInt() ?? 1,
-      );
-    } catch (e) {
-      debugPrint('SyncEngine: Error parsing asset row: $e');
-      return null;
-    }
-  }
-
-  InvoiceModel? _parseInvoiceFromRow(Map<String, dynamic> row) {
-    try {
-      final id = row['id']?.toString();
-      if (id == null) return null;
-      return InvoiceModel(
-        id: id,
-        invoiceNumber: row['invoice_number']?.toString() ?? id,
-        clientName: row['client_name']?.toString() ?? 'Client',
-        amount: (row['amount'] as num?)?.toDouble() ?? 0.0,
-        status: row['status']?.toString() ?? 'draft',
-        issuedDate: DateTime.tryParse(row['issued_date']?.toString() ?? '') ?? DateTime.now(),
-        dueDate: row['due_date'] != null ? DateTime.tryParse(row['due_date'].toString()) : null,
-        notes: row['notes']?.toString() ?? '',
-        currency: row['currency']?.toString() ?? 'USD',
-        userId: row['user_id']?.toString(),
-        createdAt: row['created_at'] != null ? DateTime.tryParse(row['created_at'].toString()) : null,
-        updatedAt: row['updated_at'] != null ? DateTime.tryParse(row['updated_at'].toString()) : null,
-        deletedAt: row['deleted_at'] != null ? DateTime.tryParse(row['deleted_at'].toString()) : null,
-        version: (row['version'] as num?)?.toInt() ?? 1,
-      );
-    } catch (e) {
-      debugPrint('SyncEngine: Error parsing invoice row: $e');
+      debugPrint('SyncEngine: Error parsing $entity row: $e');
       return null;
     }
   }

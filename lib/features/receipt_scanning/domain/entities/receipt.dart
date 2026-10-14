@@ -17,6 +17,9 @@ class Receipt with _$Receipt {
     @Default([]) List<ReceiptItem> items,
     String? imagePath,
     @Default('main') String? boxId,
+    // True when the extraction found no valid purchase date and [date] is a
+    // placeholder; the review screen asks the user to confirm it. Not stored.
+    @Default(false) bool dateUncertain,
   }) = _Receipt;
 
   const Receipt._();

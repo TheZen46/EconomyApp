@@ -103,60 +103,76 @@ class CrashTelemetryReport {
 class TelemetryService {
   static final TelemetryService instance = TelemetryService._internal();
 
-  TelemetryService._internal();
-  factory TelemetryService({Directory? baseDirectory}) {
+  TelemetryService._internal() : maxLogBytes = defaultMaxLogBytes;
+  factory TelemetryService({Directory? baseDirectory, int maxLogBytes = defaultMaxLogBytes}) {
     if (baseDirectory != null) {
-      return TelemetryService._withDirectory(baseDirectory);
+      return TelemetryService._withDirectory(baseDirectory, maxLogBytes);
     }
     return instance;
   }
 
-  TelemetryService._withDirectory(Directory baseDirectory) : _customDirectory = baseDirectory;
+  TelemetryService._withDirectory(Directory baseDirectory, this.maxLogBytes) : _customDirectory = baseDirectory;
 
+  /// Size at which the log file is rotated. At most two generations are kept,
+  /// so the log never occupies more than twice this size on disk.
+  static const int defaultMaxLogBytes = 512 * 1024;
+
+  /// Age after which the rotated generation is deleted.
+  static const Duration maxLogAge = Duration(days: 30);
+
+  final int maxLogBytes;
   Directory? _customDirectory;
   final List<Map<String, dynamic>> _inMemoryRingBuffer = [];
   static const int _maxRingBufferSize = 100;
   static const String _logFileName = 'telemetry_events.jsonl';
-  String? _sentryDsn;
   bool _isInitialized = false;
+
+  /// Serializes appends and rotation.
+  Future<void> _pendingWrite = Future.value();
 
   bool get isInitialized => _isInitialized;
   List<Map<String, dynamic>> get recentEvents => List.unmodifiable(_inMemoryRingBuffer);
 
-  /// Initializes the telemetry service with optional Sentry DSN and sets up directories.
-  Future<void> initialize({String? sentryDsn, Directory? baseDirectory}) async {
-    _sentryDsn = sentryDsn;
+  /// Initializes the telemetry service. Events are kept on this device only;
+  /// nothing is transmitted.
+  Future<void> initialize({Directory? baseDirectory}) async {
     if (baseDirectory != null) {
       _customDirectory = baseDirectory;
     }
     _isInitialized = true;
-    debugPrint('TelemetryService: Initialized (Sentry: ${_sentryDsn != null ? "CONFIGURED" : "OFFLINE_LOCAL"})');
+    debugPrint('TelemetryService: Initialized (local log only)');
   }
 
   /// Configures global Flutter framework and Dart isolate error boundaries.
+  ///
+  /// Errors are recorded and then passed on to the default handling: they are
+  /// not marked as handled, because the application did not handle them.
   void setupGlobalErrorHandlers() {
     FlutterError.onError = (FlutterErrorDetails details) {
-      recordCrash(
+      unawaited(recordCrash(
         error: details.exception,
         stackTrace: details.stack,
         isFatal: false,
         errorType: 'FlutterError.${details.library ?? "framework"}',
-      );
-      // Also log to console in debug mode
-      if (kDebugMode) {
-        FlutterError.dumpErrorToConsole(details);
-      }
+      ));
+      FlutterError.presentError(details);
     };
 
-    PlatformDispatcher.instance.onError = (Object error, StackTrace stack) {
-      recordCrash(
-        error: error,
-        stackTrace: stack,
-        isFatal: true,
-        errorType: 'PlatformDispatcher.UncaughtAsync',
-      );
-      return true; // Handled — prevent process termination
-    };
+    PlatformDispatcher.instance.onError = handleUncaughtError;
+  }
+
+  /// [PlatformDispatcher.onError] callback. Records the error and returns
+  /// false, so that the engine reports it as unhandled instead of the
+  /// application continuing as if it had been dealt with.
+  bool handleUncaughtError(Object error, StackTrace stack) {
+    unawaited(recordCrash(
+      error: error,
+      stackTrace: stack,
+      // The process keeps running after an uncaught asynchronous error.
+      isFatal: false,
+      errorType: 'PlatformDispatcher.UncaughtAsync',
+    ));
+    return false;
   }
 
   /// Records an on-device VLM inference performance metric.
@@ -250,18 +266,38 @@ class TelemetryService {
   }
 
   /// Persists event to the local JSONL log file.
-  Future<void> _persistEventToFile(Map<String, dynamic> eventJson) async {
-    if (kIsWeb) return;
-    try {
-      final file = await _getLogFile();
-      if (file == null) return;
+  Future<void> _persistEventToFile(Map<String, dynamic> eventJson) {
+    if (kIsWeb) return Future.value();
+    return _pendingWrite = _pendingWrite.then((_) async {
+      try {
+        final file = await _getLogFile();
+        if (file == null) return;
 
-      final sink = file.openWrite(mode: FileMode.append);
-      sink.writeln(jsonEncode(eventJson));
-      await sink.flush();
-      await sink.close();
-    } catch (e) {
-      debugPrint('TelemetryService: Failed to write event to disk: $e');
+        await _rotateIfNeeded(file);
+        final sink = file.openWrite(mode: FileMode.append);
+        sink.writeln(jsonEncode(eventJson));
+        await sink.flush();
+        await sink.close();
+      } catch (e) {
+        debugPrint('TelemetryService: Failed to write event to disk: $e');
+      }
+    });
+  }
+
+  File _rotatedFile(File file) => File('${file.path}.1');
+
+  /// Moves the log to its single rotated generation once it reaches
+  /// [maxLogBytes], and deletes that generation once it is older than
+  /// [maxLogAge].
+  Future<void> _rotateIfNeeded(File file) async {
+    final rotated = _rotatedFile(file);
+    if (await rotated.exists() &&
+        DateTime.now().difference(await rotated.lastModified()) > maxLogAge) {
+      await rotated.delete();
+    }
+    if (await file.exists() && await file.length() >= maxLogBytes) {
+      if (await rotated.exists()) await rotated.delete();
+      await file.rename(rotated.path);
     }
   }
 
@@ -278,13 +314,20 @@ class TelemetryService {
     }
   }
 
-  /// Returns total count of logged telemetry records on disk.
+  /// Returns total count of logged telemetry records on disk, across the
+  /// current and the rotated log file.
   Future<int> getDiskEventCount() async {
+    await _pendingWrite;
     final file = await _getLogFile();
-    if (file == null || !await file.exists()) return _inMemoryRingBuffer.length;
+    if (file == null) return _inMemoryRingBuffer.length;
     try {
-      final lines = await file.readAsLines();
-      return lines.where((l) => l.trim().isNotEmpty).length;
+      var count = 0;
+      for (final f in [file, _rotatedFile(file)]) {
+        if (!await f.exists()) continue;
+        final lines = await f.readAsLines();
+        count += lines.where((l) => l.trim().isNotEmpty).length;
+      }
+      return count;
     } catch (_) {
       return _inMemoryRingBuffer.length;
     }
@@ -293,11 +336,15 @@ class TelemetryService {
   /// Clears in-memory and disk telemetry logs.
   Future<void> clearLogs() async {
     _inMemoryRingBuffer.clear();
+    await _pendingWrite;
     final file = await _getLogFile();
-    if (file != null && await file.exists()) {
-      try {
-        await file.delete();
-      } catch (_) {}
+    if (file == null) return;
+    for (final f in [file, _rotatedFile(file)]) {
+      if (await f.exists()) {
+        try {
+          await f.delete();
+        } catch (_) {}
+      }
     }
   }
 

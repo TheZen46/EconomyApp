@@ -28,7 +28,12 @@
 
 #if __has_include("llama.h")
 #include "llama.h"
+#define RECEIPT_ENGINE_HAS_LLAMA 1
 #else
+// llama.cpp is not available to this build. The declarations below only let the
+// translation unit compile; they do not implement inference, so
+// receipt_engine_init refuses to create an engine (RECEIPT_ENGINE_HAS_LLAMA == 0).
+#define RECEIPT_ENGINE_HAS_LLAMA 0
 
 struct llama_model;
 struct llama_context;
@@ -443,84 +448,16 @@ static std::string execute_grammar_constrained_sampling(
         return generated_json;
     }
 
-    // High-performance deterministic fallback generator for headless test environments
-    if (!prefix_hit && engine->kv_cache) {
-        int bid1 = engine->kv_cache->allocate_block();
-        int bid2 = engine->kv_cache->allocate_block();
-        std::vector<int> b = {bid1, bid2};
-        engine->kv_cache->register_prefix_cache(prompt_hash, b, 32);
+    // No model is loaded. Report the failure and signal completion to streaming
+    // consumers instead of producing output.
+    set_error(engine, "No language model is loaded");
+    if (engine->token_ring) {
+        engine->token_ring->try_push("", 1);
     }
-
-    std::ostringstream json;
-    json << "{\n"
-         << "  \"merchant_name\": \"ESSELUNGA S.P.A.\",\n"
-         << "  \"merchant_address\": \"Via Carlo De Angeli 3, 20141 Milano (MI)\",\n"
-         << "  \"vat_number\": \"IT01234567890\",\n"
-         << "  \"date\": \"2026-09-02\",\n"
-         << "  \"time\": \"10:30\",\n"
-         << "  \"currency\": \"EUR\",\n"
-         << "  \"items\": [\n"
-         << "    {\n"
-         << "      \"raw_name\": \"BANANE BIO CHIQUITA KG\",\n"
-         << "      \"normalized_name\": \"Bananas\",\n"
-         << "      \"main_category\": \"Fresh Produce\",\n"
-         << "      \"sub_category\": \"Fruits\",\n"
-         << "      \"necessity\": \"essential\",\n"
-         << "      \"quantity\": 1,\n"
-         << "      \"unit_price\": 2.19,\n"
-         << "      \"total_price\": 2.19,\n"
-         << "      \"is_asset\": false\n"
-         << "    },\n"
-         << "    {\n"
-         << "      \"raw_name\": \"LATTE FRESCO INTERO 1L\",\n"
-         << "      \"normalized_name\": \"Milk (Whole/Skim)\",\n"
-         << "      \"main_category\": \"Proteins & Dairy\",\n"
-         << "      \"sub_category\": \"Dairy & Alternatives\",\n"
-         << "      \"necessity\": \"essential\",\n"
-         << "      \"quantity\": 2,\n"
-         << "      \"unit_price\": 1.69,\n"
-         << "      \"total_price\": 3.38,\n"
-         << "      \"is_asset\": false\n"
-         << "    },\n"
-         << "    {\n"
-         << "      \"raw_name\": \"PARMIGIANO REGGIANO 24M\",\n"
-         << "      \"normalized_name\": \"Cheese (Fancy)\",\n"
-         << "      \"main_category\": \"Proteins & Dairy\",\n"
-         << "      \"sub_category\": \"Dairy & Alternatives\",\n"
-         << "      \"necessity\": \"discretional\",\n"
-         << "      \"quantity\": 1,\n"
-         << "      \"unit_price\": 5.90,\n"
-         << "      \"total_price\": 5.90,\n"
-         << "      \"is_asset\": false\n"
-         << "    }\n"
-         << "  ],\n"
-         << "  \"tax_breakdown\": [\n"
-         << "    {\n"
-         << "      \"rate\": 0.04,\n"
-         << "      \"tax_amount\": 0.08\n"
-         << "    },\n"
-         << "    {\n"
-         << "      \"rate\": 0.1,\n"
-         << "      \"tax_amount\": 0.84\n"
-         << "    }\n"
-         << "  ],\n"
-         << "  \"total_amount\": 11.47,\n"
-         << "  \"confidence_score\": 0.98\n"
-         << "}";
-
-    std::string res = json.str();
-    const size_t chunk_size = 16;
-    for (size_t i = 0; i < res.length(); i += chunk_size) {
-        std::string chunk = res.substr(i, chunk_size);
-        bool is_done = (i + chunk_size >= res.length());
-        if (engine->token_ring) {
-            engine->token_ring->try_push(chunk.c_str(), is_done ? 1 : 0);
-        }
-        if (callback) {
-            callback(chunk.c_str(), is_done ? 1 : 0, user_data);
-        }
+    if (callback) {
+        callback("", 1, user_data);
     }
-    return res;
+    return "";
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -620,6 +557,32 @@ static int detect_optimal_threads(int requested_threads) {
 // C FFI INTERFACE IMPLEMENTATION
 // ══════════════════════════════════════════════════════════════════════════════
 
+namespace {
+
+// Forwards streaming callbacks and, if no call carried is_done = 1 by the time
+// it goes out of scope, delivers a final empty token with is_done = 1.
+struct StreamCompletionGuard {
+    receipt_token_callback_t callback;
+    void* user_data;
+    bool done = false;
+
+    static void forward(const char* token, int is_done, void* self_ptr) {
+        auto* self = static_cast<StreamCompletionGuard*>(self_ptr);
+        if (is_done) {
+            self->done = true;
+        }
+        self->callback(token, is_done, self->user_data);
+    }
+
+    ~StreamCompletionGuard() {
+        if (!done) {
+            callback("", 1, user_data);
+        }
+    }
+};
+
+} // namespace
+
 extern "C" {
 
 RECEIPT_ENGINE_API receipt_engine_t* receipt_engine_init(
@@ -631,6 +594,10 @@ RECEIPT_ENGINE_API receipt_engine_t* receipt_engine_init(
     int n_ctx
 ) {
     if (!model_path || strlen(model_path) == 0) {
+        return nullptr;
+    }
+    if (!RECEIPT_ENGINE_HAS_LLAMA) {
+        // Built without llama.cpp: no inference backend exists, so no engine is created.
         return nullptr;
     }
 
@@ -671,6 +638,18 @@ RECEIPT_ENGINE_API receipt_engine_t* receipt_engine_init(
         }
     }
 
+    // An engine without a model and context cannot produce output; report failure
+    // to the caller instead of handing out a handle that claims to be ready.
+    if (!engine->model || !engine->ctx) {
+        if (engine->ctx) {
+            llama_free(engine->ctx);
+        }
+        if (engine->model) {
+            llama_model_free(engine->model);
+        }
+        return nullptr;
+    }
+
     // 3. Load GBNF grammar specification
     if (!engine->grammar_path.empty()) {
         std::ifstream gf(engine->grammar_path);
@@ -686,7 +665,11 @@ RECEIPT_ENGINE_API receipt_engine_t* receipt_engine_init(
 }
 
 RECEIPT_ENGINE_API void receipt_engine_free(receipt_engine_t* engine) {
-    if (engine) {
+    if (!engine) {
+        return;
+    }
+    {
+        // Waits for an in-flight inference call, then releases the resources.
         std::lock_guard<std::mutex> lock(engine->engine_mutex);
         engine->is_initialized = false;
 
@@ -704,9 +687,10 @@ RECEIPT_ENGINE_API void receipt_engine_free(receipt_engine_t* engine) {
         }
         engine->kv_cache.reset();
         engine->token_ring.reset();
-
-        delete engine;
     }
+    // The guard above has released engine_mutex; only now may the engine, which
+    // owns that mutex, be destroyed.
+    delete engine;
 }
 
 RECEIPT_ENGINE_API int receipt_engine_is_ready(const receipt_engine_t* engine) {
@@ -793,6 +777,11 @@ RECEIPT_ENGINE_API int receipt_engine_process_image(
     // 4. Autoregressive Decoding with GBNF Constrained Sampling
     std::string json_result = execute_grammar_constrained_sampling(engine, processed, prompt, nullptr, nullptr);
 
+    if (json_result.empty()) {
+        // Generation failed; execute_grammar_constrained_sampling recorded the reason.
+        return -6;
+    }
+
     if (json_result.length() + 1 > max_output_len) {
         set_error(engine, "Output buffer too small for generated JSON (required " + 
                   std::to_string(json_result.length() + 1) + " bytes)");
@@ -812,7 +801,16 @@ RECEIPT_ENGINE_API int receipt_engine_process_image_streaming(
     receipt_token_callback_t callback,
     void* user_data
 ) {
-    if (!engine || !engine->is_initialized || !callback) {
+    if (!callback) {
+        return -1;
+    }
+    // From here on every return path ends the stream with is_done = 1, so a
+    // consumer waiting for completion is never left waiting.
+    StreamCompletionGuard completion{callback, user_data};
+    callback = StreamCompletionGuard::forward;
+    user_data = &completion;
+
+    if (!engine || !engine->is_initialized) {
         return -1;
     }
     if (!image_bytes || image_len == 0) {
@@ -839,7 +837,11 @@ RECEIPT_ENGINE_API int receipt_engine_process_image_streaming(
         few_shot_context, system_prompt, engine->default_system_prompt
     );
 
-    execute_grammar_constrained_sampling(engine, processed, prompt, callback, user_data);
+    std::string generated = execute_grammar_constrained_sampling(engine, processed, prompt, callback, user_data);
+    if (generated.empty()) {
+        // Generation failed; execute_grammar_constrained_sampling recorded the reason.
+        return -6;
+    }
 
     return 0;
 }

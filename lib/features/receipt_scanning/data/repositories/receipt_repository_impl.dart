@@ -6,6 +6,7 @@ import '../../../../core/services/ai_service.dart';
 import '../../domain/entities/receipt.dart';
 import '../../domain/repositories/receipt_repository.dart';
 import '../datasources/hive_receipt_data_source.dart';
+import '../datasources/receipt_image_store.dart';
 import '../datasources/supabase_data_source.dart';
 import '../models/receipt_model.dart';
 import '../datasources/sync_service.dart';
@@ -28,6 +29,7 @@ class ReceiptRepositoryImpl implements ReceiptRepository {
   final WebhookService webhookService;
   final Box<AssetModel> assetsBox; // New injection
   final OutboxService? outboxService;
+  final ReceiptImageStore imageStore;
 
   ReceiptRepositoryImpl({
     required this.localDataSource,
@@ -38,7 +40,8 @@ class ReceiptRepositoryImpl implements ReceiptRepository {
     required this.webhookService,
     required this.assetsBox,
     this.outboxService,
-  });
+    ReceiptImageStore? imageStore,
+  }) : imageStore = imageStore ?? ReceiptImageStore();
 
   @override
   Future<Either<Failure, List<Receipt>>> getReceipts() async {
@@ -59,6 +62,13 @@ class ReceiptRepositoryImpl implements ReceiptRepository {
   @override
   Future<Either<Failure, void>> saveReceipt(Receipt receipt) async {
     try {
+      // 0. Keep the image: picker files live in a directory the OS may purge.
+      final originalImagePath = receipt.imagePath ?? '';
+      final storedImagePath = await imageStore.persist(receipt.id, originalImagePath);
+      if (storedImagePath != originalImagePath) {
+        receipt = receipt.copyWith(imagePath: storedImagePath);
+      }
+
       // 1. Save Locally
       final model = ReceiptModel.fromEntity(receipt);
       await localDataSource.saveReceipt(model);
@@ -69,7 +79,7 @@ class ReceiptRepositoryImpl implements ReceiptRepository {
           entityType: 'receipt',
           entityId: model.id,
           mutationType: 'upsert',
-          payload: model.toJson(),
+          payload: model.toRemoteJson(),
         );
       }
 
@@ -144,25 +154,36 @@ class ReceiptRepositoryImpl implements ReceiptRepository {
 
       if (includeCloud) {
         if (ids.isNotEmpty) {
-          await supabaseDataSource.deleteData(ids);
-          await supabaseDataSource.deleteReceipts(ids);
-        }
-      }
-
-      // Enqueue delete tombstones in outbox so cloud replicas delete their state
-      if (outboxService != null) {
-        for (final id in ids) {
-          await outboxService!.enqueue(
-            entityType: 'receipt',
-            entityId: id,
-            mutationType: 'delete',
-            payload: {'id': id},
+          await supabaseDataSource.deleteData(
+            ids,
+            imagePaths: [for (final model in receiptModels) model.imagePath ?? ''],
           );
         }
+
+        // Rows are soft-deleted through the outbox, as everywhere else: a hard
+        // delete is never observed by other devices, which would keep their
+        // copies and could upload them again. Tombstones also supersede any
+        // upsert for the same receipt that is still queued ahead of them.
+        if (outboxService != null) {
+          for (final id in ids) {
+            await outboxService!.enqueue(
+              entityType: 'receipt',
+              entityId: id,
+              mutationType: 'delete',
+              payload: {'id': id},
+            );
+          }
+        }
       }
-      
+      // Device-only clearing enqueues nothing: synchronized copies stay in the
+      // cloud, and queued upserts still deliver receipts that have not reached
+      // it yet, so the cleared data remains restorable via "Replicate Cloud Data".
+
       // Always clear local
       await localDataSource.clearAll();
+      for (final model in receiptModels) {
+        await _deleteStoredImage(model.imagePath);
+      }
       
       return const Right(null);
     } catch (e) {
@@ -173,8 +194,11 @@ class ReceiptRepositoryImpl implements ReceiptRepository {
   @override
   Future<Either<Failure, void>> deleteReceipt(String id) async {
     try {
+      final existing = await localDataSource.getReceipt(id);
+
       // 1. Delete from Local first to ensure transactional consistency
       await localDataSource.deleteReceipt(id);
+      await _deleteStoredImage(existing?.imagePath);
 
       // 2. Enqueue deletion tombstone in OutboxService to propagate soft-delete to cloud replicas
       if (outboxService != null) {
@@ -188,7 +212,7 @@ class ReceiptRepositoryImpl implements ReceiptRepository {
 
       // 3. Delete binary training image/data from storage (Best effort)
       try {
-        await supabaseDataSource.deleteData([id]);
+        await supabaseDataSource.deleteData([id], imagePaths: [existing?.imagePath ?? '']);
       } catch (e) {
         // Ignore storage error; outbox tombstone guarantees eventual DB consistency
       }
@@ -197,5 +221,13 @@ class ReceiptRepositoryImpl implements ReceiptRepository {
     } catch (e) {
       return const Left(CacheFailure());
     }
+  }
+
+  /// Deletes a receipt's stored image unless a vault asset still uses it as
+  /// warranty evidence.
+  Future<void> _deleteStoredImage(String? path) async {
+    if (path == null || path.isEmpty) return;
+    if (assetsBox.values.any((asset) => asset.receiptImagePath == path)) return;
+    await imageStore.delete(path);
   }
 }

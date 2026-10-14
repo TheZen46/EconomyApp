@@ -107,13 +107,13 @@ class _BiometricGuardState extends ConsumerState<BiometricGuard> with WidgetsBin
     final canAuth = await biometricService.canAuthenticate();
 
     if (!canAuth) {
+      // Fail closed: being unable to verify the user is not a successful verification.
       if (mounted) {
         setState(() {
           _isAuthenticating = false;
-          _isAuthenticated = true;
-          _isTimedOut = false;
+          _errorMessage = 'This device has no biometrics or screen lock available, so tAIdy cannot '
+              'verify you. Set up a screen lock in your device settings, then try again.';
         });
-        _resetInactivityTimer();
       }
       return;
     }

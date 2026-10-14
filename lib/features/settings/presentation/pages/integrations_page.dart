@@ -30,10 +30,10 @@ class _IntegrationsPageState extends ConsumerState<IntegrationsPage> {
 
   Future<void> _loadSettings() async {
     final settingsBox = ref.read(settingsBoxProvider);
-    // webhook_url and webhook_enabled are non-sensitive: keep in Hive
-    final url = settingsBox.get('webhook_url', defaultValue: '') as String;
+    // webhook_enabled is non-sensitive and stays in Hive
     final enabled = settingsBox.get('webhook_enabled', defaultValue: false) as bool;
-    // webhook_secret is sensitive: read from secure storage
+    // The URL (which may embed a token) and the secret live in secure storage
+    final url = await SecureStorageService.readSecret(SecretKeys.webhookUrl) ?? '';
     final secret = await SecureStorageService.readSecret(SecretKeys.webhookSecret) ?? '';
 
     if (mounted) {
@@ -47,10 +47,11 @@ class _IntegrationsPageState extends ConsumerState<IntegrationsPage> {
 
   Future<void> _save() async {
     final settingsBox = ref.read(settingsBoxProvider);
-    // Non-sensitive values stay in Hive
-    await settingsBox.put('webhook_url', _urlController.text.trim());
+    // Non-sensitive flag stays in Hive
     await settingsBox.put('webhook_enabled', _isEnabled);
-    // Sensitive secret goes to secure storage
+    // URL and secret go to secure storage, where WebhookService reads them
+    await SecureStorageService.writeSecret(
+        SecretKeys.webhookUrl, _urlController.text.trim());
     await SecureStorageService.writeSecret(
         SecretKeys.webhookSecret, _secretController.text.trim());
 

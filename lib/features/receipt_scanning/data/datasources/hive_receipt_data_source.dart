@@ -4,6 +4,10 @@ import '../models/receipt_model.dart';
 
 abstract class LocalReceiptDataSource {
   Future<List<ReceiptModel>> getReceipts();
+
+  /// The receipt stored under [id], or null when there is none.
+  Future<ReceiptModel?> getReceipt(String id);
+
   Future<void> saveReceipt(ReceiptModel receipt);
   Future<void> clearAll();
   Future<void> deleteReceipt(String id);
@@ -18,6 +22,15 @@ class HiveReceiptDataSourceImpl implements LocalReceiptDataSource {
   Future<List<ReceiptModel>> getReceipts() async {
     try {
       return receiptBox.values.toList();
+    } catch (e) {
+      throw const CacheFailure();
+    }
+  }
+
+  @override
+  Future<ReceiptModel?> getReceipt(String id) async {
+    try {
+      return receiptBox.get(id);
     } catch (e) {
       throw const CacheFailure();
     }

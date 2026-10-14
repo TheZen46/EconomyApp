@@ -129,6 +129,12 @@ class AuthRepositoryImpl implements AuthRepository {
   @override
   Future<void> clearPersistedSession() async {
     await SecureStorageService.purgeAuthData();
+    // The Supabase client restores its own copy of the session at startup.
+    // Signing out locally removes it; revoking it on the server may fail
+    // offline, which does not matter here.
+    try {
+      await _auth.signOut(scope: SignOutScope.local);
+    } catch (_) {}
   }
 
   @override

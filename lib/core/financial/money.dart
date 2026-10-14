@@ -64,8 +64,10 @@ class Money implements Comparable<Money> {
   /// Major unit integer part.
   int get majorUnits => cents ~/ math.pow(10, scale).toInt();
 
-  /// Minor unit fractional remainder.
-  int get minorUnits => (cents % math.pow(10, scale).toInt()).abs();
+  /// Minor unit fractional remainder (always non-negative; the sign is carried by [majorUnits]
+  /// and [isNegative]). Uses the truncating remainder: Dart's `%` is Euclidean, so
+  /// `-1999 % 100` is 1, whereas the minor part of -19.99 is 99.
+  int get minorUnits => cents.remainder(math.pow(10, scale).toInt()).abs();
 
   /// Checks if value is zero.
   bool get isZero => cents == 0;
@@ -131,7 +133,8 @@ class Money implements Comparable<Money> {
   }
 
   /// Allocates money across integer percentage weights without losing pennies.
-  /// (Guarantees sum of split parts exactly equals the total).
+  /// (Guarantees sum of split parts exactly equals the total, with each part within
+  /// one minor unit of its exact proportional share.)
   List<Money> allocate(List<int> ratios) {
     if (ratios.isEmpty) return [];
     final int totalWeight = ratios.reduce((a, b) => a + b);
@@ -140,25 +143,36 @@ class Money implements Comparable<Money> {
     }
 
     int remainder = cents;
-    final results = <Money>[];
+    final shares = <int>[];
+    final truncationErrors = <int>[];
 
     for (int i = 0; i < ratios.length; i++) {
-      final int share = (cents * ratios[i]) ~/ totalWeight;
-      results.add(Money(cents: share, currency: currency, scale: scale));
+      final int exactNumerator = cents * ratios[i];
+      final int share = exactNumerator ~/ totalWeight;
+      shares.add(share);
+      truncationErrors.add((exactNumerator - share * totalWeight).abs());
       remainder -= share;
     }
 
-    // Distribute remaining cents one by one to highest ratio buckets
-    for (int i = 0; i < remainder; i++) {
-      final current = results[i % results.length];
-      results[i % results.length] = Money(
-        cents: current.cents + 1,
-        currency: currency,
-        scale: scale,
-      );
+    // Largest-remainder method: truncation leaves |remainder| units with the sign of
+    // the total. Each goes to a bucket whose exact share was truncated the most
+    // (ties: higher ratio, then list order), so every part stays within one minor
+    // unit of its exact share and negative totals are balanced as well.
+    final order = List<int>.generate(ratios.length, (i) => i)
+      ..sort((a, b) {
+        final byError = truncationErrors[b].compareTo(truncationErrors[a]);
+        if (byError != 0) return byError;
+        final byRatio = ratios[b].compareTo(ratios[a]);
+        return byRatio != 0 ? byRatio : a.compareTo(b);
+      });
+    final int unit = remainder.sign;
+    for (int k = 0; k < remainder.abs(); k++) {
+      shares[order[k]] += unit;
     }
 
-    return results;
+    return [
+      for (final share in shares) Money(cents: share, currency: currency, scale: scale),
+    ];
   }
 
   // --------------------------------------------------------------------------
@@ -173,27 +187,29 @@ class Money implements Comparable<Money> {
   }) {
     if (denominator == 0) throw ArgumentError('Division by zero');
 
+    // `~/` truncates towards zero; `remainder` is the matching truncated remainder.
+    // (Dart's `%` is Euclidean and must not be used here: -13 % 10 is 7, not 3.)
     final int q = numerator ~/ denominator;
-    final int rem = (numerator % denominator).abs();
+    final int absRem = numerator.remainder(denominator).abs();
+    if (absRem == 0) return q;
+
     final int absDen = denominator.abs();
-    final int doubleRem = rem * 2;
+    final int doubleRem = absRem * 2;
+    // Step that moves the truncated quotient away from zero, following the sign
+    // of the exact quotient (negative when exactly one operand is negative).
+    final int awayStep = (numerator < 0) == (denominator < 0) ? 1 : -1;
 
     switch (rounding) {
       case MidpointRounding.toEven:
         if (doubleRem == absDen) {
           // Exactly midpoint tie: round to nearest even quotient
-          return (q.isEven) ? q : (numerator >= 0 ? q + 1 : q - 1);
-        } else if (doubleRem > absDen) {
-          return numerator >= 0 ? q + 1 : q - 1;
-        } else {
-          return q;
+          return q.isEven ? q : q + awayStep;
         }
+        return doubleRem > absDen ? q + awayStep : q;
 
       case MidpointRounding.awayFromZero:
-        if (rem > 0) {
-          return numerator >= 0 ? q + 1 : q - 1;
-        }
-        return q;
+        // Round half away from zero: ties and anything above them move away.
+        return doubleRem >= absDen ? q + awayStep : q;
 
       case MidpointRounding.towardsZero:
         return q;

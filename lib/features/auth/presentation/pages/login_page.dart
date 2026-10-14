@@ -17,7 +17,7 @@ class LoginPage extends ConsumerWidget {
     final muted = isDark ? AppColors.darkFgDim : AppColors.lightMuted;
 
     // Listen for error messages
-    ref.listen<AuthState>(authProvider, (prev, next) {
+    ref.listen<AppAuthState>(authProvider, (prev, next) {
       if (next.errorMessage != null &&
           next.errorMessage != prev?.errorMessage) {
         ScaffoldMessenger.of(context).clearSnackBars();

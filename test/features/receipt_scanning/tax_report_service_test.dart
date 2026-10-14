@@ -98,7 +98,13 @@ void main() {
     });
 
     test('exports formatted CSV report matching accounting standards', () {
-      final report = TaxReportService.generateTaxReport(receipts: sampleReceipts);
+      // The sample receipts are dated September 2026; without a period the
+      // report covers the current month.
+      final report = TaxReportService.generateTaxReport(
+        receipts: sampleReceipts,
+        startDate: DateTime(2026, 9, 1),
+        endDate: DateTime(2026, 9, 30),
+      );
       final csvString = TaxReportService.exportToCsv(report);
 
       expect(csvString, contains('tAIdy - Tax & VAT Summary Report'));
@@ -113,7 +119,13 @@ void main() {
     });
 
     test('exports valid PDF document payload', () {
-      final report = TaxReportService.generateTaxReport(receipts: sampleReceipts);
+      // The sample receipts are dated September 2026; without a period the
+      // report covers the current month.
+      final report = TaxReportService.generateTaxReport(
+        receipts: sampleReceipts,
+        startDate: DateTime(2026, 9, 1),
+        endDate: DateTime(2026, 9, 30),
+      );
       final pdfBytes = TaxReportService.exportToPdfBytes(report);
 
       expect(pdfBytes, isNotEmpty);

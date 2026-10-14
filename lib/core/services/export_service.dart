@@ -9,6 +9,7 @@ import '../../features/invoices/data/models/invoice_model.dart';
 import '../../features/boxes/data/models/box_model.dart';
 import 'audit_dossier_service.dart';
 import 'accountant_portal_generator.dart';
+import '../utils/csv_utils.dart';
 
 /// Enterprise-grade data export service for the tAIdy platform.
 ///
@@ -23,6 +24,25 @@ class ExportService {
   }) async {
     if (receipts.isEmpty) return null;
 
+    final csvString = receiptsToCsv(receipts);
+
+    final directory = await getApplicationDocumentsDirectory();
+    final path = '${directory.path}/${filePrefix}_${DateTime.now().millisecondsSinceEpoch}.csv';
+    final file = File(path);
+    await file.writeAsString(csvString);
+
+    await Share.shareXFiles(
+      [XFile(path)],
+      subject: shareSubject,
+      text: 'Exported ${receipts.length} receipts from tAIdy.',
+    );
+
+    return file;
+  }
+
+  /// CSV content of [exportReceiptsToCsv], one row per line item. Text cells
+  /// are passed through [CsvUtils.sanitizeCell].
+  static String receiptsToCsv(List<Receipt> receipts) {
     final List<List<dynamic>> rows = [];
 
     // Header Row
@@ -80,21 +100,7 @@ class ExportService {
       }
     }
 
-    final sanitizedRows = rows.map((r) => r.map(_sanitizeCsvCell).toList()).toList();
-    final csvString = const ListToCsvConverter().convert(sanitizedRows);
-
-    final directory = await getApplicationDocumentsDirectory();
-    final path = '${directory.path}/${filePrefix}_${DateTime.now().millisecondsSinceEpoch}.csv';
-    final file = File(path);
-    await file.writeAsString(csvString);
-
-    await Share.shareXFiles(
-      [XFile(path)],
-      subject: shareSubject,
-      text: 'Exported ${receipts.length} receipts from tAIdy.',
-    );
-
-    return file;
+    return const ListToCsvConverter().convert(CsvUtils.sanitizeRows(rows));
   }
 
   /// Exports a collection of [Receipt] entities to an indented JSON file.
@@ -157,6 +163,25 @@ class ExportService {
   }) async {
     if (invoices.isEmpty) return null;
 
+    final csvString = invoicesToCsv(invoices);
+
+    final directory = await getApplicationDocumentsDirectory();
+    final path = '${directory.path}/${filePrefix}_${DateTime.now().millisecondsSinceEpoch}.csv';
+    final file = File(path);
+    await file.writeAsString(csvString);
+
+    await Share.shareXFiles(
+      [XFile(path)],
+      subject: shareSubject,
+      text: 'Exported ${invoices.length} invoices from tAIdy.',
+    );
+
+    return file;
+  }
+
+  /// CSV content of [exportInvoicesToCsv]. Text cells are passed through
+  /// [CsvUtils.sanitizeCell].
+  static String invoicesToCsv(List<InvoiceModel> invoices) {
     final List<List<dynamic>> rows = [];
 
     // Header Row
@@ -184,38 +209,12 @@ class ExportService {
       ]);
     }
 
-    final sanitizedRows = rows.map((r) => r.map(_sanitizeCsvCell).toList()).toList();
-    final csvString = const ListToCsvConverter().convert(sanitizedRows);
-
-    final directory = await getApplicationDocumentsDirectory();
-    final path = '${directory.path}/${filePrefix}_${DateTime.now().millisecondsSinceEpoch}.csv';
-    final file = File(path);
-    await file.writeAsString(csvString);
-
-    await Share.shareXFiles(
-      [XFile(path)],
-      subject: shareSubject,
-      text: 'Exported ${invoices.length} invoices from tAIdy.',
-    );
-
-    return file;
+    return const ListToCsvConverter().convert(CsvUtils.sanitizeRows(rows));
   }
 
   /// Prepend single quote to string values starting with formula trigger chars (=, +, -, @, tab, cr)
   /// to protect against CSV / Excel formula injection (CWE-1236).
-  static dynamic _sanitizeCsvCell(dynamic value) {
-    if (value is String && value.isNotEmpty) {
-      if (value.startsWith('=') ||
-          value.startsWith('+') ||
-          value.startsWith('@') ||
-          value.startsWith('\t') ||
-          value.startsWith('\r') ||
-          (value.startsWith('-') && double.tryParse(value) == null)) {
-        return "'$value";
-      }
-    }
-    return value;
-  }
+  static dynamic _sanitizeCsvCell(dynamic value) => CsvUtils.sanitizeCell(value);
 
   /// Exposed for testing: verifies CSV formula injection sanitization.
   @visibleForTesting

@@ -20,6 +20,7 @@ import 'package:t_aidy/features/receipt_scanning/data/models/receipt_model.dart'
 import 'package:t_aidy/features/receipt_scanning/data/repositories/receipt_repository_impl.dart';
 import 'package:t_aidy/features/receipt_scanning/presentation/providers/receipt_provider.dart';
 import 'package:t_aidy/features/receipt_scanning/data/datasources/hive_receipt_data_source.dart';
+import 'package:t_aidy/features/receipt_scanning/data/datasources/receipt_image_store.dart';
 import 'package:t_aidy/features/receipt_scanning/data/datasources/supabase_data_source.dart';
 import 'package:t_aidy/features/receipt_scanning/data/datasources/sync_service.dart';
 import 'package:t_aidy/features/receipt_scanning/data/models/sync_item_model.dart';
@@ -40,6 +41,12 @@ class FakeLocalDataSource implements LocalReceiptDataSource {
   Future<List<ReceiptModel>> getReceipts() async {
     if (shouldFail) throw const CacheFailure();
     return store.values.toList();
+  }
+
+  @override
+  Future<ReceiptModel?> getReceipt(String id) async {
+    if (shouldFail) throw const CacheFailure();
+    return store[id];
   }
 
   @override
@@ -69,9 +76,11 @@ class FakeSupabaseDataSource implements SupabaseDataSource {
     deletedIds.addAll(ids);
   }
 
+  final List<String> hardDeletedIds = [];
+
   @override
   Future<void> deleteReceipts(List<String> ids) async {
-    deletedIds.addAll(ids);
+    hardDeletedIds.addAll(ids);
   }
 
   @override
@@ -288,6 +297,105 @@ void main() {
       expect(pendingAfterDelete.any((item) => item.entityType == 'receipt' && item.entityId == 'test-rcpt-1' && item.mutationType == 'delete'), isTrue);
     });
 
+    group('clearAllData', () {
+      late FakeLocalDataSource fakeLocal;
+      late FakeSupabaseDataSource fakeSupabase;
+      late ReceiptRepositoryImpl repo;
+
+      setUp(() {
+        fakeLocal = FakeLocalDataSource()
+          ..store['rcpt-a'] = ReceiptModel(
+            id: 'rcpt-a',
+            merchantName: 'Bakery',
+            date: DateTime.utc(2026, 9, 1),
+            totalAmount: 4.5,
+            currency: 'EUR',
+            items: const [],
+          );
+        fakeSupabase = FakeSupabaseDataSource();
+        repo = ReceiptRepositoryImpl(
+          localDataSource: fakeLocal,
+          aiService: FakeAiService(),
+          supabaseDataSource: fakeSupabase,
+          settingsBox: settingsBox,
+          syncService: SyncService(
+            queueBox: syncQueueBox,
+            localDataSource: fakeLocal,
+            supabaseDataSource: fakeSupabase,
+            settingsBox: settingsBox,
+            googleDriveService: GoogleDriveService(),
+          ),
+          webhookService: WebhookService(settingsBox),
+          assetsBox: assetsBox,
+          outboxService: outboxService,
+        );
+      });
+
+      test('device-only clearing enqueues no delete mutation and leaves the cloud untouched', () async {
+        final result = await repo.clearAllData(includeCloud: false);
+
+        expect(result.isRight(), isTrue);
+        expect(fakeLocal.store, isEmpty);
+        expect(fakeSupabase.deletedIds, isEmpty);
+        expect(outboxService.getPendingMutations().where((m) => m.mutationType == 'delete'), isEmpty);
+      });
+
+      test('saving keeps the image in durable storage and deleting the receipt removes it', () async {
+        final docs = await Directory.systemTemp.createTemp('repo_images_docs_');
+        addTearDown(() => docs.deleteSync(recursive: true));
+        final picked = File('${docs.path}/../picked_${DateTime.now().microsecondsSinceEpoch}.jpg')
+          ..writeAsBytesSync([9, 9, 9]);
+        addTearDown(() {
+          if (picked.existsSync()) picked.deleteSync();
+        });
+        final imageRepo = ReceiptRepositoryImpl(
+          localDataSource: fakeLocal,
+          aiService: FakeAiService(),
+          supabaseDataSource: fakeSupabase,
+          settingsBox: settingsBox,
+          syncService: SyncService(
+            queueBox: syncQueueBox,
+            localDataSource: fakeLocal,
+            supabaseDataSource: fakeSupabase,
+            settingsBox: settingsBox,
+            googleDriveService: GoogleDriveService(),
+          ),
+          webhookService: WebhookService(settingsBox),
+          assetsBox: assetsBox,
+          outboxService: outboxService,
+          imageStore: ReceiptImageStore(documentsDirectory: () async => docs),
+        );
+
+        await imageRepo.saveReceipt(Receipt(
+          id: 'rcpt-img',
+          merchantName: 'Bakery',
+          date: DateTime.utc(2026, 9, 1),
+          totalAmount: 4.5,
+          currency: 'EUR',
+          imagePath: picked.path,
+        ));
+
+        final storedPath = fakeLocal.store['rcpt-img']!.imagePath!;
+        expect(storedPath, startsWith('${docs.path}/${ReceiptImageStore.folderName}/'));
+        expect(File(storedPath).existsSync(), isTrue);
+
+        await imageRepo.deleteReceipt('rcpt-img');
+        expect(File(storedPath).existsSync(), isFalse);
+      });
+
+      test('clearing everywhere deletes remotely and enqueues tombstones', () async {
+        final result = await repo.clearAllData(includeCloud: true);
+
+        expect(result.isRight(), isTrue);
+        expect(fakeLocal.store, isEmpty);
+        expect(fakeSupabase.deletedIds, contains('rcpt-a'));
+        // Rows are soft-deleted through the tombstones, never hard-deleted.
+        expect(fakeSupabase.hardDeletedIds, isEmpty);
+        final deletes = outboxService.getPendingMutations().where((m) => m.mutationType == 'delete').toList();
+        expect(deletes.map((m) => m.entityId), ['rcpt-a']);
+      });
+    });
+
     test('BoxesNotifier enqueues upsert mutations and delete tombstones', () async {
       final notifier = BoxesNotifier(boxesBox, null, outboxService);
 
@@ -490,7 +598,11 @@ void main() {
         currency: 'USD',
       );
 
-      await notifier.addReceipt(newReceipt);
+      final result = await notifier.addReceipt(newReceipt);
+
+      // The failure reaches the caller, which reports it instead of
+      // navigating away as if the receipt had been saved.
+      expect(result.isLeft(), isTrue);
 
       // State MUST roll back to initial state, preventing ghost receipts
       expect(notifier.state.value!.length, 1);
@@ -686,7 +798,7 @@ void main() {
       expect(outboxService.getPendingMutations().length, 1);
     });
 
-    test('SyncManager flushes outbox in FIFO order and aborts immediately on partial failure preserving causality', () async {
+    test('SyncManager flushes outbox in FIFO order and holds back only the failing entity', () async {
       final mockUser = const User(
         id: 'sync-user-1',
         appMetadata: {},
@@ -697,10 +809,11 @@ void main() {
 
       final receiptsBox = await Hive.openBox<ReceiptModel>('receipts_sync_test');
 
-      // Create 3 queued items:
+      // Create 4 queued items:
       // Item 1: Box upsert (succeeds)
       // Item 2: Box upsert (fails)
-      // Item 3: Box upsert (should NOT be processed after Item 2 failure)
+      // Item 3: Upsert of an unrelated box (proceeds despite Item 2 failure)
+      // Item 4: Later mutation of the failing box (held back to preserve its order)
       final item1 = await outboxService.enqueue(
         entityType: 'box',
         entityId: 'box-1',
@@ -717,7 +830,13 @@ void main() {
         entityType: 'box',
         entityId: 'box-3',
         mutationType: 'upsert',
-        payload: {'id': 'box-3', 'name': 'Dependent Third Box'},
+        payload: {'id': 'box-3', 'name': 'Unrelated Third Box'},
+      );
+      final item4 = await outboxService.enqueue(
+        entityType: 'box',
+        entityId: 'box-2',
+        mutationType: 'upsert',
+        payload: {'id': 'box-2', 'name': 'Failing Box (renamed)'},
       );
 
       final fakeSupabase = FakeSyncSupabaseClient(
@@ -747,10 +866,13 @@ void main() {
       expect(item2Status?.status, 'failed');
       expect(item2Status?.retryCount, 1);
 
-      // Item 3 was NOT processed (preserved causality, status still pending)
-      final item3Status = outboxBox.get(item3.id);
-      expect(item3Status?.status, 'pending');
-      expect(item3Status?.retryCount, 0);
+      // Item 3 belongs to another entity and was not blocked
+      expect(outboxBox.containsKey(item3.id), isFalse);
+
+      // Item 4 was NOT processed (preserved causality for box-2, status still pending)
+      final item4Status = outboxBox.get(item4.id);
+      expect(item4Status?.status, 'pending');
+      expect(item4Status?.retryCount, 0);
 
       await receiptsBox.close();
     });

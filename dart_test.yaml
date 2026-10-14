@@ -1,0 +1,4 @@
+tags:
+  # Talks to a real Supabase project; runs only with RUN_LIVE_TESTS=true in .env.
+  # Excluded in CI with --exclude-tags live.
+  live:

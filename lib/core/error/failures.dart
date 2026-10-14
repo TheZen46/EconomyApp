@@ -20,6 +20,15 @@ class AIProcessingFailure extends Failure {
   const AIProcessingFailure([super.message = 'AI Processing Error']);
 }
 
+/// No extraction backend could read the image (no OCR on this platform, no
+/// recognizable text, no model). The caller should offer manual entry instead
+/// of presenting any data as extracted.
+class ExtractionUnavailableFailure extends AIProcessingFailure {
+  const ExtractionUnavailableFailure([
+    super.message = 'This receipt could not be read automatically. Enter its details manually.',
+  ]);
+}
+
 class WebhookFailure extends Failure {
   final int? statusCode;
   const WebhookFailure([super.message = 'Webhook delivery failed.', this.statusCode]);

@@ -1,0 +1,14 @@
+-- Makes the training_data storage bucket private.
+--
+-- Objects in a public bucket are served to anyone holding their URL through
+-- /storage/v1/object/public/, without evaluating storage.objects policies, so the per-user folder
+-- policy constrained only writes. Receipt photos and labels in this bucket were therefore readable
+-- by anyone with a link. After this migration reads go through the existing policies: the owner via
+-- "Users can manage training_data folder" and the training pipeline via
+-- "Service role can read receipt images for training". The client uses signed URLs instead of
+-- public URLs.
+--
+-- Public URLs issued before this migration stop working. Earlier client versions uploaded for every
+-- signed-in user regardless of the training-contribution setting; to inventory those objects:
+--   SELECT name, owner, created_at FROM storage.objects WHERE bucket_id = 'training_data';
+UPDATE storage.buckets SET public = false WHERE id = 'training_data';

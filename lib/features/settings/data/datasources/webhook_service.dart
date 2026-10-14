@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:hive/hive.dart';
 import '../../../receipt_scanning/domain/entities/receipt.dart';
 import '../../../receipt_scanning/data/models/receipt_model.dart';
+import '../../../../core/privacy/network_policy.dart';
 import '../../../../core/services/secure_storage_service.dart';
 import '../../../../core/error/failures.dart';
 import '../../../../core/utils/error_handler.dart';
@@ -18,12 +19,21 @@ class WebhookService {
               sendTimeout: const Duration(seconds: 10),
             ));
 
+  /// The endpoint is kept in secure storage, like the shared secret, because
+  /// webhook URLs commonly embed access tokens.
+  Future<String> _configuredUrl() async {
+    return (await SecureStorageService.readSecret(SecretKeys.webhookUrl))?.trim() ?? '';
+  }
+
   Future<void> sendWebhook(Receipt receipt) async {
     if (!settingsBox.get('webhook_enabled', defaultValue: false)) {
       throw const WebhookFailure('Webhook is disabled');
     }
+    if (!NetworkPolicy.isCloudAllowed(settingsBox)) {
+      throw const WebhookFailure('Isolation mode is on; webhooks are not sent');
+    }
 
-    final url = settingsBox.get('webhook_url', defaultValue: '') as String;
+    final url = await _configuredUrl();
     if (url.isEmpty) return;
 
     // Read secret from secure storage, not Hive
@@ -53,8 +63,11 @@ class WebhookService {
     if (!settingsBox.get('webhook_enabled', defaultValue: false)) {
       throw const WebhookFailure('Webhook is disabled');
     }
+    if (!NetworkPolicy.isCloudAllowed(settingsBox)) {
+      throw const WebhookFailure('Isolation mode is on; webhooks are not sent');
+    }
 
-    final url = settingsBox.get('webhook_url', defaultValue: '') as String;
+    final url = await _configuredUrl();
     if (url.isEmpty) {
       throw const WebhookFailure('No webhook URL configured');
     }

@@ -192,5 +192,34 @@ void main() {
       expect(notifier.state.status, AuthStatus.unauthenticated);
       expect(notifier.state.user, isNull);
     });
+
+    test('a failed signOut does not leave the status loading', () async {
+      await notifier.signInWithEmailPassword('test@taidy.io', 'Password123!');
+      mockRepo.returnSuccess = false;
+      mockRepo.failureToReturn = const NetworkFailure();
+
+      await notifier.signOut();
+
+      expect(notifier.state.status, AuthStatus.authenticated);
+      expect(notifier.state.isLoading, isFalse);
+      expect(notifier.state.errorMessage, isNotNull);
+
+      // When the client dropped its session anyway, the state says so.
+      mockRepo.user = null;
+      await notifier.signOut();
+      expect(notifier.state.status, AuthStatus.unauthenticated);
+    });
+
+    test('dispose cancels the auth-state subscription', () async {
+      await pumpEventQueue();
+      expect(mockRepo._streamController.hasListener, isTrue);
+
+      notifier.dispose();
+
+      expect(mockRepo._streamController.hasListener, isFalse);
+      // Events after disposal must not reach the disposed notifier.
+      mockRepo._streamController.add(const supabase.AuthState(AuthChangeEvent.signedOut, null));
+      await pumpEventQueue();
+    });
   });
 }

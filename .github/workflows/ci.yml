@@ -8,25 +8,47 @@ on:
 
 jobs:
   test:
-    name: Build & Test
+    name: Analyze & Test
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      
+
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
           channel: 'stable'
-          
+
       - name: Create environment configuration
         run: cp .env.example .env
 
       - name: Install dependencies
         run: flutter pub get
-        
+
       - name: Analyze Code
-        continue-on-error: true
         run: flutter analyze
-        
+
+      - name: Check generated code is current
+        run: |
+          dart run build_runner build --delete-conflicting-outputs
+          git diff --exit-code -- lib
+
       - name: Run Tests
-        run: flutter test || echo "No tests defined yet"
+        # Tests tagged "live" need a Supabase project and are excluded here
+        # (see dart_test.yaml).
+        run: flutter test --exclude-tags live
+
+  native:
+    name: Native Engine
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure
+        run: cmake -S native -B build/native -DCMAKE_BUILD_TYPE=Release -DGGML_USE_VULKAN=OFF -DGGML_USE_METAL=OFF
+
+      - name: Build
+        run: cmake --build build/native -j4
+
+      - name: Run native tests
+        working-directory: build/native
+        run: ./native_engine_test

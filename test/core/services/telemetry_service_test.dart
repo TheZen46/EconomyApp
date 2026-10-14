@@ -112,5 +112,54 @@ void main() {
       expect(telemetryService.recentEvents.isEmpty, isTrue);
       expect(await telemetryService.getDiskEventCount(), equals(0));
     });
+
+    test('the log rotates by size and keeps a single previous generation', () async {
+      final small = TelemetryService(baseDirectory: tempDir, maxLogBytes: 400);
+      for (var i = 0; i < 20; i++) {
+        await small.recordCrash(error: 'Rotation test error $i');
+      }
+
+      final logs = Directory('${tempDir.path}/logs')
+          .listSync()
+          .whereType<File>()
+          .map((f) => f.uri.pathSegments.last)
+          .toSet();
+      expect(logs, {'telemetry_events.jsonl', 'telemetry_events.jsonl.1'});
+      for (final name in logs) {
+        // Each file stops growing once it reaches the limit; one event may
+        // straddle it.
+        expect(File('${tempDir.path}/logs/$name').lengthSync(), lessThan(400 + 1024));
+      }
+      expect(await small.getDiskEventCount(), lessThan(20));
+
+      await small.clearLogs();
+      expect(Directory('${tempDir.path}/logs').listSync(), isEmpty);
+    });
+
+    test('the rotated generation is deleted once it is older than the retention period', () async {
+      final small = TelemetryService(baseDirectory: tempDir, maxLogBytes: 1 << 20);
+      await small.recordCrash(error: 'Current');
+      final rotated = File('${tempDir.path}/logs/telemetry_events.jsonl.1')
+        ..writeAsStringSync('{"type":"crash_report"}\n');
+      rotated.setLastModifiedSync(
+          DateTime.now().subtract(TelemetryService.maxLogAge + const Duration(days: 1)));
+
+      await small.recordCrash(error: 'Next');
+
+      expect(rotated.existsSync(), isFalse);
+      expect(await small.getDiskEventCount(), 2);
+    });
+  });
+
+  group('TelemetryService global error handling', () {
+    test('uncaught asynchronous errors are recorded but not reported as handled', () async {
+      final handled = telemetryService.handleUncaughtError(StateError('boom'), StackTrace.current);
+
+      expect(handled, isFalse);
+      final event = telemetryService.recentEvents.last;
+      expect(event['error_type'], 'PlatformDispatcher.UncaughtAsync');
+      expect(event['is_fatal'], isFalse);
+      expect(await telemetryService.getDiskEventCount(), 1);
+    });
   });
 }

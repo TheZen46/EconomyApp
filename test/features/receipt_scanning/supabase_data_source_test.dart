@@ -1,12 +1,17 @@
 ﻿import 'dart:async';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:t_aidy/core/error/failures.dart';
 import 'package:t_aidy/features/receipt_scanning/data/datasources/supabase_data_source.dart';
+import 'package:t_aidy/features/receipt_scanning/domain/entities/receipt.dart';
 
 class FakeSupabaseClientForBatch extends Fake implements SupabaseClient {
   final List<List<String>> deletedIdBatches = [];
   final List<List<String>> deletedStorageBatches = [];
   final List<Map<String, dynamic>> mockDatabaseRows;
+
+  /// Object names returned when a folder is listed; listing fails when null.
+  List<String>? storedImageNames;
 
   FakeSupabaseClientForBatch({List<Map<String, dynamic>>? mockRows})
       : mockDatabaseRows = mockRows ?? [];
@@ -36,6 +41,14 @@ class FakeStorageFileApi extends Fake implements StorageFileApi {
   Future<List<FileObject>> remove(List<String> paths) async {
     parent.deletedStorageBatches.add(List<String>.from(paths));
     return [];
+  }
+
+  @override
+  Future<List<FileObject>> list({String? path, SearchOptions searchOptions = const SearchOptions()}) async {
+    final names = parent.storedImageNames;
+    if (names == null) throw const StorageException('listing unavailable');
+    final offset = searchOptions.offset ?? 0;
+    return names.skip(offset).take(searchOptions.limit ?? 100).map((n) => FileObject.fromJson({'name': n})).toList();
   }
 }
 
@@ -138,7 +151,7 @@ void main() {
       // 120 receipt IDs -> 240 storage files (image + label)
       final idsToDelete = List.generate(120, (i) => 'rec-$i');
 
-      await dataSource.deleteData(idsToDelete);
+      await dataSource.deleteData(idsToDelete, imagePaths: [for (final id in idsToDelete) '/docs/$id.jpg']);
 
       expect(fakeClient.deletedStorageBatches.length, 3);
       expect(fakeClient.deletedStorageBatches[0].length, 100);
@@ -147,6 +160,40 @@ void main() {
 
       final totalFilesDeleted = fakeClient.deletedStorageBatches.fold(0, (sum, b) => sum + b.length);
       expect(totalFilesDeleted, 240);
+    });
+
+    test('deleteData removes images by the extension they were uploaded with', () async {
+      final fakeClient = FakeSupabaseClientForBatch();
+      final dataSource = SupabaseDataSourceImpl(fakeClient);
+
+      await dataSource.deleteData(
+        ['a', 'b', 'c', 'd'],
+        imagePaths: ['/docs/receipt_images/a.png', '/cache/b.jpeg', '/x/c.HEIC', '/x/d.webp'],
+      );
+
+      final removed = fakeClient.deletedStorageBatches.expand((b) => b).toList();
+      expect(removed, containsAll(['images/a.png', 'images/b.jpeg', 'images/c.heic', 'images/d.webp']));
+      expect(removed, isNot(contains('images/a.jpg')));
+    });
+
+    test('deleteData finds images of unknown extension by listing the folder', () async {
+      final fakeClient = FakeSupabaseClientForBatch()..storedImageNames = ['a.png', 'ab.jpg', 'b.heic', 'z.jpg'];
+      final dataSource = SupabaseDataSourceImpl(fakeClient);
+
+      await dataSource.deleteData(['a', 'b']);
+
+      final removed = fakeClient.deletedStorageBatches.expand((b) => b).toList();
+      expect(removed, unorderedEquals(['images/a.png', 'images/b.heic', 'labels/a.json', 'labels/b.json']));
+    });
+
+    test('deleteData targets every known extension when the folder cannot be listed', () async {
+      final fakeClient = FakeSupabaseClientForBatch();
+      final dataSource = SupabaseDataSourceImpl(fakeClient);
+
+      await dataSource.deleteData(['a']);
+
+      final removed = fakeClient.deletedStorageBatches.expand((b) => b).toList();
+      expect(removed, containsAll([for (final ext in SupabaseDataSourceImpl.knownImageExtensions) 'images/a$ext']));
     });
 
     test('fetchAllReceipts paginates seamlessly through datasets exceeding 100 items using .range(from, to)', () async {
@@ -167,6 +214,26 @@ void main() {
       expect(results.length, 340);
       expect(results.first['id'], 'rec-0');
       expect(results.last['id'], 'rec-339');
+    });
+  });
+
+  group('SupabaseDataSourceImpl - training upload', () {
+    test('refuses to upload without a signed-in user instead of using a shared prefix', () async {
+      // The fake client has no auth session, so the current user id resolves to null.
+      final dataSource = SupabaseDataSourceImpl(FakeSupabaseClientForBatch());
+      final receipt = Receipt(
+        id: 'rec-anon',
+        merchantName: 'Store',
+        totalAmount: 1.0,
+        date: DateTime.utc(2026, 9, 1),
+        items: const [],
+        currency: 'EUR',
+      );
+
+      await expectLater(
+        dataSource.uploadTrainingData(receipt, ''),
+        throwsA(isA<ServerFailure>()),
+      );
     });
   });
 }

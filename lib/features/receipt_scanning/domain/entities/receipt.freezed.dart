@@ -27,7 +27,10 @@ mixin _$Receipt {
       throw _privateConstructorUsedError; // required String category, // Removed as per user request
   List<ReceiptItem> get items => throw _privateConstructorUsedError;
   String? get imagePath => throw _privateConstructorUsedError;
-  String? get boxId => throw _privateConstructorUsedError;
+  String? get boxId =>
+      throw _privateConstructorUsedError; // True when the extraction found no valid purchase date and [date] is a
+// placeholder; the review screen asks the user to confirm it. Not stored.
+  bool get dateUncertain => throw _privateConstructorUsedError;
 
   @JsonKey(ignore: true)
   $ReceiptCopyWith<Receipt> get copyWith => throw _privateConstructorUsedError;
@@ -49,7 +52,8 @@ abstract class $ReceiptCopyWith<$Res> {
       String currency,
       List<ReceiptItem> items,
       String? imagePath,
-      String? boxId});
+      String? boxId,
+      bool dateUncertain});
 }
 
 /// @nodoc
@@ -76,6 +80,7 @@ class _$ReceiptCopyWithImpl<$Res, $Val extends Receipt>
     Object? items = null,
     Object? imagePath = freezed,
     Object? boxId = freezed,
+    Object? dateUncertain = null,
   }) {
     return _then(_value.copyWith(
       id: null == id
@@ -122,6 +127,10 @@ class _$ReceiptCopyWithImpl<$Res, $Val extends Receipt>
           ? _value.boxId
           : boxId // ignore: cast_nullable_to_non_nullable
               as String?,
+      dateUncertain: null == dateUncertain
+          ? _value.dateUncertain
+          : dateUncertain // ignore: cast_nullable_to_non_nullable
+              as bool,
     ) as $Val);
   }
 }
@@ -144,7 +153,8 @@ abstract class _$$ReceiptImplCopyWith<$Res> implements $ReceiptCopyWith<$Res> {
       String currency,
       List<ReceiptItem> items,
       String? imagePath,
-      String? boxId});
+      String? boxId,
+      bool dateUncertain});
 }
 
 /// @nodoc
@@ -169,6 +179,7 @@ class __$$ReceiptImplCopyWithImpl<$Res>
     Object? items = null,
     Object? imagePath = freezed,
     Object? boxId = freezed,
+    Object? dateUncertain = null,
   }) {
     return _then(_$ReceiptImpl(
       id: null == id
@@ -215,6 +226,10 @@ class __$$ReceiptImplCopyWithImpl<$Res>
           ? _value.boxId
           : boxId // ignore: cast_nullable_to_non_nullable
               as String?,
+      dateUncertain: null == dateUncertain
+          ? _value.dateUncertain
+          : dateUncertain // ignore: cast_nullable_to_non_nullable
+              as bool,
     ));
   }
 }
@@ -233,7 +248,8 @@ class _$ReceiptImpl extends _Receipt {
       required this.currency,
       final List<ReceiptItem> items = const [],
       this.imagePath,
-      this.boxId = 'main'})
+      this.boxId = 'main',
+      this.dateUncertain = false})
       : _items = items,
         super._();
 
@@ -272,10 +288,15 @@ class _$ReceiptImpl extends _Receipt {
   @override
   @JsonKey()
   final String? boxId;
+// True when the extraction found no valid purchase date and [date] is a
+// placeholder; the review screen asks the user to confirm it. Not stored.
+  @override
+  @JsonKey()
+  final bool dateUncertain;
 
   @override
   String toString() {
-    return 'Receipt(id: $id, merchantName: $merchantName, vatNumber: $vatNumber, merchantAddress: $merchantAddress, date: $date, time: $time, totalAmount: $totalAmount, currency: $currency, items: $items, imagePath: $imagePath, boxId: $boxId)';
+    return 'Receipt(id: $id, merchantName: $merchantName, vatNumber: $vatNumber, merchantAddress: $merchantAddress, date: $date, time: $time, totalAmount: $totalAmount, currency: $currency, items: $items, imagePath: $imagePath, boxId: $boxId, dateUncertain: $dateUncertain)';
   }
 
   @override
@@ -299,7 +320,9 @@ class _$ReceiptImpl extends _Receipt {
             const DeepCollectionEquality().equals(other._items, _items) &&
             (identical(other.imagePath, imagePath) ||
                 other.imagePath == imagePath) &&
-            (identical(other.boxId, boxId) || other.boxId == boxId));
+            (identical(other.boxId, boxId) || other.boxId == boxId) &&
+            (identical(other.dateUncertain, dateUncertain) ||
+                other.dateUncertain == dateUncertain));
   }
 
   @override
@@ -315,7 +338,8 @@ class _$ReceiptImpl extends _Receipt {
       currency,
       const DeepCollectionEquality().hash(_items),
       imagePath,
-      boxId);
+      boxId,
+      dateUncertain);
 
   @JsonKey(ignore: true)
   @override
@@ -336,7 +360,8 @@ abstract class _Receipt extends Receipt {
       required final String currency,
       final List<ReceiptItem> items,
       final String? imagePath,
-      final String? boxId}) = _$ReceiptImpl;
+      final String? boxId,
+      final bool dateUncertain}) = _$ReceiptImpl;
   const _Receipt._() : super._();
 
   @override
@@ -361,6 +386,9 @@ abstract class _Receipt extends Receipt {
   String? get imagePath;
   @override
   String? get boxId;
+  @override // True when the extraction found no valid purchase date and [date] is a
+// placeholder; the review screen asks the user to confirm it. Not stored.
+  bool get dateUncertain;
   @override
   @JsonKey(ignore: true)
   _$$ReceiptImplCopyWith<_$ReceiptImpl> get copyWith =>
