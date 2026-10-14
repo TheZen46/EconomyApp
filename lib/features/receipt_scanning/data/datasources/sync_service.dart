@@ -3,10 +3,9 @@ import 'dart:math' as math;
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hive/hive.dart';
-import 'package:synchronized/synchronized.dart';
-
 import '../../../../core/privacy/network_policy.dart';
 import '../../../../core/services/google_drive_service.dart';
+import '../../../../core/sync/sync_coordinator.dart';
 import '../models/sync_item_model.dart';
 import 'hive_receipt_data_source.dart';
 import 'supabase_data_source.dart';
@@ -34,8 +33,8 @@ class SyncService {
 
   StreamSubscription<List<ConnectivityResult>>? _connectivitySubscription;
 
-  /// Asynchronous Mutex lock ensuring only 1 sync execution occurs at a time.
-  final Lock _syncLock = Lock();
+  /// Central synchronization coordinator.
+  final SyncCoordinator coordinator;
 
   /// Item-level transaction locks to prevent concurrent workers from processing
   /// the same receipt item simultaneously.
@@ -48,7 +47,9 @@ class SyncService {
     required this.settingsBox,
     required this.googleDriveService,
     bool Function(String? boxId)? isPrivateBox,
-  }) : isPrivateBox = isPrivateBox ?? _noPrivateBoxes {
+    SyncCoordinator? coordinator,
+  })  : isPrivateBox = isPrivateBox ?? _noPrivateBoxes,
+        coordinator = coordinator ?? SyncCoordinator.instance {
     // Listen to network changes (v6.0 API returns List)
     try {
       _connectivitySubscription = Connectivity().onConnectivityChanged.listen((List<ConnectivityResult> results) {
@@ -69,7 +70,7 @@ class SyncService {
 
   /// Add item to upload queue
   Future<void> scheduleUpload(String receiptId, String imagePath) async {
-    await _syncLock.synchronized(() async {
+    await coordinator.synchronized(() async {
       if (_inFlightItemIds.contains(receiptId)) return;
 
       final item = SyncItemModel(
@@ -100,7 +101,7 @@ class SyncService {
   /// Concurrent calls will be queued through [_syncLock] and executed sequentially,
   /// preventing overlapping network calls or duplicate uploads to Supabase.
   Future<void> syncPendingItems() async {
-    await _syncLock.synchronized(() async {
+    await coordinator.synchronized(() async {
       if (queueBox.isEmpty) return;
 
       // Isolation mode: items stay queued until it is turned off.
@@ -185,7 +186,7 @@ class SyncService {
 
   /// Resets a permanently failed item to pending for a manual retry.
   Future<void> retryFailedItem(String receiptId) async {
-    await _syncLock.synchronized(() async {
+    await coordinator.synchronized(() async {
       for (var key in queueBox.keys) {
         final item = queueBox.get(key);
         if (item != null && item.receiptId == receiptId) {
@@ -201,7 +202,7 @@ class SyncService {
 
   /// Resets all permanently failed items for manual retry.
   Future<void> retryAllFailed() async {
-    await _syncLock.synchronized(() async {
+    await coordinator.synchronized(() async {
       for (var key in queueBox.keys) {
         final item = queueBox.get(key);
         if (item != null && item.status == SyncStatus.permanentlyFailed) {
@@ -214,7 +215,7 @@ class SyncService {
 
   /// Deletes all permanently failed items from the queue.
   Future<void> clearFailedItems() async {
-    await _syncLock.synchronized(() async {
+    await coordinator.synchronized(() async {
       final keysToDelete = <dynamic>[];
       for (var key in queueBox.keys) {
         final item = queueBox.get(key);

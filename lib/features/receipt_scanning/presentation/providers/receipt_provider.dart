@@ -34,6 +34,7 @@ import '../../../boxes/data/models/box_model.dart';
 import '../../../boxes/data/providers/boxes_provider.dart';
 import '../../data/datasources/csv_parser_service.dart';
 import '../../../../core/sync/outbox_service.dart';
+import '../../../../core/sync/sync_coordinator.dart';
 import '../../../../core/sync/sync_providers.dart';
 
 /// Service for parsing CSV bank and card statement exports.
@@ -100,6 +101,7 @@ final syncServiceProvider = Provider<SyncService>((ref) {
     settingsBox: settingsBox,
     googleDriveService: googleDriveService,
     isPrivateBox: (boxId) => boxId != null && (boxes?.get(boxId)?.isPrivate ?? false),
+    coordinator: ref.watch(syncCoordinatorProvider),
   );
   ref.onDispose(service.dispose);
   return service;

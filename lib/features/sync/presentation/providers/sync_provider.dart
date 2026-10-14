@@ -5,6 +5,7 @@ import 'package:hive/hive.dart';
 
 import '../../../../core/privacy/network_policy.dart';
 import '../../../../core/providers/supabase_providers.dart';
+import '../../../../core/sync/sync_coordinator.dart';
 import '../../../boxes/data/models/box_model.dart';
 import '../../../boxes/data/providers/boxes_provider.dart';
 import '../../../evault/data/models/asset_model.dart';
@@ -55,6 +56,7 @@ final syncEngineProvider = Provider<SyncEngine>((ref) {
     boxesBox: boxesBox,
     invoicesBox: invoicesBox,
     uploadSyncService: uploadSyncService,
+    coordinator: ref.watch(syncCoordinatorProvider),
     isCloudAllowed: () {
       try {
         return NetworkPolicy.isCloudAllowed(ref.read(settingsBoxProvider));

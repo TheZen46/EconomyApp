@@ -5,9 +5,10 @@ import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hive/hive.dart';
 import 'package:path_provider/path_provider.dart';
-import 'package:synchronized/synchronized.dart';
-
 import '../../../../core/sync/conflict_policy.dart';
+import '../../../../core/sync/sync_coordinator.dart';
+import '../../../../core/crdt/receipt_crdt.dart';
+import '../../../../core/crdt/hlc.dart';
 import '../../../boxes/data/models/box_model.dart';
 import '../../../evault/data/models/asset_model.dart';
 import '../../../invoices/data/models/invoice_model.dart';
@@ -35,7 +36,7 @@ class SyncEngine {
   /// Whether cloud requests are allowed (isolation mode is off).
   final bool Function() isCloudAllowed;
 
-  final Lock _engineLock = Lock();
+  final SyncCoordinator coordinator;
   final math.Random _random = math.Random();
 
   SyncProgressState _currentState = const SyncProgressState();
@@ -58,7 +59,9 @@ class SyncEngine {
     this.taxonomyBox,
     this.uploadSyncService,
     bool Function()? isCloudAllowed,
-  }) : isCloudAllowed = isCloudAllowed ?? _alwaysAllowed {
+    SyncCoordinator? coordinator,
+  })  : isCloudAllowed = isCloudAllowed ?? _alwaysAllowed,
+        coordinator = coordinator ?? SyncCoordinator.instance {
     _initConnectivityListener();
   }
 
@@ -109,7 +112,7 @@ class SyncEngine {
     required String userId,
     bool isInitial = true,
   }) async {
-    return await _engineLock.synchronized(() async {
+    return await coordinator.synchronized(() async {
       if (!isCloudAllowed()) {
         _emit(SyncProgressState(
           stage: SyncStage.failed,
@@ -197,7 +200,41 @@ class SyncEngine {
             try {
               final receiptModel = _parseRow(row, ReceiptModel.fromJson, 'receipt');
               if (receiptModel != null) {
-                await localDataSource.saveReceipt(receiptModel);
+                final local = await localDataSource.getReceipt(receiptModel.id);
+                if (local == null ||
+                    shouldRemoteOverwrite(
+                      localUpdatedAt: local.updatedAt,
+                      localVersion: local.version,
+                      remoteUpdatedAt: receiptModel.updatedAt,
+                      remoteVersion: receiptModel.version,
+                    )) {
+                  await localDataSource.saveReceipt(receiptModel);
+                } else if (local.version == receiptModel.version &&
+                    local.updatedAt == receiptModel.updatedAt) {
+                  final localHlc = Hlc(
+                    millis: local.updatedAt?.toUtc().millisecondsSinceEpoch ?? 0,
+                    counter: local.version,
+                    nodeId: 'local',
+                  );
+                  final remoteHlc = Hlc(
+                    millis: receiptModel.updatedAt?.toUtc().millisecondsSinceEpoch ?? 0,
+                    counter: receiptModel.version,
+                    nodeId: 'remote',
+                  );
+                  final mergedCrdt = ReceiptCrdt.fromModel(local, localHlc).merge(
+                    ReceiptCrdt.fromModel(receiptModel, remoteHlc),
+                  );
+                  final mergedModel = mergedCrdt.toModel().copyWith(
+                    imagePath: receiptModel.imagePath ?? local.imagePath,
+                    time: receiptModel.time.isNotEmpty ? receiptModel.time : local.time,
+                    userId: receiptModel.userId ?? local.userId,
+                    createdAt: local.createdAt ?? receiptModel.createdAt,
+                    updatedAt: receiptModel.updatedAt ?? local.updatedAt,
+                    version: local.version,
+                    priceBasis: receiptModel.priceBasis,
+                  );
+                  await localDataSource.saveReceipt(mergedModel);
+                }
               }
             } catch (e) {
               debugPrint('SyncEngine: Notice rehydrating receipt: $e');

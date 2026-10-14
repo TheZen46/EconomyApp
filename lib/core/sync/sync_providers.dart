@@ -2,9 +2,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hive/hive.dart';
 import 'models/sync_outbox_item.dart';
 import 'outbox_service.dart';
+import 'sync_coordinator.dart';
 import 'sync_manager.dart';
 import '../providers/supabase_providers.dart';
 import '../../features/receipt_scanning/presentation/providers/receipt_provider.dart';
+import '../../features/receipt_scanning/data/datasources/sync_service.dart';
 import '../../features/receipt_scanning/data/models/receipt_model.dart';
 import '../../features/boxes/data/providers/boxes_provider.dart';
 import '../../features/boxes/data/models/box_model.dart';
@@ -85,6 +87,13 @@ final syncManagerProvider = Provider<SyncManager?>((ref) {
     return null;
   }
 
+  SyncService? syncService;
+  try {
+    syncService = ref.watch(syncServiceProvider);
+  } catch (_) {}
+
+  final coordinator = ref.watch(syncCoordinatorProvider);
+
   final manager = SyncManager(
     supabase: client,
     outboxService: outbox,
@@ -93,6 +102,8 @@ final syncManagerProvider = Provider<SyncManager?>((ref) {
     invoicesBox: invoices,
     assetsBox: assets,
     settingsBox: settings,
+    coordinator: coordinator,
+    syncService: syncService,
     onSyncCompleted: () {
       try {
         ref.read(receiptListProvider.notifier).loadReceipts();

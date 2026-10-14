@@ -3,16 +3,19 @@ import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hive/hive.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:synchronized/synchronized.dart';
 
 import 'conflict_policy.dart';
 import 'outbox_service.dart';
+import 'sync_coordinator.dart';
 import 'sync_error_policy.dart';
 import '../privacy/network_policy.dart';
+import '../crdt/receipt_crdt.dart';
+import '../crdt/hlc.dart';
 import '../../features/boxes/data/models/box_model.dart';
 import '../../features/invoices/data/models/invoice_model.dart';
 import '../../features/evault/data/models/asset_model.dart';
 import '../../features/receipt_scanning/data/models/receipt_model.dart';
+import '../../features/receipt_scanning/data/datasources/sync_service.dart';
 
 /// Bidirectional, offline-first sync coordinator for the RLS-protected user
 /// entity tables (receipts, boxes, invoices, assets).
@@ -29,8 +32,9 @@ class SyncManager {
   final Box<AssetModel> assetsBox;
   final Box settingsBox;
   final VoidCallback? onSyncCompleted;
+  final SyncCoordinator coordinator;
+  final SyncService? syncService;
 
-  final Lock _syncLock = Lock();
   StreamSubscription<List<ConnectivityResult>>? _connectivitySub;
   bool _isSyncing = false;
 
@@ -43,7 +47,9 @@ class SyncManager {
     required this.assetsBox,
     required this.settingsBox,
     this.onSyncCompleted,
-  }) {
+    this.syncService,
+    SyncCoordinator? coordinator,
+  }) : coordinator = coordinator ?? SyncCoordinator.instance {
     _initAutoSync();
   }
 
@@ -66,8 +72,9 @@ class SyncManager {
   /// Full bidirectional synchronization cycle:
   /// 1. Push all pending outbox mutations to Supabase.
   /// 2. Pull remote updates since last sync (Delta Sync) with LWW conflict resolution.
+  /// 3. Process pending attachment uploads via SyncService.
   Future<void> syncAll() async {
-    await _syncLock.synchronized(() async {
+    await coordinator.synchronized(() async {
       if (_isSyncing) return;
       _isSyncing = true;
 
@@ -89,6 +96,15 @@ class SyncManager {
 
         // ── STEP 2: Pull Deltas (Pull) ───────────────────────────────────────
         await _pullDeltas(user.id);
+
+        // ── STEP 3: Flush Attachment Queue via SyncService ───────────────────
+        if (syncService != null) {
+          try {
+            await syncService!.syncPendingItems();
+          } catch (e) {
+            debugPrint('SyncManager: Notice flushing attachment queue: $e');
+          }
+        }
 
         // Time of the last completed cycle, for display only; the pull itself
         // uses the per-table server watermarks (see _pullTable).
@@ -279,8 +295,42 @@ class SyncManager {
       remoteModel = remoteModel.copyWith(items: localModel.items);
     }
 
-    if (localModel == null || _shouldRemoteOverwrite(localModel.updatedAt, localModel.version, remoteModel.updatedAt, remoteModel.version)) {
+    if (localModel == null ||
+        _shouldRemoteOverwrite(
+          localModel.updatedAt,
+          localModel.version,
+          remoteModel.updatedAt,
+          remoteModel.version,
+        )) {
       await receiptsBox.put(id, remoteModel);
+    } else if (localModel.version == remoteModel.version &&
+        localModel.updatedAt == remoteModel.updatedAt) {
+      // Equal version collision: resolve deterministically using ReceiptCrdt
+      final localHlc = Hlc(
+        millis: localModel.updatedAt?.toUtc().millisecondsSinceEpoch ?? 0,
+        counter: localModel.version,
+        nodeId: 'local',
+      );
+      final remoteHlc = Hlc(
+        millis: remoteModel.updatedAt?.toUtc().millisecondsSinceEpoch ?? 0,
+        counter: remoteModel.version,
+        nodeId: 'remote',
+      );
+      final localCrdt = ReceiptCrdt.fromModel(localModel, localHlc);
+      final remoteCrdt = ReceiptCrdt.fromModel(remoteModel, remoteHlc);
+      final mergedCrdt = localCrdt.merge(remoteCrdt);
+
+      final mergedModel = mergedCrdt.toModel().copyWith(
+        imagePath: remoteModel.imagePath ?? localModel.imagePath,
+        time: remoteModel.time.isNotEmpty ? remoteModel.time : localModel.time,
+        userId: remoteModel.userId ?? localModel.userId,
+        createdAt: localModel.createdAt ?? remoteModel.createdAt,
+        updatedAt: remoteModel.updatedAt ?? localModel.updatedAt,
+        version: localModel.version,
+        priceBasis: remoteModel.priceBasis,
+      );
+
+      await receiptsBox.put(id, mergedModel);
     }
   }
 
