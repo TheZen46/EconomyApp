@@ -1,4 +1,6 @@
-﻿import 'dart:async';
+import 'dart:async';
+import 'dart:convert';
+import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:t_aidy/core/error/failures.dart';
@@ -9,12 +11,17 @@ class FakeSupabaseClientForBatch extends Fake implements SupabaseClient {
   final List<List<String>> deletedIdBatches = [];
   final List<List<String>> deletedStorageBatches = [];
   final List<Map<String, dynamic>> mockDatabaseRows;
+  final Map<String, Uint8List> uploadedBinaries = {};
+  String? fakeUserId;
 
   /// Object names returned when a folder is listed; listing fails when null.
   List<String>? storedImageNames;
 
-  FakeSupabaseClientForBatch({List<Map<String, dynamic>>? mockRows})
+  FakeSupabaseClientForBatch({List<Map<String, dynamic>>? mockRows, this.fakeUserId})
       : mockDatabaseRows = mockRows ?? [];
+
+  @override
+  GoTrueClient get auth => FakeGoTrueClient(this);
 
   @override
   SupabaseStorageClient get storage => FakeStorageClient(this);
@@ -23,6 +30,22 @@ class FakeSupabaseClientForBatch extends Fake implements SupabaseClient {
   SupabaseQueryBuilder from(String table) {
     return FakeSupabaseQueryBuilder(this, table);
   }
+}
+
+class FakeGoTrueClient extends Fake implements GoTrueClient {
+  final FakeSupabaseClientForBatch parent;
+  FakeGoTrueClient(this.parent);
+
+  @override
+  User? get currentUser => parent.fakeUserId != null
+      ? User(
+          id: parent.fakeUserId!,
+          appMetadata: {},
+          userMetadata: {},
+          aud: 'authenticated',
+          createdAt: '2026-01-01',
+        )
+      : null;
 }
 
 class FakeStorageClient extends Fake implements SupabaseStorageClient {
@@ -36,6 +59,18 @@ class FakeStorageClient extends Fake implements SupabaseStorageClient {
 class FakeStorageFileApi extends Fake implements StorageFileApi {
   final FakeSupabaseClientForBatch parent;
   FakeStorageFileApi(this.parent);
+
+  @override
+  Future<String> uploadBinary(
+    String path,
+    Uint8List data, {
+    FileOptions fileOptions = const FileOptions(),
+    int? retryAttempts,
+    StorageRetryController? retryController,
+  }) async {
+    parent.uploadedBinaries[path] = data;
+    return path;
+  }
 
   @override
   Future<List<FileObject>> remove(List<String> paths) async {
@@ -234,6 +269,105 @@ void main() {
         dataSource.uploadTrainingData(receipt, ''),
         throwsA(isA<ServerFailure>()),
       );
+    });
+
+    test('TAIDY-M22 Issue #44: uploadTrainingData sets grounded correction flags and omits placeholder VAT', () async {
+      final fakeClient = FakeSupabaseClientForBatch(fakeUserId: 'user-xyz-123');
+      final dataSource = SupabaseDataSourceImpl(fakeClient);
+
+      // 1. Receipt with no user corrections and empty VAT number
+      final uncorrectedReceipt = Receipt(
+        id: 'rec-uncorrected-1',
+        merchantName: 'Farmacia Centrale',
+        vatNumber: '',
+        totalAmount: 15.0,
+        date: DateTime.utc(2026, 9, 1, 10, 0),
+        currency: 'EUR',
+        items: const [
+          ReceiptItem(
+            description: 'Paracetamol 500mg',
+            unitPrice: 5.0,
+            quantity: 3,
+            totalPrice: 15.0,
+            mainCategory: 'Health & Medicine',
+            subCategory: 'Pharmacy',
+            necessity: ItemNecessity.essential,
+            isUserCorrected: false,
+          ),
+        ],
+        isUserCorrected: false,
+      );
+
+      await dataSource.uploadTrainingData(
+        uncorrectedReceipt,
+        '',
+        isUserCorrected: false,
+        originalAiPredictionWasWrong: false,
+      );
+
+      final labelPath1 = 'user-xyz-123/labels/rec-uncorrected-1.json';
+      expect(fakeClient.uploadedBinaries.containsKey(labelPath1), isTrue);
+
+      final labelJson1 = jsonDecode(utf8.decode(fakeClient.uploadedBinaries[labelPath1]!)) as Map<String, dynamic>;
+      final meta1 = labelJson1['meta'] as Map<String, dynamic>;
+      final groundTruth1 = labelJson1['ground_truth'] as Map<String, dynamic>;
+
+      expect(meta1['is_user_corrected'], isFalse);
+      expect(meta1['original_ai_prediction_was_wrong'], isFalse);
+      expect(groundTruth1['vat_number'], isNull);
+      expect(groundTruth1['items'][0]['is_user_corrected'], isFalse);
+
+      // Grounded tax breakdown: Pharmacy in IT has 10% VAT
+      final taxes1 = groundTruth1['tax_breakdown'] as List<dynamic>;
+      expect(taxes1, isNotEmpty);
+      expect(taxes1[0]['rate'], equals(0.10));
+
+      // 2. Receipt with user corrections and real VAT number
+      final correctedReceipt = Receipt(
+        id: 'rec-corrected-2',
+        merchantName: 'MediaWorld Milano',
+        vatNumber: 'IT01234567890',
+        totalAmount: 99.0,
+        date: DateTime.utc(2026, 9, 1, 11, 0),
+        currency: 'EUR',
+        items: const [
+          ReceiptItem(
+            description: 'Logitech Mouse MX Master',
+            unitPrice: 99.0,
+            quantity: 1,
+            totalPrice: 99.0,
+            mainCategory: 'Electronics & Hardware',
+            subCategory: 'Peripherals',
+            necessity: ItemNecessity.discretional,
+            isUserCorrected: true,
+          ),
+        ],
+        isUserCorrected: true,
+      );
+
+      await dataSource.uploadTrainingData(
+        correctedReceipt,
+        '',
+        isUserCorrected: true,
+        originalAiPredictionWasWrong: true,
+      );
+
+      final labelPath2 = 'user-xyz-123/labels/rec-corrected-2.json';
+      expect(fakeClient.uploadedBinaries.containsKey(labelPath2), isTrue);
+
+      final labelJson2 = jsonDecode(utf8.decode(fakeClient.uploadedBinaries[labelPath2]!)) as Map<String, dynamic>;
+      final meta2 = labelJson2['meta'] as Map<String, dynamic>;
+      final groundTruth2 = labelJson2['ground_truth'] as Map<String, dynamic>;
+
+      expect(meta2['is_user_corrected'], isTrue);
+      expect(meta2['original_ai_prediction_was_wrong'], isTrue);
+      expect(groundTruth2['vat_number'], equals('IT01234567890'));
+      expect(groundTruth2['items'][0]['is_user_corrected'], isTrue);
+
+      // Grounded tax breakdown: Electronics in IT has 22% VAT
+      final taxes2 = groundTruth2['tax_breakdown'] as List<dynamic>;
+      expect(taxes2, isNotEmpty);
+      expect(taxes2[0]['rate'], equals(0.22));
     });
   });
 }

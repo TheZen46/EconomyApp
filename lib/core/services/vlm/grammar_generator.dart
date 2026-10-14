@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import '../../constants/taxonomy_constants.dart';
+import 'receipt_vlm_schema.dart';
 
 /// Utility to generate GBNF (GGML BNF) grammar files dynamically
 /// based on the active taxonomy hierarchy and custom user categories.
@@ -43,33 +44,33 @@ class GrammarGenerator {
         .join(' | ');
 
     return '''root ::= "{" ws
-  "\\"merchant_name\\"" ws ":" ws string "," ws
-  "\\"merchant_address\\"" ws ":" ws string "," ws
-  "\\"vat_number\\"" ws ":" ws string "," ws
-  "\\"date\\"" ws ":" ws date-string "," ws
-  "\\"time\\"" ws ":" ws time-string "," ws
-  "\\"currency\\"" ws ":" ws currency-code "," ws
-  "\\"items\\"" ws ":" ws "[" ws item-list ws "]" "," ws
-  "\\"tax_breakdown\\"" ws ":" ws "[" ws tax-list ws "]" "," ws
-  "\\"total_amount\\"" ws ":" ws number "," ws
-  "\\"confidence_score\\"" ws ":" ws number ws
+  "\\"${ReceiptVlmSchema.keyMerchantName}\\"" ws ":" ws string "," ws
+  "\\"${ReceiptVlmSchema.keyMerchantAddress}\\"" ws ":" ws string "," ws
+  "\\"${ReceiptVlmSchema.keyVatNumber}\\"" ws ":" ws string "," ws
+  "\\"${ReceiptVlmSchema.keyDate}\\"" ws ":" ws date-string "," ws
+  "\\"${ReceiptVlmSchema.keyTime}\\"" ws ":" ws time-string "," ws
+  "\\"${ReceiptVlmSchema.keyCurrency}\\"" ws ":" ws currency-code "," ws
+  "\\"${ReceiptVlmSchema.keyItems}\\"" ws ":" ws "[" ws item-list ws "]" "," ws
+  "\\"${ReceiptVlmSchema.keyTaxBreakdown}\\"" ws ":" ws "[" ws tax-list ws "]" "," ws
+  "\\"${ReceiptVlmSchema.keyTotalAmount}\\"" ws ":" ws number "," ws
+  "\\"${ReceiptVlmSchema.keyConfidenceScore}\\"" ws ":" ws number ws
 "}"
 
 item ::= "{" ws
-  "\\"raw_name\\"" ws ":" ws string "," ws
-  "\\"normalized_name\\"" ws ":" ws string "," ws
-  "\\"main_category\\"" ws ":" ws category-string "," ws
-  "\\"sub_category\\"" ws ":" ws string "," ws
-  "\\"necessity\\"" ws ":" ws necessity-enum "," ws
-  "\\"quantity\\"" ws ":" ws integer "," ws
-  "\\"unit_price\\"" ws ":" ws number "," ws
-  "\\"total_price\\"" ws ":" ws number "," ws
-  "\\"is_asset\\"" ws ":" ws boolean ws
+  "\\"${ReceiptVlmSchema.keyRawName}\\"" ws ":" ws string "," ws
+  "\\"${ReceiptVlmSchema.keyNormalizedName}\\"" ws ":" ws string "," ws
+  "\\"${ReceiptVlmSchema.keyMainCategory}\\"" ws ":" ws category-string "," ws
+  "\\"${ReceiptVlmSchema.keySubCategory}\\"" ws ":" ws string "," ws
+  "\\"${ReceiptVlmSchema.keyNecessity}\\"" ws ":" ws necessity-enum "," ws
+  "\\"${ReceiptVlmSchema.keyQuantity}\\"" ws ":" ws integer "," ws
+  "\\"${ReceiptVlmSchema.keyUnitPrice}\\"" ws ":" ws number "," ws
+  "\\"${ReceiptVlmSchema.keyTotalPrice}\\"" ws ":" ws number "," ws
+  "\\"${ReceiptVlmSchema.keyIsAsset}\\"" ws ":" ws boolean ws
 "}"
 
 tax-entry ::= "{" ws
-  "\\"rate\\"" ws ":" ws number "," ws
-  "\\"tax_amount\\"" ws ":" ws number ws
+  "\\"${ReceiptVlmSchema.keyTaxRate}\\"" ws ":" ws number "," ws
+  "\\"${ReceiptVlmSchema.keyTaxAmount}\\"" ws ":" ws number ws
 "}"
 
 necessity-enum ::= "\\"essential\\"" | "\\"discretional\\"" | "\\"junk\\"" | "\\"unknown\\""

@@ -192,6 +192,8 @@ class ReceiptModel extends HiveObject {
     };
   }
 
+  bool get isUserCorrected => items.any((e) => e.isUserCorrected);
+
   Receipt toEntity() {
     return Receipt(
       id: id,
@@ -206,6 +208,7 @@ class ReceiptModel extends HiveObject {
       time: time,
       boxId: boxId ?? 'main',
       priceBasis: priceBasis,
+      isUserCorrected: isUserCorrected,
     );
   }
 
@@ -434,6 +437,7 @@ class ReceiptItemModel {
       isAsset: isAsset ?? false,
       boxId: boxId ?? 'main',
       priceBasis: priceBasis,
+      isUserCorrected: isUserCorrected,
     );
   }
   
@@ -458,5 +462,6 @@ class ReceiptItemModel {
     isAsset: item.isAsset,
     boxId: item.boxId ?? 'main',
     priceBasis: item.priceBasis,
+    isUserCorrected: item.isUserCorrected,
   );
 }

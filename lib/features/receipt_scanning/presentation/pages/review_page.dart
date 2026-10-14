@@ -375,13 +375,28 @@ class _ReviewPageState extends ConsumerState<ReviewPage> {
     setState(() => _isSaving = true);
 
     try {
+      final merchantCorrected = widget.receipt.merchantName.trim() != merchant.trim();
+      final totalCorrected = (widget.receipt.totalAmount - total).abs() > 0.001;
+      final dateCorrected = widget.receipt.date.year != _currentDate.year ||
+          widget.receipt.date.month != _currentDate.month ||
+          widget.receipt.date.day != _currentDate.day;
+      final currencyCorrected = widget.receipt.currency.toUpperCase() != _selectedCurrency.toUpperCase();
+      final receiptLevelCorrected = merchantCorrected || totalCorrected || dateCorrected || currencyCorrected;
+      final anyItemCorrected = _items.any((w) => w.isCorrected);
+      final wasUserCorrected = _hasUserEdits || receiptLevelCorrected || anyItemCorrected || (_items.length != widget.receipt.items.length);
+
       final updatedReceipt = widget.receipt.copyWith(
         merchantName: merchant,
         totalAmount: total,
         date: _currentDate,
         currency: _selectedCurrency,
-        items: _items.map((w) => w.item.copyWith(id: w.id, boxId: w.item.boxId ?? _selectedBoxId)).toList(),
+        items: _items.map((w) => w.item.copyWith(
+          id: w.id,
+          boxId: w.item.boxId ?? _selectedBoxId,
+          isUserCorrected: w.isCorrected,
+        )).toList(),
         boxId: _selectedBoxId,
+        isUserCorrected: wasUserCorrected,
       );
 
       final saved = await ref.read(receiptListProvider.notifier).addReceipt(updatedReceipt);
@@ -412,6 +427,9 @@ class _ReviewPageState extends ConsumerState<ReviewPage> {
         unawaited(datasetContrib.stageVerifiedReceipt(
           receipt: updatedReceipt,
           imagePath: widget.receipt.imagePath,
+          originalAiReceipt: widget.receipt,
+          isUserCorrected: wasUserCorrected,
+          originalAiPredictionWasWrong: wasUserCorrected,
         ));
       } catch (_) {}
 

@@ -47,7 +47,12 @@ class FakeSupabaseDataSource implements SupabaseDataSource {
   Object? errorToThrow;
 
   @override
-  Future<void> uploadTrainingData(Receipt receipt, String imagePath) async {
+  Future<void> uploadTrainingData(
+    Receipt receipt,
+    String imagePath, {
+    bool? isUserCorrected,
+    bool? originalAiPredictionWasWrong,
+  }) async {
     if (errorToThrow != null) {
       uploadCallCount++;
       throw errorToThrow!;

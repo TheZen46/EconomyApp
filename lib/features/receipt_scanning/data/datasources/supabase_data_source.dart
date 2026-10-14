@@ -4,10 +4,16 @@ import 'package:image_picker/image_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../../core/error/failures.dart';
+import '../../../../core/services/vlm/receipt_vlm_schema.dart';
 import '../../domain/entities/receipt.dart';
 
 abstract class SupabaseDataSource {
-  Future<void> uploadTrainingData(Receipt receipt, String imagePath);
+  Future<void> uploadTrainingData(
+    Receipt receipt,
+    String imagePath, {
+    bool? isUserCorrected,
+    bool? originalAiPredictionWasWrong,
+  });
   Future<int> getStorageUsage();
   Future<void> deleteData(List<String> ids, {List<String>? imagePaths});
   Future<void> deleteReceipts(List<String> ids) async {}
@@ -77,7 +83,12 @@ class SupabaseDataSourceImpl implements SupabaseDataSource {
   }
 
   @override
-  Future<void> uploadTrainingData(Receipt receipt, String imagePath) async {
+  Future<void> uploadTrainingData(
+    Receipt receipt,
+    String imagePath, {
+    bool? isUserCorrected,
+    bool? originalAiPredictionWasWrong,
+  }) async {
     final userId = _currentUserId;
     // Storage policies only admit objects under the owner's folder; never fall
     // back to the shared prefix used by the path helpers when signed out.
@@ -118,7 +129,11 @@ class SupabaseDataSourceImpl implements SupabaseDataSource {
         }
       }
 
-      // 2. Create and Upload Label JSON -> training_data/{userId}/labels/{uuid}.json
+      // 2. Determine genuine correction flags
+      final effectiveIsUserCorrected = isUserCorrected ?? receipt.isUserCorrected;
+      final effectiveWasAiWrong = originalAiPredictionWasWrong ?? effectiveIsUserCorrected;
+
+      // 3. Create and Upload Label JSON -> training_data/{userId}/labels/{uuid}.json
       final labelJson = {
         "image_id": receipt.id,
         "image_path": storagePathImage,
@@ -126,6 +141,7 @@ class SupabaseDataSourceImpl implements SupabaseDataSource {
         "timestamp": DateTime.now().toIso8601String(),
         "ground_truth": {
           "merchant": receipt.merchantName,
+          "vat_number": receipt.vatNumber.trim().isNotEmpty ? receipt.vatNumber.trim() : null,
           "total": receipt.totalAmount,
           "currency": receipt.currency,
           "date": receipt.date.toIso8601String().split('T').first,
@@ -135,14 +151,18 @@ class SupabaseDataSourceImpl implements SupabaseDataSource {
             "quantity": e.quantity,
             "total_price": e.totalPrice,
             "category": e.category,
+            "main_category": e.mainCategory,
+            "sub_category": e.subCategory,
             "necessity": e.necessity.name,
             "is_asset": e.isAsset,
+            "is_user_corrected": e.isUserCorrected,
           }).toList(),
+          "tax_breakdown": ReceiptVlmSchema.deriveTaxBreakdown(receipt),
           "category": receipt.category
         },
         "meta": {
-          "is_user_corrected": true,
-          "original_ai_prediction_was_wrong": true
+          "is_user_corrected": effectiveIsUserCorrected,
+          "original_ai_prediction_was_wrong": effectiveWasAiWrong,
         }
       };
 
@@ -314,7 +334,12 @@ class NoOpSupabaseDataSource implements SupabaseDataSource {
   const NoOpSupabaseDataSource();
 
   @override
-  Future<void> uploadTrainingData(Receipt receipt, String imagePath) async {}
+  Future<void> uploadTrainingData(
+    Receipt receipt,
+    String imagePath, {
+    bool? isUserCorrected,
+    bool? originalAiPredictionWasWrong,
+  }) async {}
 
   @override
   Future<int> getStorageUsage() async => 0;

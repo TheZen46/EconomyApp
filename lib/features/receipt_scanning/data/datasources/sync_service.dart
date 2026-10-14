@@ -250,7 +250,12 @@ class SyncService {
     } else if (isPrivateBox(receiptModel.boxId)) {
       debugPrint('SyncService: ${item.receiptId} is in a private box, not uploading it for training.');
     } else if (isTrainingContributionEnabled(settingsBox)) {
-      await supabaseDataSource.uploadTrainingData(receipt, item.imagePath);
+      await supabaseDataSource.uploadTrainingData(
+        receipt,
+        item.imagePath,
+        isUserCorrected: receipt.isUserCorrected,
+        originalAiPredictionWasWrong: receipt.isUserCorrected,
+      );
     } else {
       // Without consent nothing is uploaded; evaluated per item, so turning the
       // setting off also stops uploads that are already queued.

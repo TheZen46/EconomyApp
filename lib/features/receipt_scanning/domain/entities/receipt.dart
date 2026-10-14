@@ -22,6 +22,7 @@ class Receipt with _$Receipt {
     // placeholder; the review screen asks the user to confirm it. Not stored.
     @Default(false) bool dateUncertain,
     @Default(PriceBasis.gross) PriceBasis priceBasis,
+    @Default(false) bool isUserCorrected,
   }) = _Receipt;
 
   const Receipt._();
@@ -77,6 +78,7 @@ class ReceiptItem with _$ReceiptItem {
     @Default(false) bool isAsset,
     @Default('main') String? boxId,
     @Default(PriceBasis.gross) PriceBasis priceBasis,
+    @Default(false) bool isUserCorrected,
     
     @Deprecated('Use subCategory or mainCategory instead')
     String? category, // Keeping for backward compatibility temporarily

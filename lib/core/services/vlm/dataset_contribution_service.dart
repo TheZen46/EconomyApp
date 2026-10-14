@@ -4,8 +4,8 @@ import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:uuid/uuid.dart';
-import '../../privacy/pii_scrubber_service.dart';
 import '../../../features/receipt_scanning/domain/entities/receipt.dart';
+import 'receipt_vlm_schema.dart';
 
 /// Service responsible for managing the local on-device continuous learning staging pipeline.
 ///
@@ -37,6 +37,9 @@ class DatasetContributionService {
   Future<bool> stageVerifiedReceipt({
     required Receipt receipt,
     String? imagePath,
+    Receipt? originalAiReceipt,
+    bool? isUserCorrected,
+    bool? originalAiPredictionWasWrong,
   }) async {
     final file = await _getContributionsFile();
     if (file == null) return false;
@@ -53,47 +56,25 @@ class DatasetContributionService {
         }
       }
 
-      // 2. Sanitize and build GBNF-compliant ground truth JSON
-      final sanitizedData = PiiScrubberService.sanitizeReceiptForTraining(receipt);
+      // 2. Determine actual user correction flags
+      final effectiveIsUserCorrected = isUserCorrected ??
+          (originalAiReceipt != null
+              ? ReceiptVlmSchema.hasUserCorrections(originalAiReceipt, receipt)
+              : receipt.isUserCorrected);
+      final effectiveWasAiWrong = originalAiPredictionWasWrong ?? effectiveIsUserCorrected;
 
-      final groundTruthJson = jsonEncode({
-        'merchant_name': sanitizedData['anonymized_merchant'],
-        'merchant_address': '[REDACTED_ADDRESS]',
-        'vat_number': 'IT12345678901',
-        'date': receipt.date.toIso8601String().split('T').first,
-        'time': dateFormatTime(receipt.date),
-        'currency': receipt.currency.isNotEmpty ? receipt.currency : 'USD',
-        'items': receipt.items.map((item) {
-          final cleanDesc = PiiScrubberService.sanitizeText(item.description);
-          return {
-            'raw_name': cleanDesc,
-            'normalized_name': cleanDesc,
-            'main_category': item.mainCategory ?? 'Miscellaneous',
-            'sub_category': item.subCategory ?? 'General',
-            'necessity': item.necessity.name,
-            'quantity': item.quantity,
-            'unit_price': item.unitPrice,
-            'total_price': item.totalPrice,
-            'is_asset': item.isAsset,
-          };
-        }).toList(),
-        'tax_breakdown': [
-          {
-            'rate_percent': 22.0,
-            'taxable_amount': (receipt.totalAmount * 0.82).clamp(0.0, double.infinity),
-            'tax_amount': (receipt.totalAmount * 0.18).clamp(0.0, double.infinity),
-          }
-        ],
-        'total_amount': receipt.totalAmount,
-        'confidence_score': 1.0,
-      });
+      // 3. Build GBNF-compliant ground truth JSON via canonical schema
+      final groundTruthMap = ReceiptVlmSchema.toTrainingJson(receipt, anonymize: true);
+      final groundTruthJson = jsonEncode(groundTruthMap);
 
-      // 3. Format as HuggingFace multi-turn chat template
+      // 4. Format as HuggingFace multi-turn chat template
       final record = {
         'id': const Uuid().v4(),
         'source': 'user_verified_ground_truth',
         'created_at': DateTime.now().toUtc().toIso8601String(),
         'image_ref': imageIdentifier,
+        'is_user_corrected': effectiveIsUserCorrected,
+        'original_ai_prediction_was_wrong': effectiveWasAiWrong,
         'messages': [
           {
             'role': 'user',
@@ -109,7 +90,7 @@ class DatasetContributionService {
         ]
       };
 
-      // 4. Append JSON line atomically
+      // 5. Append JSON line atomically
       final sink = file.openWrite(mode: FileMode.append);
       sink.writeln(jsonEncode(record));
       await sink.flush();
@@ -123,9 +104,9 @@ class DatasetContributionService {
     }
   }
 
-  /// Helper to format time as HH:mm:ss
+  /// Helper to format time as HH:mm
   static String dateFormatTime(DateTime date) {
-    return '${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}:${date.second.toString().padLeft(2, '0')}';
+    return '${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
   }
 
   /// Returns total number of staged training samples.
