@@ -350,21 +350,9 @@ class InvoicesNotifier extends StateNotifier<List<InvoiceModel>> {
 /// - `outboxServiceProvider`: Offline CRDT outbox queue.
 /// - `supabaseClientProvider`: Supabase client for remote sequence allocation.
 final invoicesProvider = StateNotifierProvider<InvoicesNotifier, List<InvoiceModel>>((ref) {
-  Box<InvoiceModel>? box;
-  try {
-    box = ref.watch(invoicesHiveBoxProvider);
-  } catch (_) {}
-
-  Box? settingsBox;
-  try {
-    settingsBox = ref.watch(settingsBoxProvider);
-  } catch (_) {}
-
-  OutboxService? outbox;
-  try {
-    outbox = ref.watch(outboxServiceProvider);
-  } catch (_) {}
-
+  final box = ref.watch(invoicesBoxNullableProvider);
+  final settingsBox = ref.watch(settingsBoxNullableProvider);
+  final outbox = ref.watch(outboxServiceNullableProvider);
   final client = ref.watch(supabaseClientProvider);
   final devicePartition = settingsBox?.get('invoice_device_partition') as String?;
 

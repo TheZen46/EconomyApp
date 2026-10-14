@@ -588,10 +588,11 @@ class _AirGappedVaultOnboardingPageState extends ConsumerState<AirGappedVaultOnb
 
       // Persist biometric vault configuration in secure hardware storage
       try {
-        await SecureStorageService.writeSecret('biometric_vault_enabled', _isBiometricEnabled.toString());
-        await SecureStorageService.writeSecret('biometric_vault_salt', base64Url.encode(salt));
+        final secureStorage = ref.read(secureStorageProvider);
+        await secureStorage.writeSecret('biometric_vault_enabled', _isBiometricEnabled.toString());
+        await secureStorage.writeSecret('biometric_vault_salt', base64Url.encode(salt));
         final verifierHash = sha256.convert(key).toString();
-        await SecureStorageService.writeSecret('biometric_vault_verifier', verifierHash);
+        await secureStorage.writeSecret('biometric_vault_verifier', verifierHash);
       } catch (e) {
         debugPrint('AirGappedVaultOnboarding: Secure storage notice: $e');
       }

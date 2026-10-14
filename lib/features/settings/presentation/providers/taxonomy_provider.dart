@@ -7,11 +7,16 @@ final taxonomyBoxProvider = Provider<Box<TaxonomyConfigModel>>((ref) {
   throw UnimplementedError('Taxonomy Hive box must be overridden in main');
 });
 
-final taxonomyProvider = StateNotifierProvider<TaxonomyNotifier, Map<String, Map<String, List<TaxonomyItem>>>>((ref) {
-  Box<TaxonomyConfigModel>? box;
+final taxonomyBoxNullableProvider = Provider<Box<TaxonomyConfigModel>?>((ref) {
   try {
-    box = ref.watch(taxonomyBoxProvider);
-  } catch (_) {}
+    return ref.watch(taxonomyBoxProvider);
+  } on UnimplementedError {
+    return null;
+  }
+});
+
+final taxonomyProvider = StateNotifierProvider<TaxonomyNotifier, Map<String, Map<String, List<TaxonomyItem>>>>((ref) {
+  final box = ref.watch(taxonomyBoxNullableProvider);
   return TaxonomyNotifier(box);
 });
 

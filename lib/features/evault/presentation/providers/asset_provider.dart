@@ -16,15 +16,8 @@ export '../../../../core/providers/storage_providers.dart' show assetsBoxProvide
 /// - `assetsBoxProvider`: Persistent assets Hive box.
 /// - `outboxServiceProvider`: Offline CRDT outbox queue.
 final assetListProvider = StateNotifierProvider<AssetNotifier, List<AssetModel>>((ref) {
-  Box<AssetModel>? box;
-  try {
-    box = ref.watch(assetsBoxProvider);
-  } catch (_) {}
-
-  OutboxService? outbox;
-  try {
-    outbox = ref.watch(outboxServiceProvider);
-  } catch (_) {}
+  final box = ref.watch(assetsBoxNullableProvider);
+  final outbox = ref.watch(outboxServiceNullableProvider);
 
   return AssetNotifier(box, outbox);
 });

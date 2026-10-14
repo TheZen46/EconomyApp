@@ -48,17 +48,20 @@ class AppAuthState {
 
 class AuthNotifier extends StateNotifier<AppAuthState> {
   final AuthRepository _repository;
+  final SecureStorageService _secureStorage;
   StreamSubscription? _authSubscription;
 
-  AuthNotifier(this._repository) : super(const AppAuthState()) {
+  AuthNotifier(this._repository, {SecureStorageService? secureStorage})
+      : _secureStorage = secureStorage ?? SecureStorageService(),
+        super(const AppAuthState()) {
     _initialize();
   }
 
   Future<void> _initialize() async {
-    final rememberMe = await SecureStorageService.getRememberMe();
+    final rememberMe = await _secureStorage.getRememberMe();
     if (!mounted) return;
     if (rememberMe) {
-      final persistedSession = await SecureStorageService.getPersistedSession();
+      final persistedSession = await _secureStorage.getPersistedSession();
       if (!mounted) return;
       if (persistedSession != null && persistedSession.isNotEmpty) {
         final result = await _repository.recoverSession(persistedSession);
@@ -308,12 +311,15 @@ class AuthNotifier extends StateNotifier<AppAuthState> {
 // ── Riverpod Providers ──────────────────────────────────────────────────────
 
 final authRepositoryProvider = Provider<AuthRepository>((ref) {
-  return AuthRepositoryImpl(client: ref.watch(supabaseClientOrOfflineProvider));
+  final client = ref.watch(supabaseClientOrOfflineProvider);
+  final secureStorage = ref.watch(secureStorageProvider);
+  return AuthRepositoryImpl(client: client, secureStorage: secureStorage);
 });
 
 final authProvider = StateNotifierProvider<AuthNotifier, AppAuthState>((ref) {
   final repository = ref.watch(authRepositoryProvider);
-  return AuthNotifier(repository);
+  final secureStorage = ref.watch(secureStorageProvider);
+  return AuthNotifier(repository, secureStorage: secureStorage);
 });
 
 /// Convenience provider: is there a valid Supabase session right now?

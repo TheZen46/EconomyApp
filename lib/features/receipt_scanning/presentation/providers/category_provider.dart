@@ -2,17 +2,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hive/hive.dart';
 import 'receipt_provider.dart';
 import '../../../../core/constants/app_constants.dart';
+import '../../../../core/providers/storage_providers.dart';
 
 // Key for storing categories in settings box
 const String _kCustomCategoriesKey = 'custom_categories';
 
 final categoryListProvider = StateNotifierProvider<CategoryNotifier, List<String>>((ref) {
-  try {
-    final box = ref.watch(settingsBoxProvider);
-    return CategoryNotifier(box);
-  } catch (_) {
-    return CategoryNotifier(null);
-  }
+  final box = ref.watch(settingsBoxNullableProvider);
+  return CategoryNotifier(box);
 });
 
 class CategoryNotifier extends StateNotifier<List<String>> {

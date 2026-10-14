@@ -106,20 +106,22 @@ void main() {
     mockSecureStorage.clear();
   });
 
+  final secureStorage = SecureStorageService();
+
   group('SecureStorageService Auth Operations', () {
     test('saves, retrieves, and deletes refresh token and persisted session', () async {
-      await SecureStorageService.saveRefreshToken('ref-12345');
-      expect(await SecureStorageService.getRefreshToken(), 'ref-12345');
+      await secureStorage.saveRefreshToken('ref-12345');
+      expect(await secureStorage.getRefreshToken(), 'ref-12345');
 
-      await SecureStorageService.savePersistedSession('{"access_token":"abc"}');
-      expect(await SecureStorageService.getPersistedSession(), '{"access_token":"abc"}');
+      await secureStorage.savePersistedSession('{"access_token":"abc"}');
+      expect(await secureStorage.getPersistedSession(), '{"access_token":"abc"}');
 
-      await SecureStorageService.setRememberMe(true);
-      expect(await SecureStorageService.getRememberMe(), isTrue);
+      await secureStorage.setRememberMe(true);
+      expect(await secureStorage.getRememberMe(), isTrue);
 
-      await SecureStorageService.purgeAuthData();
-      expect(await SecureStorageService.getRefreshToken(), isNull);
-      expect(await SecureStorageService.getPersistedSession(), isNull);
+      await secureStorage.purgeAuthData();
+      expect(await secureStorage.getRefreshToken(), isNull);
+      expect(await secureStorage.getPersistedSession(), isNull);
     });
   });
 
@@ -131,7 +133,7 @@ void main() {
 
     setUp(() {
       fakeGoTrue = FakeGoTrueClient();
-      repository = AuthRepositoryImpl(authClient: fakeGoTrue);
+      repository = AuthRepositoryImpl(authClient: fakeGoTrue, secureStorage: secureStorage);
 
       testUser = const User(
         id: 'persisted-user',
@@ -158,14 +160,14 @@ void main() {
       );
 
       expect(result.isRight(), isTrue);
-      expect(await SecureStorageService.getRefreshToken(), 'ref-999');
-      expect(await SecureStorageService.getPersistedSession(), contains('ref-999'));
-      expect(await SecureStorageService.getRememberMe(), isTrue);
+      expect(await secureStorage.getRefreshToken(), 'ref-999');
+      expect(await secureStorage.getPersistedSession(), contains('ref-999'));
+      expect(await secureStorage.getRememberMe(), isTrue);
     });
 
     test('signIn with rememberMe=false purges secure storage', () async {
       // First populate storage
-      await SecureStorageService.saveRefreshToken('old-token');
+      await secureStorage.saveRefreshToken('old-token');
 
       final result = await repository.signInWithEmailPassword(
         'user@taidy.io',
@@ -174,35 +176,35 @@ void main() {
       );
 
       expect(result.isRight(), isTrue);
-      expect(await SecureStorageService.getRefreshToken(), isNull);
-      expect(await SecureStorageService.getPersistedSession(), isNull);
-      expect(await SecureStorageService.getRememberMe(), isFalse);
+      expect(await secureStorage.getRefreshToken(), isNull);
+      expect(await secureStorage.getPersistedSession(), isNull);
+      expect(await secureStorage.getRememberMe(), isFalse);
     });
 
     test('signOut purges all local auth tokens and session from SecureStorageService', () async {
-      await SecureStorageService.saveRefreshToken('token-to-delete');
-      await SecureStorageService.savePersistedSession('session-to-delete');
+      await secureStorage.saveRefreshToken('token-to-delete');
+      await secureStorage.savePersistedSession('session-to-delete');
 
       final result = await repository.signOut();
       expect(result.isRight(), isTrue);
 
-      expect(await SecureStorageService.getRefreshToken(), isNull);
-      expect(await SecureStorageService.getPersistedSession(), isNull);
+      expect(await secureStorage.getRefreshToken(), isNull);
+      expect(await secureStorage.getPersistedSession(), isNull);
     });
   });
 
   group('AuthNotifier Cold Start Session Restoration', () {
     test('cold start with rememberMe=true and valid session restores authenticated state', () async {
-      await SecureStorageService.setRememberMe(true);
-      await SecureStorageService.savePersistedSession('{"access_token":"token-abc"}');
+      await secureStorage.setRememberMe(true);
+      await secureStorage.savePersistedSession('{"access_token":"token-abc"}');
 
       final mockRepo = FakeGoTrueClient();
       final user = const User(id: 'restored-user', appMetadata: {}, userMetadata: {}, aud: 'authenticated', createdAt: '2026-01-01');
       mockRepo.mockUser = user;
       mockRepo.mockSession = Session(accessToken: 'token-abc', refreshToken: 'ref-abc', tokenType: 'bearer', user: user);
 
-      final repo = AuthRepositoryImpl(authClient: mockRepo);
-      final notifier = AuthNotifier(repo);
+      final repo = AuthRepositoryImpl(authClient: mockRepo, secureStorage: secureStorage);
+      final notifier = AuthNotifier(repo, secureStorage: secureStorage);
 
       // Allow async _initialize to complete
       await Future.delayed(const Duration(milliseconds: 50));
@@ -212,12 +214,12 @@ void main() {
     });
 
     test('cold start with rememberMe=false starts unauthenticated and clears session', () async {
-      await SecureStorageService.setRememberMe(false);
-      await SecureStorageService.savePersistedSession('{"access_token":"token-abc"}');
+      await secureStorage.setRememberMe(false);
+      await secureStorage.savePersistedSession('{"access_token":"token-abc"}');
 
       final mockRepo = FakeGoTrueClient();
-      final repo = AuthRepositoryImpl(authClient: mockRepo);
-      final notifier = AuthNotifier(repo);
+      final repo = AuthRepositoryImpl(authClient: mockRepo, secureStorage: secureStorage);
+      final notifier = AuthNotifier(repo, secureStorage: secureStorage);
 
       await Future.delayed(const Duration(milliseconds: 50));
 

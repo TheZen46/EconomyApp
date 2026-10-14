@@ -21,8 +21,17 @@ import 'vlm_worker_isolate.dart';
 /// Implements [AIService] to provide high-precision, grammar-constrained,
 /// on-device receipt intelligence directly from raw receipt images without UI thread blocking.
 class VlmEngineService implements AIService {
-  final VlmWorkerIsolate _worker = VlmWorkerIsolate();
-  final EpisodicMemoryService _episodicMemory = EpisodicMemoryService();
+  final VlmWorkerIsolate _worker;
+  final EpisodicMemoryService _episodicMemory;
+  final TelemetryService _telemetryService;
+
+  VlmEngineService({
+    VlmWorkerIsolate? worker,
+    EpisodicMemoryService? episodicMemory,
+    TelemetryService? telemetryService,
+  })  : _worker = worker ?? VlmWorkerIsolate(),
+        _episodicMemory = episodicMemory ?? EpisodicMemoryService(),
+        _telemetryService = telemetryService ?? TelemetryService.instance;
   bool _isInitialized = false;
   Future<bool>? _initializing;
   String? _loadedModelId;
@@ -230,7 +239,7 @@ class VlmEngineService implements AIService {
 
       // Record performance telemetry (zero PII)
       final estimatedTokens = (rawJson.length / 3.8).ceil().clamp(10, 2048);
-      unawaited(TelemetryService.instance.recordInferencePerformance(
+      unawaited(_telemetryService.recordInferencePerformance(
         inferenceDurationMs: inferStopwatch.elapsedMilliseconds,
         preprocessingMs: preStopwatch.elapsedMilliseconds,
         tokenCount: estimatedTokens,
@@ -256,7 +265,7 @@ class VlmEngineService implements AIService {
       return Right(receiptModel.toEntity());
     } catch (e, stack) {
       debugPrint('VlmEngineService: Processing error: $e');
-      unawaited(TelemetryService.instance.recordCrash(
+      unawaited(_telemetryService.recordCrash(
         error: e,
         stackTrace: stack,
         errorType: 'VlmEngineService.extractReceiptData',

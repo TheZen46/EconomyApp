@@ -28,10 +28,8 @@ import '../../data/datasources/sync_service.dart';
 import '../../../../core/services/google_drive_service.dart'; // Ensure global access or provider
 import '../../../settings/data/datasources/webhook_service.dart';
 import '../../../settings/presentation/providers/llm_provider.dart';
-import '../../../boxes/data/models/box_model.dart';
 import '../../../boxes/data/providers/boxes_provider.dart';
 import '../../data/datasources/csv_parser_service.dart';
-import '../../../../core/sync/outbox_service.dart';
 import '../../../../core/sync/sync_coordinator.dart';
 import '../../../../core/sync/sync_providers.dart';
 import '../../../../core/providers/storage_providers.dart';
@@ -39,9 +37,13 @@ import '../../../../core/providers/storage_providers.dart';
 export '../../../../core/providers/storage_providers.dart'
     show
         hiveBoxProvider,
+        hiveBoxNullableProvider,
         receiptsBoxProvider,
+        receiptsBoxNullableProvider,
         settingsBoxProvider,
-        syncBoxProvider;
+        settingsBoxNullableProvider,
+        syncBoxProvider,
+        syncBoxNullableProvider;
 
 /// Service for parsing CSV bank and card statement exports.
 ///
@@ -58,27 +60,51 @@ final localDataSourceProvider = Provider<LocalReceiptDataSource>((ref) {
   return HiveReceiptDataSourceImpl(box);
 });
 
-/// Legacy synchronization service coordinating queue items with remote storage.
-///
-/// **Lifetime:** App-scoped singleton with registered disposal cleanup via `ref.onDispose`.
-/// **Dependencies:** `syncBoxProvider`, `localDataSourceProvider`, `supabaseDataSourceProvider`, `settingsBoxProvider`, `boxesHiveBoxProvider`.
-final syncServiceProvider = Provider<SyncService>((ref) {
-  final queueBox = ref.watch(syncBoxProvider);
+/// Typed nullable accessor for [SyncService], safely returning null if required storage boxes are unprovided.
+final syncServiceNullableProvider = Provider<SyncService?>((ref) {
+  final queueBox = ref.watch(syncBoxNullableProvider);
+  final settingsBox = ref.watch(settingsBoxNullableProvider);
+  if (queueBox == null || settingsBox == null) return null;
+
   final localDS = ref.watch(localDataSourceProvider);
   final supabaseDS = ref.watch(supabaseDataSourceProvider);
-  final settingsBox = ref.watch(settingsBoxProvider);
-  
-  Box<BoxModel>? boxes;
-  try {
-    boxes = ref.watch(boxesHiveBoxProvider);
-  } catch (_) {}
+  final boxes = ref.watch(boxesBoxNullableProvider);
+  final driveService = ref.watch(googleDriveServiceProvider);
 
   final service = SyncService(
     queueBox: queueBox,
     localDataSource: localDS,
     supabaseDataSource: supabaseDS,
     settingsBox: settingsBox,
-    googleDriveService: googleDriveService,
+    googleDriveService: driveService,
+    isPrivateBox: (boxId) => boxId != null && (boxes?.get(boxId)?.isPrivate ?? false),
+    coordinator: ref.watch(syncCoordinatorProvider),
+  );
+  ref.onDispose(service.dispose);
+  return service;
+});
+
+/// Legacy synchronization service coordinating queue items with remote storage.
+///
+/// **Lifetime:** App-scoped singleton with registered disposal cleanup via `ref.onDispose`.
+/// **Dependencies:** `syncBoxProvider`, `localDataSourceProvider`, `supabaseDataSourceProvider`, `settingsBoxProvider`, `boxesHiveBoxProvider`.
+final syncServiceProvider = Provider<SyncService>((ref) {
+  final nullableService = ref.watch(syncServiceNullableProvider);
+  if (nullableService != null) return nullableService;
+
+  final queueBox = ref.watch(syncBoxProvider);
+  final localDS = ref.watch(localDataSourceProvider);
+  final supabaseDS = ref.watch(supabaseDataSourceProvider);
+  final settingsBox = ref.watch(settingsBoxProvider);
+  final boxes = ref.watch(boxesBoxNullableProvider);
+  final driveService = ref.watch(googleDriveServiceProvider);
+
+  final service = SyncService(
+    queueBox: queueBox,
+    localDataSource: localDS,
+    supabaseDataSource: supabaseDS,
+    settingsBox: settingsBox,
+    googleDriveService: driveService,
     isPrivateBox: (boxId) => boxId != null && (boxes?.get(boxId)?.isPrivate ?? false),
     coordinator: ref.watch(syncCoordinatorProvider),
   );
@@ -108,18 +134,20 @@ final permanentlyFailedSyncItemsProvider = Provider<List<SyncItemModel>>((ref) {
 /// Dispatches JSON webhook notifications upon receipt modifications if configured.
 ///
 /// **Lifetime:** App-scoped singleton.
-/// **Dependencies:** `settingsBoxProvider`.
+/// **Dependencies:** `settingsBoxProvider`, `secureStorageProvider`.
 final webhookServiceProvider = Provider<WebhookService>((ref) {
   final settingsBox = ref.watch(settingsBoxProvider);
-  return WebhookService(settingsBox);
+  final secureStorage = ref.watch(secureStorageProvider);
+  return WebhookService(settingsBox, null, secureStorage);
 });
 
 /// Async provider that reads the Gemini API key from secure storage.
 ///
 /// **Lifetime:** Async cached future provider.
-/// **Dependencies:** None.
+/// **Dependencies:** `secureStorageProvider`.
 final geminiApiKeyProvider = FutureProvider<String>((ref) async {
-  return await SecureStorageService.readSecret(SecretKeys.geminiApiKey) ?? '';
+  final secureStorage = ref.watch(secureStorageProvider);
+  return await secureStorage.readSecret(SecretKeys.geminiApiKey) ?? '';
 });
 
 /// Resolves the active [AIService] according to user settings and model readiness:
@@ -206,11 +234,9 @@ final modelUpdateServiceProvider = StateNotifierProvider<ModelUpdateService, Upd
 
 /// Whether cloud requests are allowed (see [NetworkPolicy]).
 bool _cloudAllowed(Ref ref) {
-  try {
-    return NetworkPolicy.isCloudAllowed(ref.read(settingsBoxProvider));
-  } catch (_) {
-    return true;
-  }
+  final settings = ref.read(settingsBoxNullableProvider);
+  if (settings == null) return true;
+  return NetworkPolicy.isCloudAllowed(settings);
 }
 
 // ── Repository Provider ─────────────────────────────────────────────────────
@@ -225,7 +251,7 @@ bool _cloudAllowed(Ref ref) {
 /// - `syncServiceProvider`: Legacy queue sync service.
 /// - `webhookServiceProvider`: Outgoing webhooks dispatcher.
 /// - `assetsBoxProvider`: EVault asset inventory box.
-/// - `outboxServiceProvider`: Offline-first CRDT outbox queue.
+/// - `outboxServiceNullableProvider`: Offline-first CRDT outbox queue.
 /// - `aiServiceProvider`: Dynamic AI extraction backend resolver.
 final receiptRepositoryProvider = Provider<ReceiptRepository>((ref) {
   final localDS = ref.watch(localDataSourceProvider);
@@ -234,11 +260,7 @@ final receiptRepositoryProvider = Provider<ReceiptRepository>((ref) {
   final syncService = ref.watch(syncServiceProvider);
   final webhookService = ref.watch(webhookServiceProvider);
   final assetsBox = ref.watch(assetsBoxProvider);
-
-  OutboxService? outbox;
-  try {
-    outbox = ref.watch(outboxServiceProvider);
-  } catch (_) {}
+  final outbox = ref.watch(outboxServiceNullableProvider);
   
   return ReceiptRepositoryImpl(
     localDataSource: localDS, 
@@ -420,12 +442,8 @@ class ReceiptListNotifier extends StateNotifier<AsyncValue<List<Receipt>>> {
 /// **Lifetime:** App-scoped state notifier provider.
 /// **Dependencies:** `settingsBoxProvider`.
 final monthlyBudgetProvider = StateNotifierProvider<BudgetNotifier, double>((ref) {
-  try {
-    final box = ref.watch(settingsBoxProvider);
-    return BudgetNotifier(box);
-  } catch (_) {
-    return BudgetNotifier(null);
-  }
+  final box = ref.watch(settingsBoxNullableProvider);
+  return BudgetNotifier(box);
 });
 
 /// State notifier persisting the monthly spending ceiling under `monthly_budget_limit`.
@@ -447,14 +465,10 @@ class BudgetNotifier extends StateNotifier<double> {
 /// Tracks the user's primary bank account balance.
 ///
 /// **Lifetime:** App-scoped state notifier provider.
-/// **Dependencies:** `settingsBoxProvider`.
+/// **Dependencies:** `settingsBoxNullableProvider`.
 final currentBalanceProvider = StateNotifierProvider<CurrentBalanceNotifier, double>((ref) {
-  try {
-    final box = ref.watch(settingsBoxProvider);
-    return CurrentBalanceNotifier(box);
-  } catch (_) {
-    return CurrentBalanceNotifier(null);
-  }
+  final box = ref.watch(settingsBoxNullableProvider);
+  return CurrentBalanceNotifier(box);
 });
 
 /// State notifier persisting the bank balance under `current_balance`.
@@ -476,14 +490,10 @@ class CurrentBalanceNotifier extends StateNotifier<double> {
 /// Tracks estimated recurring monthly revenue or salary.
 ///
 /// **Lifetime:** App-scoped state notifier provider.
-/// **Dependencies:** `settingsBoxProvider`.
+/// **Dependencies:** `settingsBoxNullableProvider`.
 final projectedIncomeProvider = StateNotifierProvider<ProjectedIncomeNotifier, double>((ref) {
-  try {
-    final box = ref.watch(settingsBoxProvider);
-    return ProjectedIncomeNotifier(box);
-  } catch (_) {
-    return ProjectedIncomeNotifier(null);
-  }
+  final box = ref.watch(settingsBoxNullableProvider);
+  return ProjectedIncomeNotifier(box);
 });
 
 /// State notifier persisting estimated monthly income under `projected_income`.
@@ -505,14 +515,10 @@ class ProjectedIncomeNotifier extends StateNotifier<double> {
 /// Toggles whether financial amounts are blurred or obscured in the presentation layer.
 ///
 /// **Lifetime:** App-scoped state notifier provider.
-/// **Dependencies:** `settingsBoxProvider`.
+/// **Dependencies:** `settingsBoxNullableProvider`.
 final privacyModeProvider = StateNotifierProvider<PrivacyModeNotifier, bool>((ref) {
-  try {
-    final box = ref.watch(settingsBoxProvider);
-    return PrivacyModeNotifier(box);
-  } catch (_) {
-    return PrivacyModeNotifier(null);
-  }
+  final box = ref.watch(settingsBoxNullableProvider);
+  return PrivacyModeNotifier(box);
 });
 
 /// State notifier persisting privacy obscuration mode under `privacy_mode_enabled`.
@@ -542,14 +548,10 @@ class PrivacyModeNotifier extends StateNotifier<bool> {
 /// Provides the user's estimated marginal tax withholding rate (e.g. 0.25 for 25%).
 ///
 /// **Lifetime:** App-scoped state notifier provider.
-/// **Dependencies:** `settingsBoxProvider`.
+/// **Dependencies:** `settingsBoxNullableProvider`.
 final taxNestRateProvider = StateNotifierProvider<TaxNestRateNotifier, double>((ref) {
-  try {
-    final box = ref.watch(settingsBoxProvider);
-    return TaxNestRateNotifier(box);
-  } catch (_) {
-    return TaxNestRateNotifier(null);
-  }
+  final box = ref.watch(settingsBoxNullableProvider);
+  return TaxNestRateNotifier(box);
 });
 
 /// State notifier persisting the estimated tax withholding fraction under `tax_nest_rate`.
@@ -573,14 +575,10 @@ class TaxNestRateNotifier extends StateNotifier<double> {
 /// Provides the statutory tax liability savings target amount.
 ///
 /// **Lifetime:** App-scoped state notifier provider.
-/// **Dependencies:** `settingsBoxProvider`.
+/// **Dependencies:** `settingsBoxNullableProvider`.
 final taxNestGoalProvider = StateNotifierProvider<TaxNestGoalNotifier, double>((ref) {
-  try {
-    final box = ref.watch(settingsBoxProvider);
-    return TaxNestGoalNotifier(box);
-  } catch (_) {
-    return TaxNestGoalNotifier(null);
-  }
+  final box = ref.watch(settingsBoxNullableProvider);
+  return TaxNestGoalNotifier(box);
 });
 
 /// State notifier persisting the statutory tax reserve target under `tax_nest_goal`.

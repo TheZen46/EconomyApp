@@ -3,13 +3,28 @@ import 'package:dartz/dartz.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../../core/error/failures.dart';
 import '../../../../core/services/secure_storage_service.dart';
+import '../../../../core/providers/supabase_providers.dart';
 import '../../domain/repositories/auth_repository.dart';
 
 class AuthRepositoryImpl implements AuthRepository {
   final GoTrueClient _auth;
+  final SecureStorageService _secureStorage;
 
-  AuthRepositoryImpl({SupabaseClient? client, GoTrueClient? authClient})
-      : _auth = authClient ?? (client != null ? client.auth : Supabase.instance.client.auth);
+  static SupabaseClient _resolveDefaultClient() {
+    try {
+      return Supabase.instance.client;
+    } catch (_) {
+      return offlineSupabaseClient;
+    }
+  }
+
+  AuthRepositoryImpl({
+    SupabaseClient? client,
+    GoTrueClient? authClient,
+    SecureStorageService? secureStorage,
+  })  : _auth = authClient ??
+            (client != null ? client.auth : _resolveDefaultClient().auth),
+        _secureStorage = secureStorage ?? SecureStorageService();
 
   @override
   Stream<AuthState> get authStateChanges => _auth.onAuthStateChange;
@@ -37,14 +52,14 @@ class AuthRepositoryImpl implements AuthRepository {
         if (rememberMe) {
           final refreshToken = session.refreshToken;
           if (refreshToken != null && refreshToken.isNotEmpty) {
-            await SecureStorageService.saveRefreshToken(refreshToken);
+            await _secureStorage.saveRefreshToken(refreshToken);
           }
           final sessionJson = jsonEncode(session.toJson());
-          await SecureStorageService.savePersistedSession(sessionJson);
-          await SecureStorageService.setRememberMe(true);
+          await _secureStorage.savePersistedSession(sessionJson);
+          await _secureStorage.setRememberMe(true);
         } else {
-          await SecureStorageService.purgeAuthData();
-          await SecureStorageService.setRememberMe(false);
+          await _secureStorage.purgeAuthData();
+          await _secureStorage.setRememberMe(false);
         }
       }
 
@@ -71,14 +86,14 @@ class AuthRepositoryImpl implements AuthRepository {
         if (rememberMe) {
           final refreshToken = session.refreshToken;
           if (refreshToken != null && refreshToken.isNotEmpty) {
-            await SecureStorageService.saveRefreshToken(refreshToken);
+            await _secureStorage.saveRefreshToken(refreshToken);
           }
           final sessionJson = jsonEncode(session.toJson());
-          await SecureStorageService.savePersistedSession(sessionJson);
-          await SecureStorageService.setRememberMe(true);
+          await _secureStorage.savePersistedSession(sessionJson);
+          await _secureStorage.setRememberMe(true);
         } else {
-          await SecureStorageService.purgeAuthData();
-          await SecureStorageService.setRememberMe(false);
+          await _secureStorage.purgeAuthData();
+          await _secureStorage.setRememberMe(false);
         }
       }
 
@@ -91,7 +106,7 @@ class AuthRepositoryImpl implements AuthRepository {
   @override
   Future<Either<AuthFailure, void>> signInWithGoogle({bool rememberMe = true}) async {
     try {
-      await SecureStorageService.setRememberMe(rememberMe);
+      await _secureStorage.setRememberMe(rememberMe);
       await _auth.signInWithOAuth(OAuthProvider.google);
       return const Right(null);
     } catch (e) {
@@ -105,8 +120,8 @@ class AuthRepositoryImpl implements AuthRepository {
       final response = await _auth.recoverSession(persistedSession);
       final session = response.session;
       if (session != null && session.refreshToken != null) {
-        await SecureStorageService.saveRefreshToken(session.refreshToken!);
-        await SecureStorageService.savePersistedSession(jsonEncode(session.toJson()));
+        await _secureStorage.saveRefreshToken(session.refreshToken!);
+        await _secureStorage.savePersistedSession(jsonEncode(session.toJson()));
       }
       return Right(response.user);
     } catch (e) {
@@ -118,17 +133,17 @@ class AuthRepositoryImpl implements AuthRepository {
   Future<Either<AuthFailure, void>> signOut() async {
     try {
       await _auth.signOut();
-      await SecureStorageService.purgeAuthData();
+      await _secureStorage.purgeAuthData();
       return const Right(null);
     } catch (e) {
-      await SecureStorageService.purgeAuthData();
+      await _secureStorage.purgeAuthData();
       return Left(_mapException(e));
     }
   }
 
   @override
   Future<void> clearPersistedSession() async {
-    await SecureStorageService.purgeAuthData();
+    await _secureStorage.purgeAuthData();
     // The Supabase client restores its own copy of the session at startup.
     // Signing out locally removes it; revoking it on the server may fail
     // offline, which does not matter here.

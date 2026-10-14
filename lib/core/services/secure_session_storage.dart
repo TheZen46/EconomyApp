@@ -22,12 +22,13 @@ class SecureSessionStorage extends LocalStorage {
 
   SecureSessionStorage({
     this.legacyPreferencesKey,
+    SecureStorageService? secureStorage,
     @visibleForTesting Future<String?> Function(String key)? read,
     @visibleForTesting Future<void> Function(String key, String value)? write,
     @visibleForTesting Future<void> Function(String key)? delete,
-  })  : _read = read ?? SecureStorageService.readSecret,
-        _write = write ?? SecureStorageService.writeSecret,
-        _delete = delete ?? SecureStorageService.deleteSecret;
+  })  : _read = read ?? (secureStorage ?? SecureStorageService()).readSecret,
+        _write = write ?? (secureStorage ?? SecureStorageService()).writeSecret,
+        _delete = delete ?? (secureStorage ?? SecureStorageService()).deleteSecret;
 
   @override
   Future<void> initialize() async {

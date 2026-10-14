@@ -64,15 +64,17 @@ class HiveMigrationService {
   /// into an encrypted box with [cipher].
   static Future<void> ensureBoxEncrypted(
     String boxName,
-    HiveCipher cipher,
-  ) async {
+    HiveCipher cipher, [
+    SecureStorageService? secureStorage,
+  ]) async {
+    final storage = secureStorage ?? SecureStorageService();
     if (Hive.isBoxOpen(boxName)) return;
 
     if (!await boxFilesExist([boxName])) return;
 
     final markerKey = 'migrated_enc_$boxName';
     try {
-      final alreadyMigrated = await SecureStorageService.readSecret(markerKey);
+      final alreadyMigrated = await storage.readSecret(markerKey);
       if (alreadyMigrated == 'true') return;
     } catch (_) {}
 
@@ -91,12 +93,12 @@ class HiveMigrationService {
       }
       await encBox.close();
 
-      await SecureStorageService.writeSecret(markerKey, 'true');
+      await storage.writeSecret(markerKey, 'true');
       debugPrint('HiveMigrationService: Successfully migrated "$boxName" from plaintext to AES cipher (${entries.length} entries).');
     } catch (e) {
       debugPrint('HiveMigrationService: Box "$boxName" was already encrypted or non-plaintext ($e).');
       try {
-        await SecureStorageService.writeSecret(markerKey, 'true');
+        await storage.writeSecret(markerKey, 'true');
       } catch (_) {}
     }
   }
@@ -114,9 +116,10 @@ class HiveMigrationService {
     HiveCipher? encryptionCipher,
     bool crashRecovery = false,
     bool migrateFromPlaintext = false,
+    SecureStorageService? secureStorage,
   }) async {
     if (encryptionCipher != null && migrateFromPlaintext) {
-      await ensureBoxEncrypted(boxName, encryptionCipher);
+      await ensureBoxEncrypted(boxName, encryptionCipher, secureStorage);
     }
 
     final completer = Completer<Box<T>>();

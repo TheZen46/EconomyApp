@@ -5,14 +5,11 @@ import 'package:hive/hive.dart';
 
 import '../../../../core/privacy/network_policy.dart';
 import '../../../../core/providers/supabase_providers.dart';
+import '../../../../core/providers/storage_providers.dart';
 import '../../../../core/sync/sync_coordinator.dart';
-import '../../../boxes/data/models/box_model.dart';
 import '../../../boxes/data/providers/boxes_provider.dart';
-import '../../../evault/data/models/asset_model.dart';
 import '../../../evault/presentation/providers/asset_provider.dart';
-import '../../../invoices/data/models/invoice_model.dart';
 import '../../../invoices/data/providers/invoices_provider.dart';
-import '../../../receipt_scanning/data/datasources/sync_service.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../../receipt_scanning/presentation/providers/receipt_provider.dart';
 import '../../data/datasources/remote_replica_data_source.dart';
@@ -27,27 +24,10 @@ final remoteReplicaDataSourceProvider = Provider<RemoteReplicaDataSource>((ref) 
 final syncEngineProvider = Provider<SyncEngine>((ref) {
   final remoteDataSource = ref.watch(remoteReplicaDataSourceProvider);
   final localDataSource = ref.watch(localDataSourceProvider);
-
-  SyncService? uploadSyncService;
-  try {
-    uploadSyncService = ref.watch(syncServiceProvider);
-  } catch (_) {}
-
-  // Optional box access
-  Box<AssetModel>? assetsBox;
-  try {
-    assetsBox = ref.watch(assetsBoxProvider);
-  } catch (_) {}
-
-  Box<BoxModel>? boxesBox;
-  try {
-    boxesBox = ref.watch(boxesHiveBoxProvider);
-  } catch (_) {}
-
-  Box<InvoiceModel>? invoicesBox;
-  try {
-    invoicesBox = ref.watch(invoicesHiveBoxProvider);
-  } catch (_) {}
+  final uploadSyncService = ref.watch(syncServiceNullableProvider);
+  final assetsBox = ref.watch(assetsBoxNullableProvider);
+  final boxesBox = ref.watch(boxesBoxNullableProvider);
+  final invoicesBox = ref.watch(invoicesBoxNullableProvider);
 
   final engine = SyncEngine(
     remoteDataSource: remoteDataSource,
@@ -58,11 +38,9 @@ final syncEngineProvider = Provider<SyncEngine>((ref) {
     uploadSyncService: uploadSyncService,
     coordinator: ref.watch(syncCoordinatorProvider),
     isCloudAllowed: () {
-      try {
-        return NetworkPolicy.isCloudAllowed(ref.read(settingsBoxProvider));
-      } catch (_) {
-        return true;
-      }
+      final settings = ref.read(settingsBoxNullableProvider);
+      if (settings == null) return true;
+      return NetworkPolicy.isCloudAllowed(settings);
     },
   );
 
@@ -98,11 +76,9 @@ Future<void> recordInitialSync(Box settingsBox, String userId) async {
 final initialSyncCompletedProvider = StateProvider<bool>((ref) {
   final userId = ref.watch(authProvider.select((s) => s.user?.id));
   if (userId == null) return false;
-  try {
-    return isInitialSyncRecorded(ref.watch(settingsBoxProvider), userId);
-  } catch (_) {
-    return false;
-  }
+  final settings = ref.watch(settingsBoxNullableProvider);
+  if (settings == null) return false;
+  return isInitialSyncRecorded(settings, userId);
 });
 
 /// State notifier managing UI progress state for synchronization.

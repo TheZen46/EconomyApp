@@ -24,6 +24,7 @@ class UniversalReceiptImage extends StatefulWidget {
   final BlendMode? colorBlendMode;
   final Widget Function(BuildContext, Object, StackTrace?)? errorBuilder;
   final Widget? placeholder;
+  final SupabaseClient? supabaseClient;
 
   const UniversalReceiptImage({
     super.key,
@@ -35,6 +36,7 @@ class UniversalReceiptImage extends StatefulWidget {
     this.colorBlendMode,
     this.errorBuilder,
     this.placeholder,
+    this.supabaseClient,
   });
 
   @override
@@ -146,11 +148,15 @@ class _UniversalReceiptImageState extends State<UniversalReceiptImage> {
 
   Future<String?> _resolveSupabaseUrl(String? path, String? receiptId) async {
     try {
-      final client = Supabase.instance.client;
-      String? currentUserId;
-      try {
-        currentUserId = client.auth.currentUser?.id;
-      } catch (_) {}
+      SupabaseClient? client = widget.supabaseClient;
+      if (client == null) {
+        try {
+          client = Supabase.instance.client;
+        } catch (_) {
+          return null;
+        }
+      }
+      final currentUserId = client.auth.currentUser?.id;
 
       // Case A: Storage relative path provided
       if (path != null && path.isNotEmpty) {

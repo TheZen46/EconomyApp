@@ -248,20 +248,9 @@ class BoxesNotifier extends StateNotifier<List<BoxModel>> {
 /// - `outboxServiceProvider`: Offline CRDT outbox queue.
 /// - `hiveBoxProvider`: Receipts Hive box for reassigning deleted boxes.
 final boxesProvider = StateNotifierProvider<BoxesNotifier, List<BoxModel>>((ref) {
-  Box<BoxModel>? box;
-  try {
-    box = ref.watch(boxesHiveBoxProvider);
-  } catch (_) {}
-
-  OutboxService? outbox;
-  try {
-    outbox = ref.watch(outboxServiceProvider);
-  } catch (_) {}
-
-  Box<ReceiptModel>? receipts;
-  try {
-    receipts = ref.watch(hiveBoxProvider);
-  } catch (_) {}
+  final box = ref.watch(boxesBoxNullableProvider);
+  final outbox = ref.watch(outboxServiceNullableProvider);
+  final receipts = ref.watch(receiptsBoxNullableProvider);
 
   return BoxesNotifier(box, ref, outbox, receipts);
 });

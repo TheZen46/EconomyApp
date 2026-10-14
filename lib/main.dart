@@ -86,14 +86,15 @@ void main() async {
   // A missing key with existing encrypted files means the data can no longer be
   // decrypted; say so instead of silently generating a new key.
   final HiveAesCipher cipher;
+  final secureStorage = SecureStorageService();
   try {
-    if (!await SecureStorageService.hasHiveEncryptionKey() &&
+    if (!await secureStorage.hasHiveEncryptionKey() &&
         await HiveMigrationService.boxFilesExist(_encryptedBoxNames)) {
       debugPrint('FATAL Hive encryption key missing for existing encrypted boxes');
       runApp(DataRecoveryApp(recovery: StartupRecovery.encryptionKeyLost(_encryptedBoxNames)));
       return;
     }
-    cipher = HiveAesCipher(await SecureStorageService.getHiveEncryptionKey());
+    cipher = HiveAesCipher(await secureStorage.getHiveEncryptionKey());
   } catch (e) {
     debugPrint('FATAL Secure storage unavailable: $e');
     runApp(DataRecoveryApp(recovery: StartupRecovery.secureStorageUnavailable(e)));
@@ -183,7 +184,7 @@ void main() async {
   }
 
   // ── 6. Migrate plaintext secrets to secure storage ─────────────────────
-  await _migrateSecretsToSecureStorage(settingsBox);
+  await _migrateSecretsToSecureStorage(settingsBox, secureStorage);
 
   // ── 6. Launch the app ──────────────────────────────────────────────────
   runApp(
@@ -208,14 +209,14 @@ void main() async {
 /// earlier versions) into flutter_secure_storage, then deletes them from Hive.
 /// Secure storage is the only location these keys are read from, so the
 /// routine is a no-op once nothing is left to move.
-Future<void> _migrateSecretsToSecureStorage(Box settingsBox) async {
+Future<void> _migrateSecretsToSecureStorage(Box settingsBox, SecureStorageService secureStorage) async {
   const keysToMigrate = ['gemini_api_key', 'webhook_secret', 'webhook_url'];
 
   for (final key in keysToMigrate) {
     final plainValue = settingsBox.get(key);
     if (plainValue != null && plainValue is String && plainValue.isNotEmpty) {
       debugPrint('Migrating secret "$key" from Hive to secure storage...');
-      await SecureStorageService.writeSecret(key, plainValue);
+      await secureStorage.writeSecret(key, plainValue);
       await settingsBox.delete(key);
     }
   }

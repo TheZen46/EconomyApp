@@ -1617,7 +1617,7 @@ class _SettingsPanelWidgetState extends ConsumerState<SettingsPanelWidget> {
             TextButton(
               onPressed: () async {
                 // Write to secure storage (keychain), NOT Hive
-                await SecureStorageService.writeSecret(
+                await ref.read(secureStorageProvider).writeSecret(
                   SecretKeys.geminiApiKey, ctrl.text.trim());
                 // Invalidate the provider so aiServiceProvider picks up the new key
                 ref.invalidate(geminiApiKeyProvider);
@@ -1695,8 +1695,9 @@ class _SettingsPanelWidgetState extends ConsumerState<SettingsPanelWidget> {
 
   Future<void> _archiveData() async {
     setState(() => _isUploading = true);
+    final driveService = ref.read(googleDriveServiceProvider);
     try {
-      await googleDriveService.archiveAllData();
+      await driveService.archiveAllData();
       if (mounted) {
         ScaffoldMessenger.of(context)
             .showSnackBar(const SnackBar(content: Text('Backup successful!')));
@@ -1705,7 +1706,7 @@ class _SettingsPanelWidgetState extends ConsumerState<SettingsPanelWidget> {
       if (mounted) {
         ErrorHandler.showErrorSnackBar(
           context: context,
-          error: googleDriveService.lastError ?? e,
+          error: driveService.lastError ?? e,
           actionLabel: 'Retry',
           onAction: _archiveData,
         );

@@ -11,18 +11,20 @@ import '../../../../core/utils/error_handler.dart';
 class WebhookService {
   final Box settingsBox;
   final Dio _dio;
+  final SecureStorageService _secureStorage;
 
-  WebhookService(this.settingsBox, [Dio? dio])
+  WebhookService(this.settingsBox, [Dio? dio, SecureStorageService? secureStorage])
       : _dio = dio ??
             Dio(BaseOptions(
               connectTimeout: const Duration(seconds: 10),
               sendTimeout: const Duration(seconds: 10),
-            ));
+            )),
+        _secureStorage = secureStorage ?? SecureStorageService();
 
   /// The endpoint is kept in secure storage, like the shared secret, because
   /// webhook URLs commonly embed access tokens.
   Future<String> _configuredUrl() async {
-    return (await SecureStorageService.readSecret(SecretKeys.webhookUrl))?.trim() ?? '';
+    return (await _secureStorage.readSecret(SecretKeys.webhookUrl))?.trim() ?? '';
   }
 
   Future<void> sendWebhook(Receipt receipt) async {
@@ -37,7 +39,7 @@ class WebhookService {
     if (url.isEmpty) return;
 
     // Read secret from secure storage, not Hive
-    final secret = await SecureStorageService.readSecret(SecretKeys.webhookSecret) ?? '';
+    final secret = await _secureStorage.readSecret(SecretKeys.webhookSecret) ?? '';
 
     final options = Options(
       headers: {
@@ -73,7 +75,7 @@ class WebhookService {
     }
 
     // Read secret from secure storage, not Hive
-    final secret = await SecureStorageService.readSecret(SecretKeys.webhookSecret) ?? '';
+    final secret = await _secureStorage.readSecret(SecretKeys.webhookSecret) ?? '';
 
     final options = Options(
       headers: {

@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/services/llm_service.dart';
+import '../../../../core/services/telemetry_service.dart';
 
 /// Singleton instance of the legacy on-device [LLMService].
 ///
@@ -12,9 +13,10 @@ final llmServiceProvider = Provider<LLMService>((ref) {
 /// Singleton instance of the next-generation native [VlmEngineService] for on-device multimodal OCR.
 ///
 /// **Lifetime:** App-scoped singleton.
-/// **Dependencies:** None.
+/// **Dependencies:** `telemetryServiceProvider`.
 final vlmEngineServiceProvider = Provider<VlmEngineService>((ref) {
-  return VlmEngineService();
+  final telemetry = ref.watch(telemetryServiceProvider);
+  return VlmEngineService(telemetryService: telemetry);
 });
 
 /// Service managing anonymized user-contributed dataset samples for OCR model fine-tuning.

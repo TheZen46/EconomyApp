@@ -4,26 +4,32 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:hive/hive.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-/// Centralized service for all sensitive data operations.
-/// Uses the platform keychain/keystore via flutter_secure_storage.
+/// Centralized instance service for all sensitive data operations.
+/// Uses the platform keychain/keystore via [FlutterSecureStorage].
 class SecureStorageService {
   static const _hiveEncryptionKeyName = 'taidy_hive_encryption_key';
-  static const FlutterSecureStorage _storage = FlutterSecureStorage(
-    aOptions: AndroidOptions(encryptedSharedPreferences: true),
-    iOptions: IOSOptions(accessibility: KeychainAccessibility.first_unlock_this_device),
-  );
+  static const _sqliteEncryptionKeyName = 'taidy_sqlite_encryption_key';
+
+  final FlutterSecureStorage _storage;
+
+  SecureStorageService([FlutterSecureStorage? storage])
+      : _storage = storage ??
+            const FlutterSecureStorage(
+              aOptions: AndroidOptions(encryptedSharedPreferences: true),
+              iOptions: IOSOptions(accessibility: KeychainAccessibility.first_unlock_this_device),
+            );
 
   // ── Hive Encryption Key ─────────────────────────────────────────────────
 
   /// Whether a Hive encryption key is stored. Throws if secure storage itself
   /// cannot be read.
-  static Future<bool> hasHiveEncryptionKey() async {
+  Future<bool> hasHiveEncryptionKey() async {
     return await _storage.read(key: _hiveEncryptionKeyName) != null;
   }
 
   /// Returns a 256-bit encryption key for HiveAesCipher.
   /// Generates and persists one on first call.
-  static Future<Uint8List> getHiveEncryptionKey() async {
+  Future<Uint8List> getHiveEncryptionKey() async {
     final existing = await _storage.read(key: _hiveEncryptionKeyName);
     if (existing != null) {
       return base64Url.decode(existing);
@@ -36,11 +42,9 @@ class SecureStorageService {
     return Uint8List.fromList(key);
   }
 
-  static const _sqliteEncryptionKeyName = 'taidy_sqlite_encryption_key';
-
   /// Returns a 256-bit hexadecimal encryption key for SQLCipher/SQLite.
   /// Generates and persists one on first call.
-  static Future<String> getSqliteEncryptionKey() async {
+  Future<String> getSqliteEncryptionKey() async {
     final existing = await _storage.read(key: _sqliteEncryptionKeyName);
     if (existing != null && existing.isNotEmpty) {
       return existing;
@@ -55,22 +59,22 @@ class SecureStorageService {
   // ── Secret String Operations ────────────────────────────────────────────
 
   /// Read a secret value (API key, webhook secret, etc.).
-  static Future<String?> readSecret(String key) async {
+  Future<String?> readSecret(String key) async {
     return await _storage.read(key: key);
   }
 
   /// Write a secret value to the platform keychain.
-  static Future<void> writeSecret(String key, String value) async {
+  Future<void> writeSecret(String key, String value) async {
     await _storage.write(key: key, value: value);
   }
 
   /// Delete a secret.
-  static Future<void> deleteSecret(String key) async {
+  Future<void> deleteSecret(String key) async {
     await _storage.delete(key: key);
   }
 
   /// Check if a secret exists.
-  static Future<bool> hasSecret(String key) async {
+  Future<bool> hasSecret(String key) async {
     final val = await _storage.read(key: key);
     return val != null && val.isNotEmpty;
   }
@@ -78,55 +82,55 @@ class SecureStorageService {
   // ── Session & Auth Persistence ──────────────────────────────────────────
 
   /// Store the Supabase refresh token in secure storage.
-  static Future<void> saveRefreshToken(String token) async {
+  Future<void> saveRefreshToken(String token) async {
     await writeSecret(SecretKeys.supabaseRefreshToken, token);
   }
 
   /// Retrieve the stored Supabase refresh token.
-  static Future<String?> getRefreshToken() async {
+  Future<String?> getRefreshToken() async {
     return await readSecret(SecretKeys.supabaseRefreshToken);
   }
 
   /// Delete the stored Supabase refresh token.
-  static Future<void> deleteRefreshToken() async {
+  Future<void> deleteRefreshToken() async {
     await deleteSecret(SecretKeys.supabaseRefreshToken);
   }
 
   /// Store the serialized Supabase session string.
-  static Future<void> savePersistedSession(String sessionJson) async {
+  Future<void> savePersistedSession(String sessionJson) async {
     await writeSecret(SecretKeys.supabasePersistedSession, sessionJson);
   }
 
   /// Retrieve the persisted Supabase session string.
-  static Future<String?> getPersistedSession() async {
+  Future<String?> getPersistedSession() async {
     return await readSecret(SecretKeys.supabasePersistedSession);
   }
 
   /// Delete the persisted Supabase session string.
-  static Future<void> deletePersistedSession() async {
+  Future<void> deletePersistedSession() async {
     await deleteSecret(SecretKeys.supabasePersistedSession);
   }
 
   /// Record "Remember me" preference.
-  static Future<void> setRememberMe(bool enabled) async {
+  Future<void> setRememberMe(bool enabled) async {
     await writeSecret(SecretKeys.rememberMe, enabled.toString());
   }
 
   /// Check whether "Remember me" is active. Defaults to true if unset.
-  static Future<bool> getRememberMe() async {
+  Future<bool> getRememberMe() async {
     final val = await readSecret(SecretKeys.rememberMe);
     if (val == null) return true;
     return val == 'true';
   }
 
   /// Purge all authentication and session data from secure storage.
-  static Future<void> purgeAuthData() async {
+  Future<void> purgeAuthData() async {
     await deleteRefreshToken();
     await deletePersistedSession();
   }
 
   /// Clear all secrets (nuclear option for clear-all-data).
-  static Future<void> clearAll() async {
+  Future<void> clearAll() async {
     await _storage.deleteAll();
     debugPrint('SecureStorage: All secrets cleared.');
   }

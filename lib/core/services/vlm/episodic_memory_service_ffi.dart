@@ -60,6 +60,7 @@ class EpisodicMemoryService {
   Database? _db;
   bool _initialized = false;
   File? _hnswFile;
+  final SecureStorageService _secureStorage;
   final HNSWIndex _hnswIndex = HNSWIndex(
     dim: 128,
     m: 16,
@@ -73,6 +74,9 @@ class EpisodicMemoryService {
   bool _cacheLoaded = false;
 
   bool get isInitialized => _initialized;
+
+  EpisodicMemoryService({SecureStorageService? secureStorage})
+      : _secureStorage = secureStorage ?? SecureStorageService();
   HNSWIndex get hnswIndex => _hnswIndex;
 
   Future<void> initialize({
@@ -104,7 +108,7 @@ class EpisodicMemoryService {
         _hnswFile = File('${dbDir.path}/hnsw_rag.bin');
 
         try {
-          final key = encryptionKey ?? await SecureStorageService.getSqliteEncryptionKey();
+          final key = encryptionKey ?? await _secureStorage.getSqliteEncryptionKey();
           _db!.execute("PRAGMA key = '$key';");
         } catch (e) {
           debugPrint('EpisodicMemoryService: SQLite PRAGMA key notice: $e');

@@ -1,16 +1,21 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:hive/hive.dart';
 import 'outbox_service.dart';
 import 'sync_coordinator.dart';
 import 'sync_manager.dart';
 import '../providers/supabase_providers.dart';
 import '../providers/storage_providers.dart';
-import '../../features/receipt_scanning/data/models/receipt_model.dart';
-import '../../features/boxes/data/models/box_model.dart';
-import '../../features/invoices/data/models/invoice_model.dart';
-import '../../features/evault/data/models/asset_model.dart';
 
 export '../providers/storage_providers.dart' show outboxHiveBoxProvider;
+
+/// Optional service responsible for queueing, executing, and deduplicating offline mutations.
+///
+/// **Lifetime:** App-scoped singleton.
+/// Returns null if [outboxHiveBoxNullableProvider] is null.
+final outboxServiceNullableProvider = Provider<OutboxService?>((ref) {
+  final box = ref.watch(outboxHiveBoxNullableProvider);
+  if (box == null) return null;
+  return OutboxService(box);
+});
 
 /// Service responsible for queueing, executing, and deduplicating offline mutations.
 ///
@@ -39,42 +44,13 @@ final syncManagerProvider = Provider<SyncManager?>((ref) {
   final client = ref.watch(supabaseClientProvider);
   if (client == null) return null;
 
-  OutboxService outbox;
-  try {
-    outbox = ref.watch(outboxServiceProvider);
-  } catch (_) {
-    return null;
-  }
-
-  Box<ReceiptModel>? receipts;
-  try {
-    receipts = ref.watch(hiveBoxProvider);
-  } catch (_) {}
-
-  Box<BoxModel>? boxes;
-  try {
-    boxes = ref.watch(boxesHiveBoxProvider);
-  } catch (_) {}
-
-  Box<InvoiceModel>? invoices;
-  try {
-    invoices = ref.watch(invoicesHiveBoxProvider);
-  } catch (_) {}
-
-  Box<AssetModel>? assets;
-  try {
-    assets = ref.watch(assetsBoxProvider);
-  } catch (_) {}
-
-  Box? settings;
-  try {
-    settings = ref.watch(settingsBoxProvider);
-  } catch (_) {}
-
-  if (receipts == null || boxes == null || invoices == null || assets == null || settings == null) {
-    return null;
-  }
-
+  // Supabase is configured; all required dependencies for bidirectional sync must be present.
+  final outbox = ref.watch(outboxServiceProvider);
+  final receipts = ref.watch(hiveBoxProvider);
+  final boxes = ref.watch(boxesHiveBoxProvider);
+  final invoices = ref.watch(invoicesHiveBoxProvider);
+  final assets = ref.watch(assetsBoxProvider);
+  final settings = ref.watch(settingsBoxProvider);
   final coordinator = ref.watch(syncCoordinatorProvider);
 
   final manager = SyncManager(
@@ -96,10 +72,13 @@ final syncManagerProvider = Provider<SyncManager?>((ref) {
 /// updating reactively whenever the local outbox Hive box changes.
 ///
 /// **Lifetime:** Auto-updating stream provider.
-/// **Dependencies:** `outboxHiveBoxProvider`.
-/// **Override:** Inherits from [outboxHiveBoxProvider].
+/// **Dependencies:** `outboxHiveBoxNullableProvider`.
 final deadLetteredMutationCountProvider = StreamProvider<int>((ref) async* {
-  final box = ref.watch(outboxHiveBoxProvider);
+  final box = ref.watch(outboxHiveBoxNullableProvider);
+  if (box == null) {
+    yield 0;
+    return;
+  }
   int count() => box.values.where((item) => item.status == 'permanently_failed').length;
   yield count();
   yield* box.watch().map((_) => count());

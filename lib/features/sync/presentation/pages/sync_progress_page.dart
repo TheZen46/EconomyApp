@@ -3,10 +3,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:go_router/go_router.dart';
 import 'package:flutter_animate/flutter_animate.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../../core/routes/app_router.dart';
 import '../../../../core/theme/app_theme.dart';
+import '../../../../core/providers/supabase_providers.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../domain/entities/sync_progress_state.dart';
 import '../providers/sync_provider.dart';
@@ -34,9 +34,7 @@ class _SyncProgressPageState extends ConsumerState<SyncProgressPage> {
     final authState = ref.read(authProvider);
     String userId = authState.user?.id ?? '';
     if (userId.isEmpty) {
-      try {
-        userId = Supabase.instance.client.auth.currentUser?.id ?? '';
-      } catch (_) {}
+      userId = ref.read(supabaseClientProvider)?.auth.currentUser?.id ?? '';
     }
 
     if (userId.isNotEmpty) {
@@ -83,9 +81,7 @@ class _SyncProgressPageState extends ConsumerState<SyncProgressPage> {
     final authState = ref.watch(authProvider);
     String userId = authState.user?.id ?? '';
     if (userId.isEmpty) {
-      try {
-        userId = Supabase.instance.client.auth.currentUser?.id ?? '';
-      } catch (_) {}
+      userId = ref.watch(supabaseClientProvider)?.auth.currentUser?.id ?? '';
     }
 
     // Auto-navigate after a brief completion confirmation
