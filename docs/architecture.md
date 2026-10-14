@@ -173,8 +173,7 @@ Design rationale:
 - **Recovery shell instead of reset.** A failed box open produces a dedicated `MaterialApp`
   (`_DataRecoveryApp`) rather than deleting data, because Hive's default recovery truncates unreadable
   frames. The current recovery path cannot complete (`TAIDY-H07`, issue #12).
-- **Fallback configuration.** Loading `.env.example` when `.env` is absent allows CI and first-time
-  builds to start; it also bundles configuration into the binary (`TAIDY-M14`, issue #36).
+- **Configuration isolation.** Public configuration is supplied via `--dart-define` / `--dart-define-from-file`; placeholder URLs and keys are validated and rejected, and `.env` is omitted from bundled assets (`TAIDY-M14`, issue #36).
 
 ## 4. State Management and Dependency Injection
 

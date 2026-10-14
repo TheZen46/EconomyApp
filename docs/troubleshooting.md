@@ -192,44 +192,27 @@ file was found for the asset `.env`.
 `.gitignore`, so a fresh clone does not contain it, and Flutter refuses to build with a declared asset
 that does not exist.
 
-**Resolution.** Create the file from the tracked template before building:
+**Resolution.** Provide public configuration at build or run time via `--dart-define` or `--dart-define-from-file`:
 
 ```bash
-cp .env.example .env
+flutter run --dart-define=SUPABASE_URL=https://<project-ref>.supabase.co --dart-define=SUPABASE_ANON_KEY=<anon key>
 ```
 
-Then set the values described in Section 3.2. The CI workflows (`ci.yml`, `gh-pages.yml`) perform the
-same copy step. At runtime, `main.dart` loads `.env` and falls back to `.env.example` if loading fails.
-
-Every key in `.env` is copied verbatim into the application bundle (APK assets, IPA, web output) and
-can be extracted from a distributed build (`TAIDY-M14`, issue #36). Only values that are public by
-design may be placed there: the Supabase project URL and the anon key. Never place the Supabase
-`service_role` key or OAuth client secrets in `.env`.
+Alternatively, local development may place a `.env` in the project root. `.env` is excluded from Flutter assets to prevent embedding secrets into distributed binaries (`TAIDY-M14`, issue #36). Only public values (Supabase URL, anon key) should ever be supplied; never place server-side secrets or OAuth client secrets in client builds.
 
 ### 3.2 Supabase credentials are absent or placeholders
 
-**Symptom.** Sign-in fails with a network error that mentions `placeholder.supabase.co` or a host
-lookup failure; or the application shows errors on first use of any cloud feature after logging
-`Warning: Supabase initialization deferred/offline mode`.
+**Symptom.** The application runs in local-only / offline mode with console notice:
+`Notice: Supabase credentials unconfigured or template placeholders; running in offline/local-only mode.`
 
-**Root cause.** `main.dart` reads `SUPABASE_URL` and `SUPABASE_ANON_KEY` from the loaded environment and
-substitutes `https://placeholder.supabase.co` and `placeholder-anon-key` when either is missing.
-`Supabase.initialize` succeeds with the placeholder values, and every request then fails DNS
-resolution. If `Supabase.initialize` itself throws (for example, a malformed URL), the error is logged
-and startup continues, but `supabaseDataSourceProvider`, `modelRepositoryProvider`,
-`remoteReplicaDataSourceProvider` and `AuthRepositoryImpl` read `Supabase.instance.client` without a
-guard and fail on first use (`TAIDY-M05`, issue #27).
+**Root cause.** `main.dart` validates `isValidSupabaseUrl` and `isValidSupabaseAnonKey`. When credentials are empty or contain placeholder templates (e.g. `placeholder.supabase.co`, `your-project.supabase.co`, `placeholder-anon-key`), initialization is bypassed, running the app safely in offline mode rather than failing with network/DNS errors (`TAIDY-M14`, issue #36).
 
-**Diagnosis.** Search the console for the two warnings above. Confirm the values in the bundled `.env`.
-
-**Resolution.** Set both keys in `.env`:
+**Resolution.** Supply valid credentials via `--dart-define` or `--dart-define-from-file`:
 
 ```
 SUPABASE_URL=https://<project-ref>.supabase.co
 SUPABASE_ANON_KEY=<anon public key from Project Settings, API>
 ```
-
-Rebuild the application; `.env` is an asset, so a hot restart does not pick up changes.
 
 ### 3.3 Variables in `.env.example` that have no effect
 

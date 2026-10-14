@@ -72,15 +72,30 @@ class GoogleDriveService {
   /// Windows Authentication using googleapis_auth (Loopback/Manual)
   Future<bool> _authenticateWindows() async {
     try {
-      debugPrint('Google Drive (Windows): Loading credentials from .env...');
-      final clientId = dotenv.env['GOOGLE_CLIENT_ID'];
-      final clientSecret = dotenv.env['GOOGLE_CLIENT_SECRET'];
+      debugPrint('Google Drive (Windows): Loading credentials...');
+      const defineClientId = String.fromEnvironment('GOOGLE_CLIENT_ID');
+      final rawClientId = defineClientId.isNotEmpty ? defineClientId : dotenv.env['GOOGLE_CLIENT_ID'];
 
-      if (clientId == null || clientId.isEmpty) {
-        lastError = 'No GOOGLE_CLIENT_ID found in .env';
+      if (rawClientId == null ||
+          rawClientId.trim().isEmpty ||
+          rawClientId.contains('your-client-id') ||
+          rawClientId.contains('your-google-client-id') ||
+          rawClientId.startsWith('your-')) {
+        lastError = 'No valid GOOGLE_CLIENT_ID configured (pass via --dart-define=GOOGLE_CLIENT_ID=... or .env).';
         debugPrint(lastError);
         return false;
       }
+      final clientId = rawClientId.trim();
+
+      // Desktop clients are public OAuth 2.0 clients; secrets should not be bundled in distributed binaries.
+      const defineClientSecret = String.fromEnvironment('GOOGLE_CLIENT_SECRET');
+      final rawSecret = defineClientSecret.isNotEmpty ? defineClientSecret : dotenv.env['GOOGLE_CLIENT_SECRET'];
+      final clientSecret = (rawSecret != null &&
+              rawSecret.trim().isNotEmpty &&
+              !rawSecret.contains('your-') &&
+              !rawSecret.contains('placeholder'))
+          ? rawSecret.trim()
+          : null;
 
       debugPrint('Google Drive (Windows): Using Client ID $clientId');
       final id = ClientId(clientId, clientSecret);
@@ -99,7 +114,7 @@ class GoogleDriveService {
       return true;
 
     } catch (e) {
-      lastError = 'Windows Auth Error: $e\nEnsure GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET are set in .env';
+      lastError = 'Windows Auth Error: $e\nEnsure valid GOOGLE_CLIENT_ID is provided via --dart-define or .env';
       debugPrint(lastError);
       return false;
     }

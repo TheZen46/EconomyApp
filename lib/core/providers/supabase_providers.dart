@@ -30,8 +30,38 @@ final SupabaseClient offlineSupabaseClient = SupabaseClient(
 );
 
 /// Whether [url] can be passed to `Supabase.initialize`: an absolute http(s)
-/// URL with a host.
+/// URL with a host, excluding placeholder or template hosts.
 bool isValidSupabaseUrl(String url) {
-  final uri = Uri.tryParse(url.trim());
-  return uri != null && (uri.scheme == 'https' || uri.scheme == 'http') && uri.host.isNotEmpty;
+  final trimmed = url.trim();
+  if (trimmed.isEmpty) return false;
+  final uri = Uri.tryParse(trimmed);
+  if (uri == null || (uri.scheme != 'https' && uri.scheme != 'http') || uri.host.isEmpty) {
+    return false;
+  }
+  final host = uri.host.toLowerCase();
+  if (host == 'placeholder.supabase.co' ||
+      host == 'your-project.supabase.co' ||
+      host.contains('placeholder') ||
+      host.startsWith('your-')) {
+    return false;
+  }
+  return true;
+}
+
+/// Whether [key] is a non-empty, non-placeholder Supabase anonymous API key.
+bool isValidSupabaseAnonKey(String key) {
+  final trimmed = key.trim();
+  if (trimmed.isEmpty) return false;
+  if (trimmed == 'placeholder-anon-key' ||
+      trimmed.contains('placeholder') ||
+      trimmed.endsWith('...') ||
+      trimmed.startsWith('your-')) {
+    return false;
+  }
+  // Standard Supabase anon keys are JWTs with 3 segments
+  final parts = trimmed.split('.');
+  if (parts.length != 3) {
+    return false;
+  }
+  return true;
 }

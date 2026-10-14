@@ -52,15 +52,15 @@ void main() async {
 
   final supabaseUrl = defineSupabaseUrl.isNotEmpty
       ? defineSupabaseUrl
-      : (dotenv.env['SUPABASE_URL'] ?? 'https://placeholder.supabase.co');
+      : (dotenv.env['SUPABASE_URL'] ?? '');
   final supabaseAnonKey = defineSupabaseAnonKey.isNotEmpty
       ? defineSupabaseAnonKey
-      : (dotenv.env['SUPABASE_ANON_KEY'] ?? 'placeholder-anon-key');
+      : (dotenv.env['SUPABASE_ANON_KEY'] ?? '');
 
   // ── 2. Initialize Supabase with env-sourced credentials ────────────────
   // Without an initialized client, supabaseClientProvider is null and the app
-  // runs local-only.
-  if (isValidSupabaseUrl(supabaseUrl)) {
+  // runs local-only. Placeholders and invalid formats are treated as unconfigured.
+  if (isValidSupabaseUrl(supabaseUrl) && isValidSupabaseAnonKey(supabaseAnonKey)) {
     try {
       await Supabase.initialize(
         url: supabaseUrl,
@@ -76,7 +76,7 @@ void main() async {
       debugPrint('Warning: Supabase initialization failed, running local-only: $e');
     }
   } else {
-    debugPrint('Warning: SUPABASE_URL is not a valid http(s) URL, running local-only.');
+    debugPrint('Notice: Supabase credentials unconfigured or template placeholders; running in offline/local-only mode.');
   }
 
   // ── 3. Initialize Hive with AES encryption ─────────────────────────────
