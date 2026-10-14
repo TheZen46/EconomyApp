@@ -5,6 +5,7 @@ import 'package:dartz/dartz.dart';
 import 'package:supabase_flutter/supabase_flutter.dart' hide AuthState;
 import 'package:supabase_flutter/supabase_flutter.dart' as supabase show AuthState;
 import 'package:t_aidy/core/error/failures.dart';
+import 'package:t_aidy/core/services/secure_storage_service.dart';
 import 'package:t_aidy/features/auth/domain/repositories/auth_repository.dart';
 import 'package:t_aidy/features/auth/presentation/providers/auth_provider.dart';
 
@@ -208,6 +209,25 @@ void main() {
       mockRepo.user = null;
       await notifier.signOut();
       expect(notifier.state.status, AuthStatus.unauthenticated);
+    });
+
+    test('continueOffline sets user to offlineUser and persists offline session', () async {
+      await notifier.continueOffline();
+
+      expect(notifier.state.status, AuthStatus.authenticated);
+      expect(notifier.state.user?.id, 'local-user');
+      expect(notifier.state.isAuthenticated, isTrue);
+      expect(mockStorage[SecretKeys.offlineSession], 'true');
+    });
+
+    test('signOut removes offline session and resets state', () async {
+      await notifier.continueOffline();
+      expect(notifier.state.isAuthenticated, isTrue);
+
+      await notifier.signOut();
+      expect(notifier.state.status, AuthStatus.unauthenticated);
+      expect(notifier.state.user, isNull);
+      expect(mockStorage[SecretKeys.offlineSession], isNull);
     });
 
     test('dispose cancels the auth-state subscription', () async {

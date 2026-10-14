@@ -116,6 +116,7 @@ class _LoginFormState extends ConsumerState<LoginForm> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+
             // -- Mode toggle (Sign In / Sign Up) -----------------------
             Row(
               children: [
@@ -277,6 +278,50 @@ class _LoginFormState extends ConsumerState<LoginForm> {
                           fontWeight: FontWeight.w500,
                         ),
                       ),
+              ),
+            ),
+
+            const SizedBox(height: 16),
+
+            // -- Divider / Offline Mode Option ------------------------
+            Row(
+              children: [
+                Expanded(child: Divider(color: border)),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  child: Text(
+                    'OR',
+                    style: GoogleFonts.spaceGrotesk(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w500,
+                      color: muted,
+                    ),
+                  ),
+                ),
+                Expanded(child: Divider(color: border)),
+              ],
+            ),
+            const SizedBox(height: 16),
+
+            SizedBox(
+              height: 48,
+              child: OutlinedButton.icon(
+                onPressed: authState.isLoading
+                    ? null
+                    : () => ref.read(authProvider.notifier).continueOffline(),
+                icon: const Icon(Icons.cloud_off_outlined, size: 18),
+                label: Text(
+                  'Continue in Offline Mode',
+                  style: GoogleFonts.spaceGrotesk(
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                style: OutlinedButton.styleFrom(
+                  side: BorderSide(color: border),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
               ),
             ),
           ],

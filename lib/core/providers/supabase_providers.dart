@@ -20,6 +20,11 @@ final supabaseClientOrOfflineProvider = Provider<SupabaseClient>((ref) {
   return ref.watch(supabaseClientProvider) ?? offlineSupabaseClient;
 });
 
+/// Whether the application has an active, configured Supabase backend.
+final isSupabaseConfiguredProvider = Provider<bool>((ref) {
+  return ref.watch(supabaseClientProvider) != null;
+});
+
 /// A client for a host that never resolves (RFC 2606 reserves `.invalid`),
 /// with token refresh disabled. Every request fails with a network error,
 /// which the data sources already handle as being offline.

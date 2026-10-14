@@ -9,6 +9,7 @@ import '../../domain/repositories/auth_repository.dart';
 class AuthRepositoryImpl implements AuthRepository {
   final GoTrueClient _auth;
   final SecureStorageService _secureStorage;
+  final bool _isOffline;
 
   static SupabaseClient _resolveDefaultClient() {
     try {
@@ -22,7 +23,10 @@ class AuthRepositoryImpl implements AuthRepository {
     SupabaseClient? client,
     GoTrueClient? authClient,
     SecureStorageService? secureStorage,
-  })  : _auth = authClient ??
+  })  : _isOffline = (client == offlineSupabaseClient) ||
+            (authClient == offlineSupabaseClient.auth) ||
+            (client == null && authClient == null && _resolveDefaultClient() == offlineSupabaseClient),
+        _auth = authClient ??
             (client != null ? client.auth : _resolveDefaultClient().auth),
         _secureStorage = secureStorage ?? SecureStorageService();
 
@@ -41,6 +45,13 @@ class AuthRepositoryImpl implements AuthRepository {
     String password, {
     bool rememberMe = true,
   }) async {
+    if (_isOffline) {
+      return const Left(
+        NetworkFailure(
+          'Cloud authentication is unavailable in offline mode. Please configure SUPABASE_URL or continue in offline mode.',
+        ),
+      );
+    }
     try {
       final response = await _auth.signInWithPassword(
         email: email,
@@ -75,6 +86,13 @@ class AuthRepositoryImpl implements AuthRepository {
     String password, {
     bool rememberMe = true,
   }) async {
+    if (_isOffline) {
+      return const Left(
+        NetworkFailure(
+          'Cloud authentication is unavailable in offline mode. Please configure SUPABASE_URL or continue in offline mode.',
+        ),
+      );
+    }
     try {
       final response = await _auth.signUp(
         email: email,
@@ -154,6 +172,13 @@ class AuthRepositoryImpl implements AuthRepository {
 
   @override
   Future<Either<AuthFailure, void>> resetPassword(String email) async {
+    if (_isOffline) {
+      return const Left(
+        NetworkFailure(
+          'Cloud authentication is unavailable in offline mode. Please configure SUPABASE_URL or continue in offline mode.',
+        ),
+      );
+    }
     try {
       await _auth.resetPasswordForEmail(email);
       return const Right(null);
@@ -190,7 +215,8 @@ class AuthRepositoryImpl implements AuthRepository {
           msg.contains('connection') ||
           msg.contains('socket') ||
           msg.contains('timeout') ||
-          msg.contains('failed host lookup')) {
+          msg.contains('failed host lookup') ||
+          msg.contains('failed to fetch')) {
         return NetworkFailure(error.message);
       }
 
@@ -198,11 +224,18 @@ class AuthRepositoryImpl implements AuthRepository {
     }
 
     final str = error.toString().toLowerCase();
+    if (str.contains('offline.invalid')) {
+      return const NetworkFailure(
+        'Cloud authentication is unavailable in offline mode. Please configure SUPABASE_URL or continue in offline mode.',
+      );
+    }
     if (str.contains('socket') ||
         str.contains('network') ||
         str.contains('connection') ||
-        str.contains('failed host lookup')) {
-      return const NetworkFailure('Network error. Please check your connection.');
+        str.contains('failed host lookup') ||
+        str.contains('failed to fetch') ||
+        str.contains('clientexception')) {
+      return const NetworkFailure('Network connection error. Please check your connection or continue in offline mode.');
     }
 
     return InvalidCredentialsFailure(error.toString());

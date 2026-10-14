@@ -76,6 +76,7 @@ Future<void> recordInitialSync(Box settingsBox, String userId) async {
 final initialSyncCompletedProvider = StateProvider<bool>((ref) {
   final userId = ref.watch(authProvider.select((s) => s.user?.id));
   if (userId == null) return false;
+  if (userId == 'local-user') return true;
   final settings = ref.watch(settingsBoxNullableProvider);
   if (settings == null) return false;
   return isInitialSyncRecorded(settings, userId);

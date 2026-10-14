@@ -11,6 +11,7 @@ class FakeAuthNotifier extends StateNotifier<AppAuthState> implements AuthNotifi
   bool signUpCalled = false;
   bool resetPasswordCalled = false;
   bool clearErrorCalled = false;
+  bool continueOfflineCalled = false;
 
   String? lastEmail;
   String? lastPassword;
@@ -66,6 +67,15 @@ class FakeAuthNotifier extends StateNotifier<AppAuthState> implements AuthNotifi
   void clearError() {
     clearErrorCalled = true;
     state = state.copyWith(errorMessage: null);
+  }
+
+  @override
+  Future<void> continueOffline() async {
+    continueOfflineCalled = true;
+    state = const AppAuthState(
+      status: AuthStatus.authenticated,
+      user: AuthNotifier.offlineUser,
+    );
   }
 
   @override
@@ -222,6 +232,19 @@ void main() {
 
       expect(fakeAuthNotifier.resetPasswordCalled, isTrue);
       expect(fakeAuthNotifier.lastEmail, 'reset@taidy.io');
+    });
+
+    testWidgets('tapping Continue in Offline Mode calls authProvider.continueOffline', (tester) async {
+      await tester.pumpWidget(createSubject());
+      await tester.pumpAndSettle();
+
+      final offlineButton = find.widgetWithText(OutlinedButton, 'Continue in Offline Mode');
+      expect(offlineButton, findsOneWidget);
+
+      await tester.tap(offlineButton);
+      await tester.pumpAndSettle();
+
+      expect(fakeAuthNotifier.continueOfflineCalled, isTrue);
     });
   });
 }

@@ -51,6 +51,14 @@ class AuthNotifier extends StateNotifier<AppAuthState> {
   final SecureStorageService _secureStorage;
   StreamSubscription? _authSubscription;
 
+  static const offlineUser = User(
+    id: 'local-user',
+    appMetadata: {},
+    userMetadata: {'role': 'offline'},
+    aud: 'authenticated',
+    createdAt: '2026-01-01',
+  );
+
   AuthNotifier(this._repository, {SecureStorageService? secureStorage})
       : _secureStorage = secureStorage ?? SecureStorageService(),
         super(const AppAuthState()) {
@@ -61,6 +69,14 @@ class AuthNotifier extends StateNotifier<AppAuthState> {
     final rememberMe = await _secureStorage.getRememberMe();
     if (!mounted) return;
     if (rememberMe) {
+      final isOffline = await _secureStorage.readSecret(SecretKeys.offlineSession);
+      if (isOffline == 'true') {
+        state = const AppAuthState(
+          status: AuthStatus.authenticated,
+          user: offlineUser,
+        );
+        return;
+      }
       final persistedSession = await _secureStorage.getPersistedSession();
       if (!mounted) return;
       if (persistedSession != null && persistedSession.isNotEmpty) {
@@ -250,11 +266,22 @@ class AuthNotifier extends StateNotifier<AppAuthState> {
     );
   }
 
+  /// Enters local-only / offline guest mode without cloud synchronization.
+  Future<void> continueOffline() async {
+    await _secureStorage.writeSecret(SecretKeys.offlineSession, 'true');
+    await _secureStorage.setRememberMe(true);
+    state = const AppAuthState(
+      status: AuthStatus.authenticated,
+      user: offlineUser,
+    );
+  }
+
   // ── Sign Out ────────────────────────────────────────────────────────────
 
   Future<void> signOut() async {
     final previous = state;
     state = state.copyWith(isLoading: true, status: AuthStatus.loading);
+    await _secureStorage.deleteSecret(SecretKeys.offlineSession);
     final result = await _repository.signOut();
     if (!mounted) return;
     result.fold(

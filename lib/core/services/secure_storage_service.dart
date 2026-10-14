@@ -127,6 +127,7 @@ class SecureStorageService {
   Future<void> purgeAuthData() async {
     await deleteRefreshToken();
     await deletePersistedSession();
+    await deleteSecret(SecretKeys.offlineSession);
   }
 
   /// Clear all secrets (nuclear option for clear-all-data).
@@ -145,6 +146,7 @@ abstract class SecretKeys {
   static const supabaseRefreshToken = 'supabase_refresh_token';
   static const supabasePersistedSession = 'supabase_persisted_session';
   static const rememberMe = 'auth_remember_me';
+  static const offlineSession = 'is_offline_session';
 }
 
 // ── Riverpod Provider ───────────────────────────────────────────────────────

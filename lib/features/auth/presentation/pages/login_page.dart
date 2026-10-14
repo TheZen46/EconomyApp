@@ -38,22 +38,22 @@ class LoginPage extends ConsumerWidget {
       backgroundColor: bg,
       body: Center(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24),
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 400),
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 // ── Logo ────────────────────────────────────────────
-                Icon(Icons.receipt_long, size: 64, color: AppColors.accent)
+                Icon(Icons.receipt_long, size: 48, color: AppColors.accent)
                     .animate()
                     .fadeIn(duration: 400.ms)
                     .scale(begin: const Offset(0.8, 0.8)),
-                const SizedBox(height: 16),
+                const SizedBox(height: 10),
                 Text(
                   'tAIdy',
                   style: GoogleFonts.spaceGrotesk(
-                    fontSize: 36,
+                    fontSize: 30,
                     fontWeight: FontWeight.bold,
                     color: fg,
                   ),
@@ -61,12 +61,12 @@ class LoginPage extends ConsumerWidget {
                 Text(
                   'Privacy-First Expense Tracker',
                   style: GoogleFonts.spaceGrotesk(
-                    fontSize: 14,
+                    fontSize: 13,
                     color: muted,
                   ),
                 ).animate().fadeIn(delay: 200.ms),
 
-                const SizedBox(height: 48),
+                const SizedBox(height: 20),
 
                 // ── Auth Form Card ──────────────────────────────────
                 const LoginForm()
@@ -74,7 +74,7 @@ class LoginPage extends ConsumerWidget {
                     .fadeIn(delay: 300.ms)
                     .slideY(begin: 0.05),
 
-                const SizedBox(height: 24),
+                const SizedBox(height: 16),
                 Text(
                   'Your data stays on your device. Always.',
                   style: GoogleFonts.spaceGrotesk(
