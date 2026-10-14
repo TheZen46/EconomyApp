@@ -1572,60 +1572,64 @@ class _SettingsPanelWidgetState extends ConsumerState<SettingsPanelWidget> {
     );
   }
 
-  void _showApiKeyDialog(String currentKey) {
+  Future<void> _showApiKeyDialog(String currentKey) async {
     final ctrl = TextEditingController(text: currentKey);
     final isDark = ref.read(themeProvider) == ThemeMode.dark;
     final dialogBg = isDark ? const Color(0xFF1A1A1A) : Colors.white;
     final textCol = isDark ? Colors.white : Colors.black;
 
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: dialogBg,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: Text('Gemini API Key',
-            style: GoogleFonts.spaceGrotesk(
-                color: textCol, fontWeight: FontWeight.w500)),
-        content: TextField(
-          controller: ctrl,
-          obscureText: true,
-          style: GoogleFonts.jetBrainsMono(color: textCol, fontSize: 14),
-          decoration: InputDecoration(
-            hintText: 'Paste key here…',
-            hintStyle: GoogleFonts.spaceGrotesk(color: textCol.withAlpha(80)),
-            border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide(color: textCol.withAlpha(30))),
-            focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: const BorderSide(color: _accent)),
+    try {
+      await showDialog(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          backgroundColor: dialogBg,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: Text('Gemini API Key',
+              style: GoogleFonts.spaceGrotesk(
+                  color: textCol, fontWeight: FontWeight.w500)),
+          content: TextField(
+            controller: ctrl,
+            obscureText: true,
+            style: GoogleFonts.jetBrainsMono(color: textCol, fontSize: 14),
+            decoration: InputDecoration(
+              hintText: 'Paste key here…',
+              hintStyle: GoogleFonts.spaceGrotesk(color: textCol.withAlpha(80)),
+              border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(color: textCol.withAlpha(30))),
+              focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: const BorderSide(color: _accent)),
+            ),
           ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: Text('Cancel',
+                  style: GoogleFonts.spaceGrotesk(color: textCol.withAlpha(100))),
+            ),
+            TextButton(
+              onPressed: () async {
+                // Write to secure storage (keychain), NOT Hive
+                await SecureStorageService.writeSecret(
+                  SecretKeys.geminiApiKey, ctrl.text.trim());
+                // Invalidate the provider so aiServiceProvider picks up the new key
+                ref.invalidate(geminiApiKeyProvider);
+                if (!ctx.mounted) return;
+                Navigator.pop(ctx);
+                if (!mounted) return;
+                ScaffoldMessenger.of(context)
+                    .showSnackBar(const SnackBar(content: Text('API Key saved securely')));
+              },
+              child: Text('Save',
+                  style: GoogleFonts.spaceGrotesk(color: _accent)),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: Text('Cancel',
-                style: GoogleFonts.spaceGrotesk(color: textCol.withAlpha(100))),
-          ),
-          TextButton(
-            onPressed: () async {
-              // Write to secure storage (keychain), NOT Hive
-              await SecureStorageService.writeSecret(
-                SecretKeys.geminiApiKey, ctrl.text.trim());
-              // Invalidate the provider so aiServiceProvider picks up the new key
-              ref.invalidate(geminiApiKeyProvider);
-              if (!ctx.mounted) return;
-              Navigator.pop(ctx);
-              if (!mounted) return;
-              ScaffoldMessenger.of(context)
-                  .showSnackBar(const SnackBar(content: Text('API Key saved securely')));
-            },
-            child: Text('Save',
-                style: GoogleFonts.spaceGrotesk(color: _accent)),
-          ),
-        ],
-      ),
-    );
+      );
+    } finally {
+      ctrl.dispose();
+    }
   }
 
   void _showClearDialog() {

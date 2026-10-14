@@ -706,4 +706,14 @@ class _MultiModalIngestionDeckState extends ConsumerState<MultiModalIngestionDec
       ],
     );
   }
+
+  @override
+  void dispose() {
+    _voiceInputController.dispose();
+    _merchantController.dispose();
+    _totalAmountController.dispose();
+    _taxController.dispose();
+    _tipController.dispose();
+    super.dispose();
+  }
 }

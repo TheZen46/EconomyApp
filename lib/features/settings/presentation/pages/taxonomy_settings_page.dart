@@ -110,59 +110,63 @@ class TaxonomySettingsPage extends ConsumerWidget {
     );
   }
 
-  void _showAddItemDialog(BuildContext context, WidgetRef ref, String main, String sub) {
+  Future<void> _showAddItemDialog(BuildContext context, WidgetRef ref, String main, String sub) async {
     final nameController = TextEditingController();
     ItemNecessity selectedNecessity = ItemNecessity.discretional;
 
-    showDialog(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (context, setDialogState) {
-          return AlertDialog(
-            backgroundColor: AppTheme.surface,
-            title: Text('Add to $sub', style: const TextStyle(color: AppTheme.textMain)),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextField(
-                  controller: nameController,
-                  autofocus: true,
-                  style: const TextStyle(color: AppTheme.textMain),
-                  decoration: const InputDecoration(
-                    labelText: 'Item Name',
-                    labelStyle: TextStyle(color: AppTheme.textDim),
-                    enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: AppTheme.textDim)),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                Row(
-                  children: [
-                    const Text('Necessity: ', style: TextStyle(color: AppTheme.textDim)),
-                    const SizedBox(width: 8),
-                    _NecessityToggle(
-                      current: selectedNecessity,
-                      onChanged: (val) => setDialogState(() => selectedNecessity = val),
+    try {
+      await showDialog(
+        context: context,
+        builder: (ctx) => StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              backgroundColor: AppTheme.surface,
+              title: Text('Add to $sub', style: const TextStyle(color: AppTheme.textMain)),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(
+                    controller: nameController,
+                    autofocus: true,
+                    style: const TextStyle(color: AppTheme.textMain),
+                    decoration: const InputDecoration(
+                      labelText: 'Item Name',
+                      labelStyle: TextStyle(color: AppTheme.textDim),
+                      enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: AppTheme.textDim)),
                     ),
-                  ],
+                  ),
+                  const SizedBox(height: 16),
+                  Row(
+                    children: [
+                      const Text('Necessity: ', style: TextStyle(color: AppTheme.textDim)),
+                      const SizedBox(width: 8),
+                      _NecessityToggle(
+                        current: selectedNecessity,
+                        onChanged: (val) => setDialogState(() => selectedNecessity = val),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+                TextButton(
+                  onPressed: () {
+                    if (nameController.text.isNotEmpty) {
+                      ref.read(taxonomyProvider.notifier).addItem(main, sub, nameController.text, selectedNecessity.name);
+                      Navigator.pop(ctx);
+                    }
+                  },
+                  child: const Text('Add'),
                 ),
               ],
-            ),
-            actions: [
-              TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-              TextButton(
-                onPressed: () {
-                  if (nameController.text.isNotEmpty) {
-                    ref.read(taxonomyProvider.notifier).addItem(main, sub, nameController.text, selectedNecessity.name);
-                    Navigator.pop(ctx);
-                  }
-                },
-                child: const Text('Add'),
-              ),
-            ],
-          );
-        }
-      ),
-    );
+            );
+          }
+        ),
+      );
+    } finally {
+      nameController.dispose();
+    }
   }
 }
 

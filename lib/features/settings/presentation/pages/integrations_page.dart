@@ -28,6 +28,13 @@ class _IntegrationsPageState extends ConsumerState<IntegrationsPage> {
     });
   }
 
+  @override
+  void dispose() {
+    _urlController.dispose();
+    _secretController.dispose();
+    super.dispose();
+  }
+
   Future<void> _loadSettings() async {
     final settingsBox = ref.read(settingsBoxProvider);
     // webhook_enabled is non-sensitive and stays in Hive

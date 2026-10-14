@@ -363,7 +363,7 @@ class _MileagePageState extends ConsumerState<MileagePage> {
     );
   }
 
-  void _showAddTripModal(BuildContext context) {
+  Future<void> _showAddTripModal(BuildContext context) async {
     final purposeCtrl = TextEditingController();
     final startCtrl = TextEditingController(text: 'Office HQ');
     final endCtrl = TextEditingController();
@@ -371,101 +371,108 @@ class _MileagePageState extends ConsumerState<MileagePage> {
     String? selectedBox;
     final boxes = ref.read(boxesProvider);
 
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Theme.of(context).colorScheme.surface,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setModalState) {
-          return Padding(
-            padding: EdgeInsets.only(
-              left: 24,
-              right: 24,
-              top: 24,
-              bottom: MediaQuery.of(ctx).viewInsets.bottom + 24,
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Text('Log Business Trip', style: GoogleFonts.spaceGrotesk(fontSize: 18, fontWeight: FontWeight.bold)),
-                const SizedBox(height: 16),
-                TextField(
-                  controller: purposeCtrl,
-                  decoration: const InputDecoration(labelText: 'Trip Purpose (e.g. Client Meeting)', border: OutlineInputBorder()),
-                ),
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                    Expanded(
-                      child: TextField(
-                        controller: startCtrl,
-                        decoration: const InputDecoration(labelText: 'Start Origin', border: OutlineInputBorder()),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: TextField(
-                        controller: endCtrl,
-                        decoration: const InputDecoration(labelText: 'Destination', border: OutlineInputBorder()),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                    Expanded(
-                      child: TextField(
-                        controller: distCtrl,
-                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                        decoration: InputDecoration(
-                          labelText: 'Distance (${_selectedRatePreset.unit.name})',
-                          border: const OutlineInputBorder(),
+    try {
+      await showModalBottomSheet(
+        context: context,
+        backgroundColor: Theme.of(context).colorScheme.surface,
+        isScrollControlled: true,
+        shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+        builder: (ctx) => StatefulBuilder(
+          builder: (ctx, setModalState) {
+            return Padding(
+              padding: EdgeInsets.only(
+                left: 24,
+                right: 24,
+                top: 24,
+                bottom: MediaQuery.of(ctx).viewInsets.bottom + 24,
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text('Log Business Trip', style: GoogleFonts.spaceGrotesk(fontSize: 18, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: purposeCtrl,
+                    decoration: const InputDecoration(labelText: 'Trip Purpose (e.g. Client Meeting)', border: OutlineInputBorder()),
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: startCtrl,
+                          decoration: const InputDecoration(labelText: 'Start Origin', border: OutlineInputBorder()),
                         ),
                       ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: DropdownButtonFormField<String>(
-                        value: selectedBox,
-                        decoration: const InputDecoration(labelText: 'Assign to Box', border: OutlineInputBorder()),
-                        items: boxes.map((b) => DropdownMenuItem(value: b.id, child: Text(b.name))).toList(),
-                        onChanged: (val) => setModalState(() => selectedBox = val),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: TextField(
+                          controller: endCtrl,
+                          decoration: const InputDecoration(labelText: 'Destination', border: OutlineInputBorder()),
+                        ),
                       ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 20),
-                ElevatedButton(
-                  onPressed: () {
-                    final dist = double.tryParse(distCtrl.text) ?? 0.0;
-                    if (dist > 0 && purposeCtrl.text.isNotEmpty) {
-                      final newTrip = MileageTrip(
-                        id: const Uuid().v4(),
-                        date: DateTime.now(),
-                        purpose: purposeCtrl.text,
-                        startLocation: startCtrl.text.isEmpty ? 'Origin' : startCtrl.text,
-                        endLocation: endCtrl.text.isEmpty ? 'Destination' : endCtrl.text,
-                        distance: dist,
-                        unit: _selectedRatePreset.unit,
-                        ratePerUnit: _selectedRatePreset.ratePerUnit,
-                        boxId: selectedBox,
-                      );
-                      ref.read(mileageTripsProvider.notifier).addTrip(newTrip);
-                      Navigator.pop(ctx);
-                    }
-                  },
-                  style: ElevatedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 14)),
-                  child: const Text('Save Mileage Record'),
-                ),
-              ],
-            ),
-          );
-        },
-      ),
-    );
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: distCtrl,
+                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                          decoration: InputDecoration(
+                            labelText: 'Distance (${_selectedRatePreset.unit.name})',
+                            border: const OutlineInputBorder(),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: DropdownButtonFormField<String>(
+                          value: selectedBox,
+                          decoration: const InputDecoration(labelText: 'Assign to Box', border: OutlineInputBorder()),
+                          items: boxes.map((b) => DropdownMenuItem(value: b.id, child: Text(b.name))).toList(),
+                          onChanged: (val) => setModalState(() => selectedBox = val),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 20),
+                  ElevatedButton(
+                    onPressed: () {
+                      final dist = double.tryParse(distCtrl.text) ?? 0.0;
+                      if (dist > 0 && purposeCtrl.text.isNotEmpty) {
+                        final newTrip = MileageTrip(
+                          id: const Uuid().v4(),
+                          date: DateTime.now(),
+                          purpose: purposeCtrl.text,
+                          startLocation: startCtrl.text.isEmpty ? 'Origin' : startCtrl.text,
+                          endLocation: endCtrl.text.isEmpty ? 'Destination' : endCtrl.text,
+                          distance: dist,
+                          unit: _selectedRatePreset.unit,
+                          ratePerUnit: _selectedRatePreset.ratePerUnit,
+                          boxId: selectedBox,
+                        );
+                        ref.read(mileageTripsProvider.notifier).addTrip(newTrip);
+                        Navigator.pop(ctx);
+                      }
+                    },
+                    style: ElevatedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 14)),
+                    child: const Text('Save Mileage Record'),
+                  ),
+                ],
+              ),
+            );
+          },
+        ),
+      );
+    } finally {
+      purposeCtrl.dispose();
+      startCtrl.dispose();
+      endCtrl.dispose();
+      distCtrl.dispose();
+    }
   }
 
   void _showRatePresetsModal(BuildContext context) {

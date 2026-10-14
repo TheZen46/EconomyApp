@@ -59,11 +59,7 @@ class _ReviewPageState extends ConsumerState<ReviewPage> {
   void initState() {
     super.initState();
     _merchantController = TextEditingController(text: widget.receipt.merchantName);
-    _merchantController.addListener(() {
-      if (!_hasUserEdits && _merchantController.text != widget.receipt.merchantName) {
-        setState(() => _hasUserEdits = true);
-      }
-    });
+    _merchantController.addListener(_onMerchantChanged);
     _currentDate = widget.receipt.date;
     _dateUncertain = widget.receipt.dateUncertain;
     _items = widget.receipt.items
@@ -74,9 +70,7 @@ class _ReviewPageState extends ConsumerState<ReviewPage> {
     _selectedBoxId = widget.receipt.boxId ?? ref.read(activeBoxIdProvider);
     
     _totalController = TextEditingController(text: widget.receipt.totalAmount.toStringAsFixed(2));
-    _totalController.addListener(() {
-      if (!_hasUserEdits) setState(() => _hasUserEdits = true);
-    });
+    _totalController.addListener(_onTotalChanged);
 
     _checkHardwareAssets();
 
@@ -328,8 +322,22 @@ class _ReviewPageState extends ConsumerState<ReviewPage> {
     );
   }
 
+  void _onMerchantChanged() {
+    if (mounted && !_hasUserEdits && _merchantController.text != widget.receipt.merchantName) {
+      setState(() => _hasUserEdits = true);
+    }
+  }
+
+  void _onTotalChanged() {
+    if (mounted && !_hasUserEdits) {
+      setState(() => _hasUserEdits = true);
+    }
+  }
+
   @override
   void dispose() {
+    _merchantController.removeListener(_onMerchantChanged);
+    _totalController.removeListener(_onTotalChanged);
     _merchantController.dispose();
     _totalController.dispose();
     super.dispose();
