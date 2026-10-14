@@ -52,6 +52,9 @@ assets/credentials.json
 # Environment secrets
 .env
 .env.*
+*.env
+**/.env
+**/.env.*
 !.env.example
 
 # Android signing keys

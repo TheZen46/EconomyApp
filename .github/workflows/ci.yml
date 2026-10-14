@@ -13,6 +13,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Verify no secret files committed
+        run: |
+          if git ls-files | grep -E '(^|/)\.?[^/]*\.env($|\..*)' | grep -v '\.env\.example$'; then
+            echo "ERROR: Tracked .env secret file detected in repository!"
+            exit 1
+          fi
+
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:

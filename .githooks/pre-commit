@@ -1,0 +1,19 @@
+#!/bin/sh
+# Prevent committing .env files or credentials
+
+# 1. Check for staged .env files
+if git diff --cached --name-only | grep -E '(^|/)\.?[^/]*\.env($|\..*)' | grep -v '\.env\.example$'; then
+    echo "ERROR: Refusing to commit .env files. Remove them before committing."
+    exit 1
+fi
+
+# 2. Check for staged credentials or real Supabase keys (excluding hooks and examples)
+STAGED_FILES=$(git diff --cached --name-only | grep -v '^\.githooks/' | grep -v '\.env\.example$')
+if [ -n "$STAGED_FILES" ]; then
+    if echo "$STAGED_FILES" | xargs grep -E '(SUPABASE_ANON_KEY=ey|eyJhbGciOiJIUzI1NiIsInR5cCI|https://[a-z0-9]+\.supabase\.co)' /dev/null 2>/dev/null; then
+        echo "ERROR: Refusing to commit files containing active Supabase credentials or JWT tokens."
+        exit 1
+    fi
+fi
+
+exit 0
