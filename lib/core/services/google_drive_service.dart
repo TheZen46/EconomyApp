@@ -75,7 +75,9 @@ class GoogleDriveService {
     try {
       debugPrint('Google Drive (Windows): Loading credentials...');
       const defineClientId = String.fromEnvironment('GOOGLE_CLIENT_ID');
-      final rawClientId = defineClientId.isNotEmpty ? defineClientId : dotenv.env['GOOGLE_CLIENT_ID'];
+      final rawClientId = defineClientId.isNotEmpty
+          ? defineClientId
+          : (dotenv.isInitialized ? dotenv.maybeGet('GOOGLE_CLIENT_ID') : null);
 
       if (rawClientId == null ||
           rawClientId.trim().isEmpty ||
@@ -90,7 +92,9 @@ class GoogleDriveService {
 
       // Desktop clients are public OAuth 2.0 clients; secrets should not be bundled in distributed binaries.
       const defineClientSecret = String.fromEnvironment('GOOGLE_CLIENT_SECRET');
-      final rawSecret = defineClientSecret.isNotEmpty ? defineClientSecret : dotenv.env['GOOGLE_CLIENT_SECRET'];
+      final rawSecret = defineClientSecret.isNotEmpty
+          ? defineClientSecret
+          : (dotenv.isInitialized ? dotenv.maybeGet('GOOGLE_CLIENT_SECRET') : null);
       final clientSecret = (rawSecret != null &&
               rawSecret.trim().isNotEmpty &&
               !rawSecret.contains('your-') &&

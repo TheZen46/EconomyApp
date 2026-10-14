@@ -36,7 +36,8 @@ import 'features/settings/data/models/user_profile_model.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // ── 0. Global Telemetry & Error Boundary ────────────────────────────────
+  try {
+    // ── 0. Global Telemetry & Error Boundary ────────────────────────────────
   await TelemetryService.instance.initialize();
   TelemetryService.instance.setupGlobalErrorHandlers();
 
@@ -52,10 +53,10 @@ void main() async {
 
   final supabaseUrl = defineSupabaseUrl.isNotEmpty
       ? defineSupabaseUrl
-      : (dotenv.env['SUPABASE_URL'] ?? '');
+      : (dotenv.isInitialized ? (dotenv.maybeGet('SUPABASE_URL') ?? '') : '');
   final supabaseAnonKey = defineSupabaseAnonKey.isNotEmpty
       ? defineSupabaseAnonKey
-      : (dotenv.env['SUPABASE_ANON_KEY'] ?? '');
+      : (dotenv.isInitialized ? (dotenv.maybeGet('SUPABASE_ANON_KEY') ?? '') : '');
 
   // ── 2. Initialize Supabase with env-sourced credentials ────────────────
   // Without an initialized client, supabaseClientProvider is null and the app
@@ -203,6 +204,49 @@ void main() async {
       child: const TAIdyApp(),
     ),
   );
+  } catch (error, stack) {
+    debugPrint('FATAL Unhandled initialization error during startup: $error\n$stack');
+    try {
+      await TelemetryService.instance.recordCrash(
+        error: error,
+        stackTrace: stack,
+        errorType: 'Startup.FatalInitialization',
+      );
+    } catch (_) {}
+    runApp(
+      MaterialApp(
+        debugShowCheckedModeBanner: false,
+        theme: AppTheme.darkTheme,
+        home: Scaffold(
+          backgroundColor: const Color(0xFF0F172A),
+          body: SafeArea(
+            child: Center(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 24),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.error_outline_rounded, size: 56, color: Color(0xFFEF4444)),
+                    const SizedBox(height: 16),
+                    const Text(
+                      'Initialization Failed',
+                      style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      error.toString(),
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(fontSize: 13, color: Color(0xFF94A3B8)),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 /// Moves any plaintext secrets left in the Hive settings box (written by

@@ -73,35 +73,86 @@ class HiveMigrationService {
 
     if (!await boxFilesExist([boxName])) return;
 
-    final markerKey = 'migrated_enc_$boxName';
+    final markerKey = 'migrated_aes_v2_$boxName';
     try {
       final alreadyMigrated = await storage.readSecret(markerKey);
       if (alreadyMigrated == 'true') return;
     } catch (_) {}
 
+    Box<dynamic>? plainBox;
+    Map<dynamic, dynamic>? entries;
+    Object? probeError;
     try {
       debugPrint('HiveMigrationService: Checking if "$boxName" requires plaintext-to-cipher migration...');
-      final plainBox = await Hive.openBox<dynamic>(boxName, crashRecovery: false);
-      final entries = Map<dynamic, dynamic>.from(plainBox.toMap());
-      await plainBox.close();
-
-      await backupBoxFile(boxName);
-      await Hive.deleteBoxFromDisk(boxName);
-
-      final encBox = await Hive.openBox<dynamic>(boxName, encryptionCipher: cipher);
-      if (entries.isNotEmpty) {
-        await encBox.putAll(entries);
+      await runZonedGuarded(() async {
+        try {
+          plainBox = await Hive.openBox<dynamic>(boxName, crashRecovery: false);
+        } catch (e) {
+          probeError = e;
+        }
+      }, (error, stack) {
+        probeError ??= error;
+      });
+      if (probeError != null || plainBox == null) {
+        debugPrint('HiveMigrationService: Box "$boxName" was already encrypted or non-plaintext ($probeError).');
+        try {
+          await storage.writeSecret(markerKey, 'true');
+        } catch (_) {}
+        return;
       }
-      await encBox.close();
-
-      await storage.writeSecret(markerKey, 'true');
-      debugPrint('HiveMigrationService: Successfully migrated "$boxName" from plaintext to AES cipher (${entries.length} entries).');
+      entries = Map<dynamic, dynamic>.from(plainBox!.toMap());
+      await plainBox!.close();
+      plainBox = null;
     } catch (e) {
       debugPrint('HiveMigrationService: Box "$boxName" was already encrypted or non-plaintext ($e).');
       try {
         await storage.writeSecret(markerKey, 'true');
       } catch (_) {}
+      return;
+    } finally {
+      if (plainBox != null && plainBox!.isOpen) {
+        await plainBox!.close();
+      }
     }
+
+    Box<dynamic>? encBox;
+    try {
+      await backupBoxFile(boxName);
+      await Hive.deleteBoxFromDisk(boxName);
+
+      encBox = await Hive.openBox<dynamic>(boxName, encryptionCipher: cipher);
+      if (entries.isNotEmpty) {
+        for (final entry in entries.entries) {
+          final val = _prepareEntryForNewBox(entry.value);
+          await encBox.put(entry.key, val);
+        }
+      }
+      await encBox.close();
+      encBox = null;
+
+      await storage.writeSecret(markerKey, 'true');
+      debugPrint('HiveMigrationService: Successfully migrated "$boxName" from plaintext to AES cipher (${entries.length} entries).');
+    } catch (e) {
+      debugPrint('HiveMigrationService: Error while migrating "$boxName" to encrypted format: $e');
+      rethrow;
+    } finally {
+      if (encBox != null && encBox.isOpen) {
+        await encBox.close();
+      }
+    }
+  }
+
+  /// Clones known [HiveObject] subclasses to detach them from their previous [BoxBase]
+  /// so they can be re-inserted into a new encrypted box without throwing
+  /// "The same instance of an HiveObject cannot be stored in two different boxes."
+  static dynamic _prepareEntryForNewBox(dynamic val) {
+    if (val is ReceiptModel) {
+      return val.copyWith();
+    }
+    if (val is BoxModel) {
+      return val.copyWith();
+    }
+    return val;
   }
 
   /// Attempts to open a Hive box safely.
@@ -116,7 +167,7 @@ class HiveMigrationService {
     String boxName, {
     HiveCipher? encryptionCipher,
     bool crashRecovery = false,
-    bool migrateFromPlaintext = false,
+    bool migrateFromPlaintext = true,
     SecureStorageService? secureStorage,
   }) async {
     if (encryptionCipher != null && migrateFromPlaintext) {

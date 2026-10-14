@@ -1,3 +1,13 @@
+#ifndef NOMINMAX
+#define NOMINMAX 1
+#endif
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN 1
+#endif
+#ifndef _CRT_SECURE_NO_WARNINGS
+#define _CRT_SECURE_NO_WARNINGS 1
+#endif
+
 #ifndef RECEIPT_ENGINE_EXPORTS
 #define RECEIPT_ENGINE_EXPORTS 1
 #endif
@@ -564,7 +574,7 @@ static int detect_performance_cores_windows() {
                 }
                 offset += curr->Size;
             }
-            if (p_cores > 0) return std::min(p_cores, 8);
+            if (p_cores > 0) return (std::min)(p_cores, 8);
         }
     }
     return 0;
@@ -624,7 +634,7 @@ static int detect_optimal_threads(int requested_threads) {
     if (lin_p > 0) return lin_p;
 #endif
     unsigned int hw = std::thread::hardware_concurrency();
-    return (hw > 0) ? std::min(static_cast<int>(hw), 6) : 4;
+    return (hw > 0) ? (std::min)(static_cast<int>(hw), 6) : 4;
 }
 
 // ══════════════════════════════════════════════════════════════════════════════

@@ -89,7 +89,7 @@ endif()
 # PLATFORM-SPECIFIC GPU BACKENDS & LINKING
 # ══════════════════════════════════════════════════════════════════════════════
 if(WIN32)
-    target_compile_definitions(receipt_engine PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
+    target_compile_definitions(receipt_engine PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN _CRT_SECURE_NO_WARNINGS)
     if(GGML_USE_VULKAN)
         target_compile_definitions(receipt_engine PRIVATE GGML_USE_VULKAN=1)
         find_package(Vulkan QUIET)
@@ -147,6 +147,9 @@ add_executable(native_engine_test
     src/receipt_engine.cpp
 )
 target_include_directories(native_engine_test PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
+if(WIN32)
+    target_compile_definitions(native_engine_test PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN _CRT_SECURE_NO_WARNINGS)
+endif()
 if(MSVC)
     if(RECEIPT_USE_AVX2)
         target_compile_options(native_engine_test PRIVATE 
