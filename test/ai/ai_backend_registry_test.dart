@@ -4,7 +4,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:t_aidy/core/constants/taxonomy_constants.dart';
 import 'package:t_aidy/core/error/failures.dart';
 import 'package:t_aidy/core/services/ai_service.dart';
-import 'package:t_aidy/core/services/ai_backend_registry.dart';
 import 'package:t_aidy/features/receipt_scanning/data/datasources/mock_ai_service.dart';
 import 'package:t_aidy/features/receipt_scanning/domain/entities/receipt.dart';
 import 'package:t_aidy/features/receipt_scanning/presentation/providers/receipt_provider.dart';
@@ -12,11 +11,9 @@ import 'package:t_aidy/features/receipt_scanning/presentation/providers/receipt_
 class _FakeAiService implements AIService {
   @override
   final AiBackendDescriptor descriptor;
-  final Receipt? receiptToReturn;
 
   const _FakeAiService({
     required this.descriptor,
-    this.receiptToReturn,
   });
 
   @override
@@ -24,9 +21,6 @@ class _FakeAiService implements AIService {
     String imagePath, {
     Map<String, Map<String, List<TaxonomyItem>>>? taxonomy,
   }) async {
-    if (receiptToReturn != null) {
-      return Right(receiptToReturn!);
-    }
     return const Left(AIProcessingFailure('Fake extraction error'));
   }
 }

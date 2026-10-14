@@ -49,7 +49,7 @@ The `settings` box stores unstructured key-value records. To avoid naming collis
 
 | Key | Value Type | Owner / Producer | Semantics & Purpose |
 | :--- | :--- | :--- | :--- |
-| `schema_version` | `int` | `HiveMigrationService` | Monotonic schema migration counter (current: `3`) |
+| `schema_version` | `int` | `HiveMigrationService` | Monotonic schema migration counter (current: `4`) |
 | `theme_mode` | `String` (`'light'` \| `'dark'` \| `'system'`) | `ThemeNotifier` | Active UI theme mode preference |
 | `monthly_budget_limit` | `double` | `BudgetNotifier` | Monthly discretionary spending ceiling |
 | `current_balance` | `double` | `CurrentBalanceNotifier` | User's primary cash or bank balance |
