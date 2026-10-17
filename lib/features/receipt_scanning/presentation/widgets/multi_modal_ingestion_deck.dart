@@ -605,6 +605,14 @@ class _MultiModalIngestionDeckState extends ConsumerState<MultiModalIngestionDec
   }
 
   Widget _buildBoxSelectorDropdown(List<BoxModel> boxes) {
+    final effectiveItems = boxes.isEmpty
+        ? [BoxModel(id: 'main', name: 'Main Consulting Box', budget: 0, spent: 0, currency: 'USD', color: 0)]
+        : boxes;
+    final availableIds = effectiveItems.map((b) => b.id).toSet();
+    final effectiveValue = availableIds.contains(_selectedBoxId)
+        ? _selectedBoxId!
+        : effectiveItems.first.id;
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
@@ -618,13 +626,11 @@ class _MultiModalIngestionDeckState extends ConsumerState<MultiModalIngestionDec
           Text('Assigned Box', style: GoogleFonts.inter(fontSize: 9, color: const Color(0xFF94A3B8))),
           DropdownButtonHideUnderline(
             child: DropdownButton<String>(
-              value: _selectedBoxId ?? (boxes.isNotEmpty ? boxes.first.id : 'main'),
+              value: effectiveValue,
               isDense: true,
               dropdownColor: const Color(0xFF1E293B),
               style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.white),
-              items: (boxes.isEmpty
-                      ? [BoxModel(id: 'main', name: 'Main Consulting Box', budget: 0, spent: 0, currency: 'USD', color: 0)]
-                      : boxes)
+              items: effectiveItems
                   .map<DropdownMenuItem<String>>((b) => DropdownMenuItem<String>(value: b.id, child: Text(b.name, overflow: TextOverflow.ellipsis)))
                   .toList(),
               onChanged: (val) {
@@ -676,13 +682,15 @@ class _MultiModalIngestionDeckState extends ConsumerState<MultiModalIngestionDec
             ),
             onPressed: () {
               final grandTotal = double.tryParse(_totalAmountController.text) ?? 0.0;
+              final boxes = ref.read(boxesProvider);
+              final effectiveBoxId = _selectedBoxId ?? (boxes.isNotEmpty ? boxes.first.id : 'main');
               final newReceipt = Receipt(
                 id: const Uuid().v4(),
                 merchantName: _merchantController.text.isNotEmpty ? _merchantController.text : 'Merchant',
                 totalAmount: grandTotal,
                 currency: 'USD',
                 date: DateTime.now(),
-                boxId: _selectedBoxId ?? 'main',
+                boxId: effectiveBoxId,
                 items: List.from(_lineItems),
               );
 

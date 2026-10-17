@@ -374,6 +374,7 @@ class _BoxesPageState extends ConsumerState<BoxesPage> {
                       ? null
                       : () {
                           ref.read(activeBoxIdProvider.notifier).state = box.id;
+                          ref.read(settingsBoxNullableProvider)?.put('activeBoxId', box.id);
                         },
                   style: ElevatedButton.styleFrom(
                     backgroundColor: colorScheme.primary,

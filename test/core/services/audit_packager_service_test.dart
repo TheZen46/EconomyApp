@@ -100,5 +100,45 @@ void main() {
       expect(csvText, contains('"\'@SUM(A1:B1)"'));
       expect(csvText, contains('"\'+malicious_box"'));
     });
+
+    test('successfully packages multi-currency receipts without throwing', () {
+      final multiCurrencyReceipts = [
+        Receipt(
+          id: 'eur_receipt',
+          merchantName: 'Boulangerie Paris',
+          totalAmount: 15.50,
+          date: DateTime(2026, 3, 10),
+          currency: 'EUR',
+          boxId: 'main',
+          items: const [
+            ReceiptItem(description: 'Croissant', unitPrice: 15.50, quantity: 1, totalPrice: 15.50, mainCategory: 'Food'),
+          ],
+        ),
+        Receipt(
+          id: 'usd_receipt',
+          merchantName: 'Starbucks NYC',
+          totalAmount: 8.75,
+          date: DateTime(2026, 3, 11),
+          currency: 'USD',
+          boxId: 'main',
+          items: const [
+            ReceiptItem(description: 'Latte', unitPrice: 8.75, quantity: 1, totalPrice: 8.75, mainCategory: 'Food'),
+          ],
+        ),
+      ];
+
+      final zipBytes = AuditPackagerService.createAuditZipBundle(
+        receipts: multiCurrencyReceipts,
+        boxes: [],
+        fiscalYear: 2026,
+      );
+
+      final archive = ZipDecoder().decodeBytes(zipBytes);
+      final taxCsvFile = archive.files.firstWhere((f) => f.name == 'tax_vat_report_2026.csv');
+      final taxCsvText = utf8.decode(taxCsvFile.content as List<int>);
+
+      expect(taxCsvText, contains('EUR'));
+      expect(taxCsvText, contains('USD'));
+    });
   });
 }

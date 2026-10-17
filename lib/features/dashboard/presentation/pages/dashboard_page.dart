@@ -53,10 +53,12 @@ class _HomePageState extends ConsumerState<HomePage> {
 
     final activeBoxId = ref.read(activeBoxIdProvider);
     final boxes = ref.read(boxesProvider);
-    final activeBox = boxes.firstWhere(
-      (b) => b.id == activeBoxId,
-      orElse: () => BoxModel(id: 'main', name: 'Main Life', budget: 0, spent: 0, currency: 'USD', color: 0xFF002FA7),
-    );
+    final activeBox = boxes.isNotEmpty
+        ? boxes.firstWhere(
+            (b) => b.id == activeBoxId,
+            orElse: () => boxes.first,
+          )
+        : BoxModel(id: 'main', name: 'Main Life', budget: 0, spent: 0, currency: 'USD', color: 0xFF002FA7);
 
     final exportService = ref.read(exportServiceProvider);
 
@@ -231,6 +233,7 @@ class _HomePageState extends ConsumerState<HomePage> {
                       child: InkWell(
                         onTap: () {
                           ref.read(activeBoxIdProvider.notifier).state = box.id;
+                          ref.read(settingsBoxNullableProvider)?.put('activeBoxId', box.id);
                           Navigator.pop(ctx);
                         },
                         borderRadius: BorderRadius.circular(14),
@@ -466,10 +469,12 @@ class _HomePageState extends ConsumerState<HomePage> {
     // Active box details
     final boxes = ref.watch(boxesProvider);
     final activeBoxId = ref.watch(activeBoxIdProvider);
-    final activeBox = boxes.firstWhere(
-      (b) => b.id == activeBoxId,
-      orElse: () => BoxModel(id: 'main', name: 'Main Life', budget: 0, spent: 0, currency: 'USD', color: 0xFF002FA7),
-    );
+    final activeBox = boxes.isNotEmpty
+        ? boxes.firstWhere(
+            (b) => b.id == activeBoxId,
+            orElse: () => boxes.first,
+          )
+        : BoxModel(id: 'main', name: 'Main Life', budget: 0, spent: 0, currency: 'USD', color: 0xFF002FA7);
 
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,

@@ -15,7 +15,14 @@ export '../../../../core/providers/storage_providers.dart'
 /// Currently active budget box identifier used for UI filtering (defaults to `'main'`).
 ///
 /// **Lifetime:** App-scoped state provider.
-final activeBoxIdProvider = StateProvider<String>((ref) => 'main');
+final activeBoxIdProvider = StateProvider<String>((ref) {
+  final settingsBox = ref.watch(settingsBoxNullableProvider);
+  final saved = settingsBox?.get('activeBoxId') as String?;
+  if (saved != null && saved.isNotEmpty) {
+    return saved;
+  }
+  return 'main';
+});
 
 /// State notifier managing user budget boxes, cascade receipt reassignments, and outbox sync.
 class BoxesNotifier extends StateNotifier<List<BoxModel>> {
@@ -60,6 +67,20 @@ class BoxesNotifier extends StateNotifier<List<BoxModel>> {
         }
         return b;
       }).toList();
+    }
+
+    if (_ref != null && state.isNotEmpty) {
+      final currentActiveId = _ref.read(activeBoxIdProvider);
+      final hasActiveBox = state.any((b) => b.id == currentActiveId);
+      if (!hasActiveBox) {
+        final fallbackId = state.any((b) => b.id == 'main') ? 'main' : state.first.id;
+        Future.microtask(() {
+          if (_ref.read(activeBoxIdProvider) == currentActiveId) {
+            _ref.read(activeBoxIdProvider.notifier).state = fallbackId;
+            _ref.read(settingsBoxNullableProvider)?.put('activeBoxId', fallbackId);
+          }
+        });
+      }
     }
   }
 
@@ -167,7 +188,9 @@ class BoxesNotifier extends StateNotifier<List<BoxModel>> {
       if (!mounted) return;
       state = state.where((b) => b.id != id).toList();
       if (_ref != null && _ref.read(activeBoxIdProvider) == id) {
-        _ref.read(activeBoxIdProvider.notifier).state = 'main';
+        final fallback = state.any((b) => b.id == 'main') ? 'main' : (state.isNotEmpty ? state.first.id : 'main');
+        _ref.read(activeBoxIdProvider.notifier).state = fallback;
+        await _ref.read(settingsBoxNullableProvider)?.put('activeBoxId', fallback);
       }
       if (_outboxService != null) {
         await _outboxService.enqueue(

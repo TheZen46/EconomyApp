@@ -312,10 +312,12 @@ class ReceiptItemRow extends ConsumerWidget {
 
   Widget _buildBoxChip(BuildContext context) {
     final currentBoxId = item.boxId ?? boxId ?? 'main';
-    final box = availableBoxes.firstWhere(
-      (b) => b.id == currentBoxId,
-      orElse: () => BoxModel(id: 'main', name: 'Main Life', budget: 0, spent: 0, currency: 'USD', color: 0xFF002FA7),
-    );
+    final box = availableBoxes.isNotEmpty
+        ? availableBoxes.firstWhere(
+            (b) => b.id == currentBoxId,
+            orElse: () => availableBoxes.first,
+          )
+        : BoxModel(id: 'main', name: 'Main Life', budget: 0, spent: 0, currency: 'USD', color: 0xFF002FA7);
     final boxColor = Color(box.color);
 
     return InkWell(

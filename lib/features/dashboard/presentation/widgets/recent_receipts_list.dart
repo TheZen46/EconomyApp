@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -65,7 +65,7 @@ class _RecentReceiptsListState extends ConsumerState<RecentReceiptsList> {
                 borderRadius: BorderRadius.circular(20),
               ),
               child: DropdownButton<String?>(
-                value: _selectedCategory,
+                value: _selectedCategory != null && categories.contains(_selectedCategory) ? _selectedCategory : null,
                 dropdownColor: colorScheme.surface,
                 underline: const SizedBox(),
                 icon: Icon(Icons.filter_list, color: muted, size: 18),

@@ -155,15 +155,18 @@ class _BoxCreatorSheetState extends ConsumerState<BoxCreatorSheet> {
     final isDark = theme.brightness == Brightness.dark;
     final bg = isDark ? const Color(0xFF0F0F0F) : Colors.white;
 
-    return Container(
-      decoration: BoxDecoration(
-        color: bg,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
-        border: Border.all(
-          color: isDark ? Colors.white.withOpacity(0.06) : Colors.black.withOpacity(0.04),
+    return Material(
+      color: bg,
+      borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
+      clipBehavior: Clip.antiAlias,
+      child: Container(
+        decoration: BoxDecoration(
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
+          border: Border.all(
+            color: isDark ? Colors.white.withOpacity(0.06) : Colors.black.withOpacity(0.04),
+          ),
         ),
-      ),
-      padding: EdgeInsets.only(
+        padding: EdgeInsets.only(
         top: 24,
         left: 24,
         right: 24,
@@ -242,7 +245,7 @@ class _BoxCreatorSheetState extends ConsumerState<BoxCreatorSheet> {
                   Expanded(
                     flex: 1,
                     child: DropdownButtonFormField<String>(
-                      value: _currency,
+                      value: _currencies.contains(_currency) ? _currency : _currencies.first,
                       dropdownColor: isDark ? const Color(0xFF1A1A1A) : Colors.white,
                       style: GoogleFonts.jetBrainsMono(color: isDark ? Colors.white : Colors.black),
                       decoration: InputDecoration(
@@ -320,19 +323,25 @@ class _BoxCreatorSheetState extends ConsumerState<BoxCreatorSheet> {
               const SizedBox(height: 24),
 
               // Toggles
-              SwitchListTile(
-                value: _autoCategorize,
-                onChanged: (val) => setState(() => _autoCategorize = val),
-                title: Text('Auto-categorize receipts', style: GoogleFonts.spaceGrotesk(color: isDark ? Colors.white : Colors.black)),
-                activeColor: const Color(0xFF002FA7),
-                contentPadding: EdgeInsets.zero,
+              Material(
+                color: Colors.transparent,
+                child: SwitchListTile(
+                  value: _autoCategorize,
+                  onChanged: (val) => setState(() => _autoCategorize = val),
+                  title: Text('Auto-categorize receipts', style: GoogleFonts.spaceGrotesk(color: isDark ? Colors.white : Colors.black)),
+                  activeColor: const Color(0xFF002FA7),
+                  contentPadding: EdgeInsets.zero,
+                ),
               ),
-              SwitchListTile(
-                value: _isPrivate,
-                onChanged: (val) => setState(() => _isPrivate = val),
-                title: Text('Private Box (never used for AI training)', style: GoogleFonts.spaceGrotesk(color: isDark ? Colors.white : Colors.black)),
-                activeColor: const Color(0xFF002FA7),
-                contentPadding: EdgeInsets.zero,
+              Material(
+                color: Colors.transparent,
+                child: SwitchListTile(
+                  value: _isPrivate,
+                  onChanged: (val) => setState(() => _isPrivate = val),
+                  title: Text('Private Box (never used for AI training)', style: GoogleFonts.spaceGrotesk(color: isDark ? Colors.white : Colors.black)),
+                  activeColor: const Color(0xFF002FA7),
+                  contentPadding: EdgeInsets.zero,
+                ),
               ),
               const SizedBox(height: 32),
 
@@ -376,6 +385,7 @@ class _BoxCreatorSheetState extends ConsumerState<BoxCreatorSheet> {
           ),
         ),
       ),
-    );
-  }
+    ),
+  );
+}
 }

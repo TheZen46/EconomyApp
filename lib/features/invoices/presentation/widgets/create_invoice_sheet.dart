@@ -145,7 +145,7 @@ class _CreateInvoiceSheetState extends ConsumerState<CreateInvoiceSheet> {
                   Expanded(
                     flex: 1,
                     child: DropdownButtonFormField<String>(
-                      value: _currency,
+                      value: ['USD', 'EUR', 'GBP'].contains(_currency) ? _currency : 'USD',
                       dropdownColor: bg,
                       style: GoogleFonts.spaceGrotesk(color: textCol),
                       decoration: InputDecoration(

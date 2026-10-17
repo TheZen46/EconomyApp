@@ -53,20 +53,23 @@ class TaxonomySettingsPage extends ConsumerWidget {
                         onPressed: () => _showAddItemDialog(context, ref, mainEntry.key, subEntry.key),
                       ),
                       children: subEntry.value.map((item) {
-                        return ListTile(
-                          dense: true,
-                          contentPadding: const EdgeInsets.symmetric(horizontal: 24),
-                          title: Text(item.name, style: const TextStyle(color: AppTheme.textDim)),
-                          trailing: _NecessityToggle(
-                            current: _parseNecessity(item.defaultNecessity),
-                            onChanged: (newVal) {
-                                ref.read(taxonomyProvider.notifier).updateItemNecessity(
-                                  mainEntry.key, 
-                                  subEntry.key, 
-                                  item.name, 
-                                  newVal.name,
-                                );
-                            },
+                        return Material(
+                          color: Colors.transparent,
+                          child: ListTile(
+                            dense: true,
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 24),
+                            title: Text(item.name, style: const TextStyle(color: AppTheme.textDim)),
+                            trailing: _NecessityToggle(
+                              current: _parseNecessity(item.defaultNecessity),
+                              onChanged: (newVal) {
+                                  ref.read(taxonomyProvider.notifier).updateItemNecessity(
+                                    mainEntry.key, 
+                                    subEntry.key, 
+                                    item.name, 
+                                    newVal.name,
+                                  );
+                              },
+                            ),
                           ),
                         );
                       }).toList(),

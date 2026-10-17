@@ -1,8 +1,8 @@
 import 'dart:convert';
 import 'dart:io';
-import 'dart:typed_data';
 import 'package:archive/archive.dart';
 import 'package:crypto/crypto.dart';
+import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 
@@ -61,8 +61,29 @@ class AuditPackagerService {
     archive.addFile(ArchiveFile('receipts_ledger_$fiscalYear.csv', csvBytes.length, csvBytes));
 
     // 5. Tax & VAT Compliance Summary Report (CSV) via TaxReportService
-    final taxReport = TaxReportService.generateTaxReport(receipts: receipts);
-    final taxCsvContent = TaxReportService.exportToCsv(taxReport);
+    final String taxCsvContent;
+    final distinctCurrencies = receipts.map((r) => r.currency.toUpperCase()).toSet();
+    if (distinctCurrencies.length <= 1) {
+      final taxReport = TaxReportService.generateTaxReport(
+        receipts: receipts,
+        defaultCurrency: distinctCurrencies.isNotEmpty ? distinctCurrencies.first : 'EUR',
+      );
+      taxCsvContent = TaxReportService.exportToCsv(taxReport);
+    } else {
+      final reportsByCurrency = TaxReportService.generateTaxReportsByCurrency(receipts: receipts);
+      final buffer = StringBuffer();
+      var first = true;
+      for (final report in reportsByCurrency.values) {
+        if (!first) {
+          buffer.writeln();
+          buffer.writeln('=============================================================================');
+          buffer.writeln();
+        }
+        buffer.write(TaxReportService.exportToCsv(report));
+        first = false;
+      }
+      taxCsvContent = buffer.toString();
+    }
     final taxCsvBytes = utf8.encode(taxCsvContent);
     archive.addFile(ArchiveFile('tax_vat_report_$fiscalYear.csv', taxCsvBytes.length, taxCsvBytes));
 
@@ -136,9 +157,26 @@ ${manifest['merkle_root']}
       boxName: boxName,
     );
 
-    final dir = await getApplicationDocumentsDirectory();
     final timestamp = DateTime.now().millisecondsSinceEpoch;
-    final filePath = '${dir.path}/tAIdy_Audit_Pack_${fiscalYear}_$timestamp.zip';
+    final fileName = 'tAIdy_Audit_Pack_${fiscalYear}_$timestamp.zip';
+
+    if (kIsWeb) {
+      await Share.shareXFiles(
+        [
+          XFile.fromData(
+            zipBytes,
+            name: fileName,
+            mimeType: 'application/zip',
+          ),
+        ],
+        subject: 'tAIdy Sealed Cryptographic Audit Pack - FY $fiscalYear',
+        text: 'Attached is the official cryptographically sealed Tax Audit Pack with Merkle SHA-256 integrity proofs for FY $fiscalYear.',
+      );
+      return null;
+    }
+
+    final dir = await getApplicationDocumentsDirectory();
+    final filePath = '${dir.path}/$fileName';
     final file = File(filePath);
     await file.writeAsBytes(zipBytes);
 

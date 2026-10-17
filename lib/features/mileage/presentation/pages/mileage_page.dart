@@ -430,7 +430,9 @@ class _MileagePageState extends ConsumerState<MileagePage> {
                       const SizedBox(width: 8),
                       Expanded(
                         child: DropdownButtonFormField<String>(
-                          value: selectedBox,
+                          value: (selectedBox != null && boxes.any((b) => b.id == selectedBox))
+                              ? selectedBox
+                              : (boxes.isNotEmpty ? boxes.first.id : null),
                           decoration: const InputDecoration(labelText: 'Assign to Box', border: OutlineInputBorder()),
                           items: boxes.map((b) => DropdownMenuItem(value: b.id, child: Text(b.name))).toList(),
                           onChanged: (val) => setModalState(() => selectedBox = val),

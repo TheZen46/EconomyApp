@@ -41,6 +41,7 @@ class BiometricService {
       : _localAuth = localAuth ?? LocalAuthentication();
 
   Future<bool> canAuthenticate() async {
+    if (kIsWeb) return false;
     try {
       final canCheck = await _localAuth.canCheckBiometrics;
       final isSupported = await _localAuth.isDeviceSupported();
@@ -52,6 +53,7 @@ class BiometricService {
   }
 
   Future<bool> authenticate(String reason) async {
+    if (kIsWeb) return false;
     try {
       return await _localAuth.authenticate(
         localizedReason: reason,
