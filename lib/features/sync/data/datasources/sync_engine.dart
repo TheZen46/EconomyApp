@@ -377,8 +377,15 @@ class SyncEngine {
 
           // ── Step 6: Push Pending Local Uploads (Bidirectional Parity) ───────
           if (uploadSyncService != null) {
+            _emit(_currentState.copyWith(
+              stage: SyncStage.rehydratingStorage,
+              progress: 0.95,
+              message: 'Finalizing synchronization and checking local queue...',
+            ));
             try {
-              await uploadSyncService!.syncPendingItems();
+              await uploadSyncService!
+                  .syncPendingItems()
+                  .timeout(const Duration(seconds: 15));
             } catch (e) {
               debugPrint('SyncEngine: Local upload queue flush notice: $e');
             }

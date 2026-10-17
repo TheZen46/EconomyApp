@@ -11,7 +11,7 @@ class SyncCoordinator {
   static final SyncCoordinator instance = SyncCoordinator._();
   SyncCoordinator._();
 
-  final Lock _lock = Lock();
+  final Lock _lock = Lock(reentrant: true);
   final List<void Function()> _listeners = [];
 
   /// Executes [action] exclusively under the shared synchronization mutex.
