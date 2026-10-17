@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
@@ -54,31 +55,40 @@ void main() async {
     // attempt to load from local file system if available.
   }
 
-  if (!dotenv.isInitialized && !kIsWeb) {
-    try {
-      final cwdEnv = File('.env');
-      if (await cwdEnv.exists()) {
-        final content = await cwdEnv.readAsString();
-        dotenv.testLoad(fileInput: content);
-      } else {
-        Directory? dir = File(Platform.resolvedExecutable).parent;
-        for (int i = 0; i < 7 && dir != null; i++) {
-          final candidate = File('${dir.path}/.env');
-          if (await candidate.exists()) {
-            final content = await candidate.readAsString();
-            dotenv.testLoad(fileInput: content);
-            break;
-          }
-          final assetCandidate = File('${dir.path}/data/flutter_assets/.env');
-          if (await assetCandidate.exists()) {
-            final content = await assetCandidate.readAsString();
-            dotenv.testLoad(fileInput: content);
-            break;
-          }
-          dir = dir.parent;
+  if (!dotenv.isInitialized) {
+    if (kIsWeb) {
+      try {
+        final res = await Dio().get<String>('.env');
+        if (res.data != null && res.data!.isNotEmpty) {
+          dotenv.testLoad(fileInput: res.data!);
         }
-      }
-    } catch (_) {}
+      } catch (_) {}
+    } else {
+      try {
+        final cwdEnv = File('.env');
+        if (await cwdEnv.exists()) {
+          final content = await cwdEnv.readAsString();
+          dotenv.testLoad(fileInput: content);
+        } else {
+          Directory? dir = File(Platform.resolvedExecutable).parent;
+          for (int i = 0; i < 7 && dir != null; i++) {
+            final candidate = File('${dir.path}/.env');
+            if (await candidate.exists()) {
+              final content = await candidate.readAsString();
+              dotenv.testLoad(fileInput: content);
+              break;
+            }
+            final assetCandidate = File('${dir.path}/data/flutter_assets/.env');
+            if (await assetCandidate.exists()) {
+              final content = await assetCandidate.readAsString();
+              dotenv.testLoad(fileInput: content);
+              break;
+            }
+            dir = dir.parent;
+          }
+        }
+      } catch (_) {}
+    }
   }
 
   final supabaseUrl = defineSupabaseUrl.isNotEmpty
