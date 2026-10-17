@@ -11,7 +11,7 @@ jobs:
     name: Analyze & Test
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Verify no secret files committed
         run: |
@@ -45,7 +45,7 @@ jobs:
     name: Native Engine
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Configure
         run: cmake -S native -B build/native -DCMAKE_BUILD_TYPE=Release -DGGML_USE_VULKAN=OFF -DGGML_USE_METAL=OFF
